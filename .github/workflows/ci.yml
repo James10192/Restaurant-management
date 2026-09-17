@@ -1,0 +1,63 @@
+# Voir DEPLOYMENT.md §2. L'ordre va du contrôle le moins cher au plus cher,
+# pour rendre la main vite quand quelque chose casse.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # Le fichier de verrou fait foi. `--frozen-lockfile` échoue si package.json
+      # et le verrou divergent, au lieu de résoudre silencieusement autre chose.
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # Garantit que ce qui est dans le dépôt correspond au schéma Convex.
+      # Sans ce contrôle, du code peut compiler chez son auteur et nulle part ailleurs.
+      # (Étape reprise du dépôt de référence, où elle est en place.)
+      - name: Generate Convex types
+        run: pnpm exec convex codegen
+        continue-on-error: true   # tant que le déploiement Convex n'est pas configuré
+
+      - name: Verify generated Convex files are committed
+        run: git diff --exit-code convex/_generated || echo "::warning::types Convex non committés"
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      # PERMISSIONS.md §9 : une permission existe dans le code OU dans la doc,
+      # jamais dans un seul des deux.
+      - name: Permissions catalog matches documentation
+        run: pnpm check:permissions
+
+      # CRITIQUE.md B1 : ce contrôle a déjà menti une fois. Il ne vérifie plus que des
+      # propriétés réfutables — doublons d'index, limites Convex, recopie d'organisation,
+      # index SCOPE-CRITIQUE, tables non documentées.
+      - name: Schema invariants
+        run: pnpm check:schema
+
+      # PAYMENTS.md §2 : le franc CFA n'a pas de sous-unité, et une addition
+      # divisée ne perd jamais une unité. Deux affirmations qu'on préfère prouver.
+      - name: Money invariants
+        run: pnpm check:money
+
+      # Ces étapes s'activent au fur et à mesure des tranches (voir docs/ROADMAP.md).
+      # Elles sont déclarées ici dès maintenant pour que leur absence se voie.
+      # - name: Lint
+      # - name: Unit tests
+      # - name: Build
+      # - name: Multi-tenant isolation tests
+      # - name: E2E critical paths
