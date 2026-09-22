@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Garde-fou de fin de tâche — [PRODUCT_NAME] (Restaurant-management)
+# Garde-fou de fin de tâche — Joliba (Restaurant-management)
 #
 # Empêche de rendre la main sur un travail incomplet.
 #

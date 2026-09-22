@@ -1,4 +1,4 @@
-# CRITIQUE — revue adverse de la conception [PRODUCT_NAME]
+# CRITIQUE — revue adverse de la conception Joliba
 
 > Revue écrite le 2026-09-17 contre l'état du dépôt à cette date.
 > Méthode : vérification mécanique du schéma contre les documents, confrontation des documents

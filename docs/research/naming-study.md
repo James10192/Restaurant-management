@@ -1,4 +1,4 @@
-# Étude de naming — [PRODUCT_NAME]
+# Étude de naming — Joliba
 
 > Livrable **R6** (§106). Date des vérifications : **2026-09-17**.
 > Objet : remplacer « QR Menu Pro », nom qui enferme le produit dans le QR et dans le menu,
@@ -430,22 +430,19 @@ statut **n'est pas établi par cette étude**. Tenter une offre sur `joliba.com`
 
 ---
 
-## 9. En attendant — ne pas ralentir l'implémentation (§106)
+## 9. Décision (2026-09-22)
 
-Le code, les documents et les schémas continuent d'employer le marqueur **`[PRODUCT_NAME]`**, sans
-exception. Cette étude **n'est pas bloquante** pour les phases 3 à 8.
+**Le nom retenu est Joliba**, choisi par le porteur du projet sur la shortlist ci-dessus.
 
-Règles à tenir pour que le remplacement final reste une opération triviale :
+Le marqueur provisoire a été remplacé dans tout le dépôt par un commit dédié, sans autre
+changement, comme prévu. La règle qui l'accompagnait reste valable pour la suite :
 
-- Un **seul** littéral, `[PRODUCT_NAME]`, jamais de variante (`ProductName`, `PRODUCT_NAME`,
-  `product-name`) — une seule forme se remplace en une commande, cinq formes se remplacent à la main.
-- **Aucun nom de table, de champ Convex, de route, de paquet npm, de dépôt, de bucket ou de
-  variable d'environnement** ne doit contenir le nom du produit. Ce sont les seuls endroits où un
-  renommage coûte une migration plutôt qu'un `sed`.
-- Contrôle avant la décision : `grep -rn "QR Menu Pro"` doit rendre **zéro** résultat ;
-  `grep -rn "\[PRODUCT_NAME\]"` doit rendre **toutes** les occurrences visibles par l'utilisateur.
-- Le nom retenu n'entre dans le dépôt que par **une PR dédiée**, sans autre changement, une fois
-  l'étape 4 franchie.
+- **Aucun nom de table, de champ Convex, de route, de bucket ou de variable d'environnement** ne
+  contient le nom du produit. Ce sont les seuls endroits où un renommage coûte une migration plutôt
+  qu'un `sed`. Le nom apparaît dans les textes visibles, la documentation et le nom du paquet npm.
+- Restent à faire hors dépôt : réserver `joliba.app` et `joliba.africa`, vérifier `joliba.ci`
+  auprès du NIC.CI, et la recherche d'antériorité de marque OAPI (étape 4) avant tout dépôt de
+  marque ou dépense de communication.
 
 ---
 

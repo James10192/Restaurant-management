@@ -1,4 +1,4 @@
-# Decision Log — [PRODUCT_NAME]
+# Decision Log — Joliba
 
 > §121 : « Conserve un Decision Log. » · « Lorsqu'une information manque et qu'elle n'empêche pas
 > raisonnablement d'avancer : fais une hypothèse documentée. »
@@ -230,8 +230,7 @@ avant de coder.
 Elles n'empêchent pas d'avancer : j'ai pris une valeur par défaut, indiquée entre crochets.
 Elles sont regroupées ici pour être répondues d'un coup.
 
-1. **Nom du produit** — l'étude de naming propose une shortlist ; qui tranche, et quand ?
-   *[défaut : `[PRODUCT_NAME]` partout dans le code, aucun blocage]*
+1. **Nom du produit** — **tranché le 2026-09-22 : Joliba.**
 2. **PIN de service pour le personnel** (A1) — on le conçoit dès maintenant ? *[défaut : prévu au
    schéma, non implémenté]*
 3. **Mode de service par défaut** (A2) — « QR + commande serveur » ou « commande directe » ?
@@ -242,7 +241,7 @@ Elles sont regroupées ici pour être répondues d'un coup.
    sans toucher au métier]*
 7. **Le produit vend-il du matériel** (tablette, imprimante ticket) ou reste-t-il logiciel pur ?
    *[défaut : logiciel pur, impression via abstraction]*
-8. **Marque blanche** : un restaurant peut-il retirer « Powered by [PRODUCT_NAME] » ? *[défaut :
+8. **Marque blanche** : un restaurant peut-il retirer « Powered by Joliba » ? *[défaut :
    retirable seulement sur les plans payants supérieurs]*
 9. **Hors-ligne : quelle ambition ?** *(A8 — la question la plus structurante de ce document)*
    Voie 1 (étroit, tenable en V1) · voie 2 (relais local dans l'établissement, second exécutable,

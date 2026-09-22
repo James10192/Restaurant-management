@@ -1,5 +1,5 @@
 /**
- * Schéma Convex — [PRODUCT_NAME]
+ * Schéma Convex — Joliba
  *
  * Ce fichier est écrit APRÈS `DATA_MODEL.md` (§113 du brief) et doit lui rester fidèle :
  * toute table ajoutée ici sans entrée dans DATA_MODEL.md est un défaut bloquant en revue.

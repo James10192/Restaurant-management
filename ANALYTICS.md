@@ -1,4 +1,4 @@
-# ANALYTICS.md — [PRODUCT_NAME]
+# ANALYTICS.md — Joliba
 
 > §41 (analytique métier) et §83 (analytique du produit lui-même).
 > *« Ne jamais afficher un KPI uniquement parce qu'il existe. Chaque dashboard doit aider à prendre

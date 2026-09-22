@@ -1,5 +1,5 @@
 /**
- * Montants — [PRODUCT_NAME]
+ * Montants — Joliba
  *
  * RÈGLE : un montant est un ENTIER dans l'unité mineure de sa devise, toujours
  * accompagné de son code devise. Aucun flottant ne touche jamais un montant (D-004).

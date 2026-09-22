@@ -1,5 +1,5 @@
 ---
-name: "[PRODUCT_NAME]"
+name: "Joliba"
 description: "Système de design du Restaurant Operating System. Deux dialectes — Salle et Exploitation — sur un socle de jetons unique."
 northStar: "Rendre le service visible."
 density: [guest, ops, kds]
@@ -99,7 +99,7 @@ components:
   side-panel:       { bg: "{colors.surface}", width: "420px", shadow: "{elevation.e2}", scrim: "none" }
 ---
 
-# Système de design — [PRODUCT_NAME]
+# Système de design — Joliba
 
 > Ce document est **opposable**. Chaque valeur qu'il contient est justifiée par un usage réel :
 > une cuisine bruyante, un coup de feu à dix-neuf heures, un téléphone Android à 100 $ sur une 4G
@@ -1909,7 +1909,7 @@ Vingt paires. Chacune est vérifiable à l'œil ou par un `grep` — aucune n'es
 
 | Sujet | Pourquoi ce n'est pas tranché | Où ça se décidera |
 |---|---|---|
-| **Nom, logotype, voix de marque** | `[PRODUCT_NAME]` n'est pas arrêté (*Partie C, question 1*). Les jetons n'en dépendent pas ; l'identité verbale, si | `docs/research/naming-study.md` |
+| **Nom, logotype, voix de marque** | `Joliba` n'est pas arrêté (*Partie C, question 1*). Les jetons n'en dépendent pas ; l'identité verbale, si | `docs/research/naming-study.md` |
 | **Archivo, confirmée ou remplacée** | Le poids réel du fichier livré et la présence de `tnum` se vérifient sur le fichier, pas sur une fiche produit. Si le budget de 40 Ko est dépassé, on retire la fonte | Intégration, §2.2 |
 | **KDS clair ou sombre par défaut** | *H4* n'est pas vérifiée. Une cuisine carrelée en plein jour pourrait renverser la conclusion | Entretiens cuisine (`field-research-guide.md`) |
 | **Fréquence et volume des sons** | 880/660 Hz est un raisonnement sur le masquage, pas une mesure. Une cuisine réelle peut démentir | Mesure sur place |

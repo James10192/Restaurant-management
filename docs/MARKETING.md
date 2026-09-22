@@ -1,4 +1,4 @@
-# MARKETING.md — [PRODUCT_NAME]
+# MARKETING.md — Joliba
 
 > Stratégie de mise sur le marché : positionnement, messages, landing, démonstration,
 > tarification, croissance, objections, lancement.
@@ -26,7 +26,7 @@ recherche du dépôt, avec leur source. Ce qui n'a pas été vérifié est signa
 
 ### En une phrase
 
-**[PRODUCT_NAME] est le système d'exploitation du service pour les restaurants d'Afrique
+**Joliba est le système d'exploitation du service pour les restaurants d'Afrique
 francophone : la salle, la cuisine et la caisse sur le même fil, sur les téléphones que l'équipe
 a déjà, à un prix libellé en FCFA.**
 
@@ -41,7 +41,7 @@ profondeur et la modernité, mais il impose son propre encaissement, son matéri
 occidentaux, et **aucun des treize acteurs internationaux étudiés n'a de présence africaine
 documentée**. Le bloc local — DIAM POS, CliqPOS, KiboERP — a raison sur ce qui compte
 réellement ici (Mobile Money, conformité OHADA/GRA, fonctionnement sans internet) mais s'arrête
-à la caisse conforme, sans coordination de service ni ergonomie moderne. **[PRODUCT_NAME] occupe
+à la caisse conforme, sans coordination de service ni ergonomie moderne. **Joliba occupe
 la case vide** : la profondeur opérationnelle du bloc 2, aux contraintes d'infrastructure et de
 prix du bloc 3.
 
@@ -556,7 +556,7 @@ produit, pas comme un habillage de la landing.
 
 ### 5.1 L'établissement de démonstration
 
-**Nom : « [PRODUCT_NAME] Café »**, et rien d'autre.
+**Nom : « Joliba Café »**, et rien d'autre.
 
 Pourquoi ce choix précis : tout nom « réaliste » de maquis ou de restaurant abidjanais risque de
 désigner un établissement réel, ce qui serait à la fois une faute et un risque juridique. Nommer
@@ -778,7 +778,7 @@ Otter **79 / 178 / 278 $** avec un **plancher de 100 $/mois** de frais de traite
 | **Caisse, clôture, additions, partage, paiement mixte** | ❌ | ✅ | ✅ |
 | **Rapports d'exploitation** | ❌ | ✅ | ✅ |
 | **Consolidation multi-établissements, rôles au niveau organisation, multi-devises** | ❌ | ❌ | ✅ |
-| **Mention « Carte propulsée par [PRODUCT_NAME] » retirable** | ❌ | ❌ | ✅ |
+| **Mention « Carte propulsée par Joliba » retirable** | ❌ | ❌ | ✅ |
 | **API et webhooks sortants** | ❌ | ❌ | ✅ |
 
 **Dégressivité proposée pour l'offre Groupe** (structure ferme, montants à valider) :
@@ -905,7 +905,7 @@ Des clients du restaurant arrivent sur une page rapide, à jour, propre
 Le gérant constate un trafic qu'il n'avait pas → il en parle
         ↓
   (a) il partage le lien — réseaux, WhatsApp, fiche Google Business, son propre site
-  (b) une mention sobre « Carte propulsée par [PRODUCT_NAME] » en pied de page
+  (b) une mention sobre « Carte propulsée par Joliba » en pied de page
   (c) un autre gérant voit la page, la trouve professionnelle, demande qui l'a faite
       → acquisition par imitation entre pairs, le canal le plus efficace du secteur
 ```
@@ -959,7 +959,7 @@ répétition. On ne le chiffre pas.
 
 | Ce qu'on fait | Ce qu'on ne fait pas, et pourquoi |
 |---|---|
-| Mention sobre « Carte propulsée par [PRODUCT_NAME] » en pied de page du menu public, **en `rel="nofollow"`** | Un lien suivi depuis des centaines de pages clientes vers notre domaine est un schéma de liens à l'échelle. Le `nofollow` rend la mention honnête : elle sert la notoriété, pas la manipulation du classement. |
+| Mention sobre « Carte propulsée par Joliba » en pied de page du menu public, **en `rel="nofollow"`** | Un lien suivi depuis des centaines de pages clientes vers notre domaine est un schéma de liens à l'échelle. Le `nofollow` rend la mention honnête : elle sert la notoriété, pas la manipulation du classement. |
 | La rendre **retirable sur l'offre Groupe** (§7.3) | La rendre retirable partout — elle ne servirait plus à rien ; ou la rendre non retirable partout — un groupe qui paie a le droit de ne pas afficher notre marque chez lui. |
 | Donner au gérant le lien direct vers **sa** page, à partager où il veut | Acheter des liens, en échanger, en automatiser |
 | L'aider à renseigner sa fiche Google Business et à y mettre le lien du menu | Créer la fiche à sa place — c'est une donnée qui lui appartient |
@@ -1354,7 +1354,7 @@ C'est faux en voie 1 : les appareils ne se voient pas entre eux hors ligne (*A8*
 
 **Formulation de remplacement proposée, à appliquer partout :**
 
-> **Titre** : Quand le réseau lâche — [PRODUCT_NAME]
+> **Titre** : Quand le réseau lâche — Joliba
 > **Description** : Vos serveurs continuent de saisir, la carte reste consultable, et rien ne se
 > perd : tout part dès que le réseau revient. Nous vous disons aussi ce qui ne marche pas.
 
@@ -1391,7 +1391,7 @@ Ils ne sont pas dans le plan : ils le conditionnent.
 
 | Verrou | Pourquoi bloquant | Qui décide |
 |---|---|---|
-| **Le nom** | On ne met pas une landing en ligne sous `[PRODUCT_NAME]`. `Joliba` est recommandé, avec `Balani` et `Sabar` en repli ; les domaines ont été mesurés libres, mais **la liberté de marque n'a pas été vérifiée et ne l'est pas sans conseil en propriété intellectuelle** (`naming-study.md` §7). | Décision utilisateur + recherche d'antériorité OAPI |
+| **Le nom** | On ne met pas une landing en ligne sous `Joliba`. `Joliba` est recommandé, avec `Balani` et `Sabar` en repli ; les domaines ont été mesurés libres, mais **la liberté de marque n'a pas été vérifiée et ne l'est pas sans conseil en propriété intellectuelle** (`naming-study.md` §7). | Décision utilisateur + recherche d'antériorité OAPI |
 | **Les entretiens terrain** | Le guide existe, **les entretiens ne sont pas faits**. Aucun article ne part en rédaction sans source de première main, et le prix n'est pas validé sans la question 13. | À planifier immédiatement : 5 gérants, 6 serveurs, 3 caissiers, 4 cuisiniers, 2 barmen, 10 clients |
 | **Le marqueur de simulation** | La démonstration ne peut pas être mise en ligne tant que les données de démonstration peuvent polluer la caisse et les analytics (`INFORMATION_ARCHITECTURE.md`, G2). | Décision technique, prérequis de la démonstration |
 

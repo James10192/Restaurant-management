@@ -1,4 +1,4 @@
-# Guide d'entretiens terrain — [PRODUCT_NAME]
+# Guide d'entretiens terrain — Joliba
 
 > §105 : « Le produit ne doit pas être conçu seulement depuis un ordinateur. »
 

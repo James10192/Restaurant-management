@@ -1,4 +1,4 @@
-# ARCHITECTURE.md — [PRODUCT_NAME]
+# ARCHITECTURE.md — Joliba
 
 > Livrable §112. Les versions exactes des dépendances et leur compatibilité vivent dans
 > [`docs/research/stack-compatibility.md`](docs/research/stack-compatibility.md).
@@ -16,7 +16,7 @@ graph TB
         K["Cuisine / Bar<br/>(tablette murale)"]
         C["Caissier<br/>(tablette / desktop)"]
         M["Manager / Propriétaire<br/>(desktop + mobile)"]
-        P["Équipe PRODUCT_NAME<br/>(back-office plateforme)"]
+        P["Équipe Joliba<br/>(back-office plateforme)"]
     end
 
     subgraph edge["Vercel — TanStack Start (SSR + SPA)"]

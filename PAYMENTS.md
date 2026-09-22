@@ -1,4 +1,4 @@
-# PAYMENTS.md — [PRODUCT_NAME]
+# PAYMENTS.md — Joliba
 
 > §24 à §29, §54, §77, §78, §119. Les sources et les vérifications marché sont dans
 > [`docs/research/payments-africa.md`](docs/research/payments-africa.md).

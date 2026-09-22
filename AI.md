@@ -1,4 +1,4 @@
-# AI.md — [PRODUCT_NAME]
+# AI.md — Joliba
 
 > §30 à §36, §90, §118. *« L'IA ne doit pas être décorative. »*
 

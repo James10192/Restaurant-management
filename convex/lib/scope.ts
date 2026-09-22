@@ -1,5 +1,5 @@
 /**
- * Portée (tenant) — [PRODUCT_NAME]
+ * Portée (tenant) — Joliba
  *
  * LA RÈGLE, en une phrase : on résout la portée DEPUIS L'APPELANT avant de toucher
  * une donnée, et tout document atteint par clé étrangère est RE-VÉRIFIÉ contre cette

@@ -1,14 +1,14 @@
-# PRODUCT.md — [PRODUCT_NAME]
+# PRODUCT.md — Joliba
 
 > Nom de code. Le nom commercial n'est pas arrêté — voir `docs/research/naming-study.md`.
-> Tant qu'il ne l'est pas, `[PRODUCT_NAME]` est utilisé partout dans le code et la configuration,
+> Tant qu'il ne l'est pas, `Joliba` est utilisé partout dans le code et la configuration,
 > et rien n'attend cette décision.
 
 ---
 
 ## 1. Vision
 
-**[PRODUCT_NAME] est l'infrastructure numérique qui orchestre le service d'un restaurant.**
+**Joliba est l'infrastructure numérique qui orchestre le service d'un restaurant.**
 
 Pas un menu en ligne. Pas un QR code. Le QR est une porte d'entrée physique — utile, visible,
 bon marché — mais ce qui se passe derrière est le vrai produit : la coordination, en temps réel,

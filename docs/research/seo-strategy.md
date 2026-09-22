@@ -1,4 +1,4 @@
-# Stratégie SEO — [PRODUCT_NAME] (Restaurant OS)
+# Stratégie SEO — Joliba (Restaurant OS)
 
 > Livrable **R5** du plan de conception (§62, §63, §64, §122).
 > Rédigé le **2026-09-17**. Toutes les règles techniques ci-dessous ont été vérifiées
@@ -6,7 +6,7 @@
 > documentation TanStack). Chaque affirmation technique porte sa source.
 > Rien n'est repris de mémoire.
 
-**Positionnement produit retenu pour le SEO** : [PRODUCT_NAME] n'est pas « un générateur de
+**Positionnement produit retenu pour le SEO** : Joliba n'est pas « un générateur de
 menu QR ». C'est un **Restaurant OS** — commande à table, KDS, caisse, encaissement Mobile
 Money, stock, analytics — dont le QR n'est que la porte d'entrée côté client. Cette
 distinction commande toute l'architecture éditoriale : on capte sur la requête d'entrée
@@ -209,7 +209,7 @@ restaurant` · `prise de commande QR code bar` · `paiement à table smartphone`
 
 #### Groupe 8 — Marque & alternatives (défensif, plus tard)
 
-`[PRODUCT_NAME] avis` · `alternative Zeat` · `Zeat vs [PRODUCT_NAME]` ·
+`Joliba avis` · `alternative Zeat` · `Zeat vs Joliba` ·
 `alternative Toast Afrique`
 
 | | |
@@ -404,56 +404,56 @@ Toutes les URL sont préfixées de la locale (`/fr/…`, `/en/…`) — voir §4
 
 | Route | Titre SEO | Meta description | MP | Type |
 |---|---|---|---|---|
-| `/` | [PRODUCT_NAME] — Le système d'exploitation de votre restaurant | Commande à table, cuisine, caisse et encaissement Mobile Money dans un seul outil. Conçu pour les restaurants d'Afrique de l'Ouest. | logiciel restaurant | Page produit |
-| `/tarifs` | Tarifs — [PRODUCT_NAME] | Des formules en FCFA, sans engagement, matériel inclus selon l'offre. Voyez exactement ce que vous payez, et ce que vous ne payez pas. | prix logiciel restaurant | Page commerciale |
-| `/demo` | Demander une démonstration — [PRODUCT_NAME] | 30 minutes avec quelqu'un qui connaît votre métier. En ligne, ou sur place à Abidjan et Dakar. | démo logiciel restaurant | Conversion |
-| `/contact` | Nous contacter — [PRODUCT_NAME] | Téléphone, WhatsApp, e-mail. Une équipe joignable aux heures où votre restaurant travaille. | contact | Conversion |
-| `/a-propos` | Qui nous sommes — [PRODUCT_NAME] | L'équipe, pourquoi nous construisons un outil pensé ici, et comment nous travaillons avec les restaurants. | à propos | Confiance / E-E-A-T |
-| `/clients` | Ils nous font confiance — [PRODUCT_NAME] | Des restaurants, maquis et groupes qui pilotent leur salle avec [PRODUCT_NAME]. Chiffres et témoignages réels. | avis logiciel restaurant | Preuve |
+| `/` | Joliba — Le système d'exploitation de votre restaurant | Commande à table, cuisine, caisse et encaissement Mobile Money dans un seul outil. Conçu pour les restaurants d'Afrique de l'Ouest. | logiciel restaurant | Page produit |
+| `/tarifs` | Tarifs — Joliba | Des formules en FCFA, sans engagement, matériel inclus selon l'offre. Voyez exactement ce que vous payez, et ce que vous ne payez pas. | prix logiciel restaurant | Page commerciale |
+| `/demo` | Demander une démonstration — Joliba | 30 minutes avec quelqu'un qui connaît votre métier. En ligne, ou sur place à Abidjan et Dakar. | démo logiciel restaurant | Conversion |
+| `/contact` | Nous contacter — Joliba | Téléphone, WhatsApp, e-mail. Une équipe joignable aux heures où votre restaurant travaille. | contact | Conversion |
+| `/a-propos` | Qui nous sommes — Joliba | L'équipe, pourquoi nous construisons un outil pensé ici, et comment nous travaillons avec les restaurants. | à propos | Confiance / E-E-A-T |
+| `/clients` | Ils nous font confiance — Joliba | Des restaurants, maquis et groupes qui pilotent leur salle avec Joliba. Chiffres et témoignages réels. | avis logiciel restaurant | Preuve |
 
 #### Fonctionnalités — une page = une intention
 
 | Route | Titre SEO | Meta description | MP | Type |
 |---|---|---|---|---|
-| `/fonctionnalites/commande-a-table` | Commande à table par QR code — [PRODUCT_NAME] | Le client scanne, commande, la cuisine reçoit. Sans application à installer, et même quand le réseau faiblit. | commande à table QR code | Page fonctionnalité |
-| `/fonctionnalites/menu` | Menu digital et carte en ligne — [PRODUCT_NAME] | Modifiez un prix, retirez un plat épuisé : la carte est à jour au scan suivant. Photos, allergènes, plusieurs langues. | menu digital restaurant | Page fonctionnalité |
-| `/fonctionnalites/menu-public` | Votre page menu publique, visible sur Google — [PRODUCT_NAME] | Une page menu propre et rapide, indexable si vous le décidez, pour que les clients vous trouvent avant d'entrer. | page menu en ligne restaurant | Page fonctionnalité |
-| `/fonctionnalites/kds` | Écran de cuisine (KDS) — [PRODUCT_NAME] | Les commandes arrivent au passe, classées par poste et par temps. Fini les tickets papier perdus. | écran cuisine restaurant | Page fonctionnalité |
-| `/fonctionnalites/caisse` | Caisse et clôture de service — [PRODUCT_NAME] | Encaissez en espèces ou par mobile, et fermez la caisse en dix minutes avec un écart expliqué. | logiciel caisse restaurant | Page fonctionnalité |
-| `/fonctionnalites/paiements` | Paiements et partage d'addition — [PRODUCT_NAME] | Wave, Orange Money, MTN MoMo, espèces, carte. Chaque paiement rattaché à sa table et à sa commande. | paiement restaurant Mobile Money | Page fonctionnalité |
-| `/fonctionnalites/stock` | Stock, fiches techniques et food cost — [PRODUCT_NAME] | Ce que vous achetez, ce que vous vendez, ce que vous perdez. Et la marge de chaque plat. | gestion stock restaurant | Page fonctionnalité |
-| `/fonctionnalites/rapports` | Rapports et pilotage — [PRODUCT_NAME] | Chiffre d'affaires, ticket moyen, heures de pointe, mix produit. Sur votre téléphone, chaque matin. | rapport ventes restaurant | Page fonctionnalité |
-| `/fonctionnalites/equipe` | Équipe, rôles et responsabilités — [PRODUCT_NAME] | Chaque serveur son compte, chaque rôle ses droits. Vous savez qui a fait quoi. | gestion personnel restaurant | Page fonctionnalité |
-| `/fonctionnalites/hors-ligne` | Fonctionne même sans connexion — [PRODUCT_NAME] | Le service continue quand la 4G tombe. Les commandes se synchronisent dès que le réseau revient. | logiciel restaurant hors ligne | Page fonctionnalité |
+| `/fonctionnalites/commande-a-table` | Commande à table par QR code — Joliba | Le client scanne, commande, la cuisine reçoit. Sans application à installer, et même quand le réseau faiblit. | commande à table QR code | Page fonctionnalité |
+| `/fonctionnalites/menu` | Menu digital et carte en ligne — Joliba | Modifiez un prix, retirez un plat épuisé : la carte est à jour au scan suivant. Photos, allergènes, plusieurs langues. | menu digital restaurant | Page fonctionnalité |
+| `/fonctionnalites/menu-public` | Votre page menu publique, visible sur Google — Joliba | Une page menu propre et rapide, indexable si vous le décidez, pour que les clients vous trouvent avant d'entrer. | page menu en ligne restaurant | Page fonctionnalité |
+| `/fonctionnalites/kds` | Écran de cuisine (KDS) — Joliba | Les commandes arrivent au passe, classées par poste et par temps. Fini les tickets papier perdus. | écran cuisine restaurant | Page fonctionnalité |
+| `/fonctionnalites/caisse` | Caisse et clôture de service — Joliba | Encaissez en espèces ou par mobile, et fermez la caisse en dix minutes avec un écart expliqué. | logiciel caisse restaurant | Page fonctionnalité |
+| `/fonctionnalites/paiements` | Paiements et partage d'addition — Joliba | Wave, Orange Money, MTN MoMo, espèces, carte. Chaque paiement rattaché à sa table et à sa commande. | paiement restaurant Mobile Money | Page fonctionnalité |
+| `/fonctionnalites/stock` | Stock, fiches techniques et food cost — Joliba | Ce que vous achetez, ce que vous vendez, ce que vous perdez. Et la marge de chaque plat. | gestion stock restaurant | Page fonctionnalité |
+| `/fonctionnalites/rapports` | Rapports et pilotage — Joliba | Chiffre d'affaires, ticket moyen, heures de pointe, mix produit. Sur votre téléphone, chaque matin. | rapport ventes restaurant | Page fonctionnalité |
+| `/fonctionnalites/equipe` | Équipe, rôles et responsabilités — Joliba | Chaque serveur son compte, chaque rôle ses droits. Vous savez qui a fait quoi. | gestion personnel restaurant | Page fonctionnalité |
+| `/fonctionnalites/hors-ligne` | Fonctionne même sans connexion — Joliba | Le service continue quand la 4G tombe. Les commandes se synchronisent dès que le réseau revient. | logiciel restaurant hors ligne | Page fonctionnalité |
 
 #### Solutions — axe « type d'établissement »
 
 | Route | Titre SEO | Meta description | MP | Type |
 |---|---|---|---|---|
-| `/solutions/maquis` | Logiciel de gestion pour maquis et bars — [PRODUCT_NAME] | Chaque serveur son compte, chaque table son addition, une caisse qui tombe juste. Pensé pour le rythme d'un maquis. | gestion maquis | Page solution |
-| `/solutions/restaurant` | Logiciel pour restaurant de table — [PRODUCT_NAME] | Du plan de salle au passe en cuisine, jusqu'à l'addition partagée. | logiciel restaurant | Page solution |
-| `/solutions/fast-food` | Caisse et commande pour fast-food — [PRODUCT_NAME] | File rapide, commande sur place ou à emporter, cuisine synchronisée. | logiciel fast food | Page solution |
-| `/solutions/hotel` | Restauration d'hôtel — [PRODUCT_NAME] | Restaurant, bar, room service et facturation à la chambre. | logiciel restauration hôtel | Page solution |
-| `/solutions/groupes` | Plusieurs établissements — [PRODUCT_NAME] | Une vue consolidée, des cartes et des prix par établissement, des droits par site. | gestion multi établissements restaurant | Page solution |
+| `/solutions/maquis` | Logiciel de gestion pour maquis et bars — Joliba | Chaque serveur son compte, chaque table son addition, une caisse qui tombe juste. Pensé pour le rythme d'un maquis. | gestion maquis | Page solution |
+| `/solutions/restaurant` | Logiciel pour restaurant de table — Joliba | Du plan de salle au passe en cuisine, jusqu'à l'addition partagée. | logiciel restaurant | Page solution |
+| `/solutions/fast-food` | Caisse et commande pour fast-food — Joliba | File rapide, commande sur place ou à emporter, cuisine synchronisée. | logiciel fast food | Page solution |
+| `/solutions/hotel` | Restauration d'hôtel — Joliba | Restaurant, bar, room service et facturation à la chambre. | logiciel restauration hôtel | Page solution |
+| `/solutions/groupes` | Plusieurs établissements — Joliba | Une vue consolidée, des cartes et des prix par établissement, des droits par site. | gestion multi établissements restaurant | Page solution |
 
 #### Solutions — axe « marché » (règle stricte en §3.3)
 
 | Route | Titre SEO | Meta description | MP | Type |
 |---|---|---|---|---|
-| `/solutions/cote-divoire` | Logiciel de restaurant en Côte d'Ivoire — [PRODUCT_NAME] | Wave, Orange Money, Moov Money, MTN MoMo, prix en FCFA, comptabilité SYSCOHADA, équipe à Abidjan. | logiciel restaurant Côte d'Ivoire | Page marché |
-| `/solutions/senegal` | Logiciel de restaurant au Sénégal — [PRODUCT_NAME] | Wave et Orange Money, tarifs en FCFA, accompagnement à Dakar. | logiciel restaurant Sénégal | Page marché |
-| `/solutions/benin` | Logiciel de restaurant au Bénin — [PRODUCT_NAME] | MTN MoMo, Moov Money, Celtiis Cash, prix en FCFA, accompagnement à Cotonou. | logiciel restaurant Bénin | Page marché |
-| `/solutions/cameroun` | Logiciel de restaurant au Cameroun — [PRODUCT_NAME] | MTN MoMo et Orange Money, prix en FCFA, accompagnement à Douala et Yaoundé. | logiciel restaurant Cameroun | Page marché |
+| `/solutions/cote-divoire` | Logiciel de restaurant en Côte d'Ivoire — Joliba | Wave, Orange Money, Moov Money, MTN MoMo, prix en FCFA, comptabilité SYSCOHADA, équipe à Abidjan. | logiciel restaurant Côte d'Ivoire | Page marché |
+| `/solutions/senegal` | Logiciel de restaurant au Sénégal — Joliba | Wave et Orange Money, tarifs en FCFA, accompagnement à Dakar. | logiciel restaurant Sénégal | Page marché |
+| `/solutions/benin` | Logiciel de restaurant au Bénin — Joliba | MTN MoMo, Moov Money, Celtiis Cash, prix en FCFA, accompagnement à Cotonou. | logiciel restaurant Bénin | Page marché |
+| `/solutions/cameroun` | Logiciel de restaurant au Cameroun — Joliba | MTN MoMo et Orange Money, prix en FCFA, accompagnement à Douala et Yaoundé. | logiciel restaurant Cameroun | Page marché |
 
 #### Intégrations
 
 | Route | Titre SEO | Meta description | MP | Type |
 |---|---|---|---|---|
-| `/integrations` | Intégrations — [PRODUCT_NAME] | Moyens de paiement, imprimantes, comptabilité. Ce avec quoi [PRODUCT_NAME] se connecte. | intégrations logiciel restaurant | Hub |
-| `/integrations/wave` | Encaisser par Wave dans votre restaurant — [PRODUCT_NAME] | Chaque paiement Wave rattaché à sa table et à sa commande, et réconcilié à la clôture. | paiement Wave restaurant | Page intégration |
-| `/integrations/orange-money` | Encaisser par Orange Money — [PRODUCT_NAME] | Le paiement Orange Money relié à la commande, pas juste au téléphone du patron. | Orange Money restaurant | Page intégration |
-| `/integrations/mtn-momo` | Encaisser par MTN Mobile Money — [PRODUCT_NAME] | MTN MoMo rattaché à la table, réconcilié en fin de service. | MTN MoMo restaurant | Page intégration |
-| `/integrations/moov-money` | Encaisser par Moov Money — [PRODUCT_NAME] | Moov Money intégré à la caisse et à la clôture. | Moov Money restaurant | Page intégration |
+| `/integrations` | Intégrations — Joliba | Moyens de paiement, imprimantes, comptabilité. Ce avec quoi Joliba se connecte. | intégrations logiciel restaurant | Hub |
+| `/integrations/wave` | Encaisser par Wave dans votre restaurant — Joliba | Chaque paiement Wave rattaché à sa table et à sa commande, et réconcilié à la clôture. | paiement Wave restaurant | Page intégration |
+| `/integrations/orange-money` | Encaisser par Orange Money — Joliba | Le paiement Orange Money relié à la commande, pas juste au téléphone du patron. | Orange Money restaurant | Page intégration |
+| `/integrations/mtn-momo` | Encaisser par MTN Mobile Money — Joliba | MTN MoMo rattaché à la table, réconcilié en fin de service. | MTN MoMo restaurant | Page intégration |
+| `/integrations/moov-money` | Encaisser par Moov Money — Joliba | Moov Money intégré à la caisse et à la clôture. | Moov Money restaurant | Page intégration |
 
 > Règle : une page `/integrations/<x>` **n'est publiée que si l'intégration existe**. Une
 > page « bientôt disponible » est une page faible et une promesse commerciale non tenue.
@@ -462,10 +462,10 @@ Toutes les URL sont préfixées de la locale (`/fr/…`, `/en/…`) — voir §4
 
 | Route | Titre SEO | Meta description | MP | Type |
 |---|---|---|---|---|
-| `/ressources` | Ressources pour restaurateurs — [PRODUCT_NAME] | Guides, articles et modèles pour tenir un établissement en Afrique de l'Ouest. | ressources restaurateur | Hub |
-| `/guides` | Guides — [PRODUCT_NAME] | Nos guides de fond : encaissement, food cost, commande à table, gestion d'équipe. | guide gestion restaurant | Index piliers |
+| `/ressources` | Ressources pour restaurateurs — Joliba | Guides, articles et modèles pour tenir un établissement en Afrique de l'Ouest. | ressources restaurateur | Hub |
+| `/guides` | Guides — Joliba | Nos guides de fond : encaissement, food cost, commande à table, gestion d'équipe. | guide gestion restaurant | Index piliers |
 | `/guides/<slug>` | *(voir §2)* | *(propre à chaque pilier)* | *(voir §2)* | Pilier |
-| `/blog` | Blog — [PRODUCT_NAME] | Ce que nous apprenons en travaillant avec des restaurants, et ce que nous construisons. | blog restauration | Index articles |
+| `/blog` | Blog — Joliba | Ce que nous apprenons en travaillant avec des restaurants, et ce que nous construisons. | blog restauration | Index articles |
 | `/blog/<slug>` | *(propre à l'article)* | *(propre à l'article)* | *(voir §2)* | Satellite |
 | `/modeles/<slug>` | *(ex. : Modèle de fiche technique de plat)* | Un gabarit prêt à remplir, en FCFA. Téléchargeable sans inscription. | fiche technique cuisine modèle | Aimant à lien |
 
@@ -477,11 +477,11 @@ les rend citables.
 
 | Route | Titre SEO | Meta description | MP | Type | Indexation |
 |---|---|---|---|---|---|
-| `/securite` | Sécurité et protection des données — [PRODUCT_NAME] | Où vivent vos données, qui peut y accéder, comment nous les protégeons, et ce qui se passe si vous partez. | sécurité logiciel restaurant | Confiance | Index |
-| `/confidentialite` | Politique de confidentialité — [PRODUCT_NAME] | Les données que nous traitons, pourquoi, combien de temps, et vos droits. | politique confidentialité | Juridique | Index |
-| `/conditions` | Conditions générales — [PRODUCT_NAME] | Les règles du service, votre abonnement, vos obligations et les nôtres. | conditions générales | Juridique | Index |
-| `/cookies` | Politique de cookies — [PRODUCT_NAME] | Les traceurs que nous déposons, à quoi ils servent, et comment les refuser. | politique cookies | Juridique | **noindex, follow** |
-| `/statut` | État du service — [PRODUCT_NAME] | Disponibilité en temps réel et historique des incidents. | statut service | Confiance | **noindex** (souvent sous-domaine tiers) |
+| `/securite` | Sécurité et protection des données — Joliba | Où vivent vos données, qui peut y accéder, comment nous les protégeons, et ce qui se passe si vous partez. | sécurité logiciel restaurant | Confiance | Index |
+| `/confidentialite` | Politique de confidentialité — Joliba | Les données que nous traitons, pourquoi, combien de temps, et vos droits. | politique confidentialité | Juridique | Index |
+| `/conditions` | Conditions générales — Joliba | Les règles du service, votre abonnement, vos obligations et les nôtres. | conditions générales | Juridique | Index |
+| `/cookies` | Politique de cookies — Joliba | Les traceurs que nous déposons, à quoi ils servent, et comment les refuser. | politique cookies | Juridique | **noindex, follow** |
+| `/statut` | État du service — Joliba | Disponibilité en temps réel et historique des incidents. | statut service | Confiance | **noindex** (souvent sous-domaine tiers) |
 
 ### 3.3 Règle anti-prolifération des pages géographiques (§62)
 
@@ -714,7 +714,7 @@ export const Route = createFileRoute('/$locale/tarifs')({
     const locale = params.locale as Locale
     return {
       meta: [
-        { title: 'Tarifs — [PRODUCT_NAME]' },
+        { title: 'Tarifs — Joliba' },
         { name: 'description', content: 'Des formules en FCFA, sans engagement…' },
         { property: 'og:locale', content: locale === 'fr' ? 'fr_FR' : 'en_US' },
       ],
@@ -1123,7 +1123,7 @@ consulté le 2026-09-17).
     {
       "@type": "Organization",
       "@id": "https://example.com/#organization",
-      "name": "[PRODUCT_NAME]",
+      "name": "Joliba",
       "url": "https://example.com/",
       "logo": {
         "@type": "ImageObject",
@@ -1165,7 +1165,7 @@ consulté le 2026-09-17).
       "@type": "WebSite",
       "@id": "https://example.com/#website",
       "url": "https://example.com/",
-      "name": "[PRODUCT_NAME]",
+      "name": "Joliba",
       "publisher": { "@id": "https://example.com/#organization" },
       "inLanguage": "fr"
     }
@@ -1276,7 +1276,7 @@ contenu visible par l'utilisateur.
 {
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
-  "name": "[PRODUCT_NAME]",
+  "name": "Joliba",
   "applicationCategory": "BusinessApplication",
   "operatingSystem": "Web, Android, iOS",
   "url": "https://example.com/fr",
@@ -1790,7 +1790,7 @@ Le restaurant constate un trafic qu'il n'avait pas → il en parle
         ↓
   (a) il partage le lien (réseaux, WhatsApp, Google Business, son propre site)
       → liens entrants et signaux de notoriété vers menus.example.com
-  (b) une mention discrète « Carte propulsée par [PRODUCT_NAME] » en pied de page
+  (b) une mention discrète « Carte propulsée par Joliba » en pied de page
       → notoriété de marque auprès d'autres restaurateurs
   (c) un autre gérant voit la page, la trouve professionnelle, demande qui l'a faite
       → acquisition par imitation entre pairs — le canal le plus efficace du secteur
@@ -1810,7 +1810,7 @@ est important », on lui montre le nombre de personnes qui ont ouvert sa carte c
 
 | Ce qu'on fait | Ce qu'on ne fait pas, et pourquoi |
 |---|---|
-| Mention sobre « Carte propulsée par [PRODUCT_NAME] » en pied de page, **`rel="nofollow"`** | Un lien suivi depuis des centaines de pages clientes vers notre domaine est un schéma de liens à l'échelle. `nofollow` rend la mention honnête : elle sert la notoriété, pas la manipulation. |
+| Mention sobre « Carte propulsée par Joliba » en pied de page, **`rel="nofollow"`** | Un lien suivi depuis des centaines de pages clientes vers notre domaine est un schéma de liens à l'échelle. `nofollow` rend la mention honnête : elle sert la notoriété, pas la manipulation. |
 | Donner au restaurant un lien direct vers **sa** page, à partager où il veut | Acheter, échanger ou automatiser des liens |
 | L'aider à renseigner sa fiche Google Business et à y mettre le lien du menu | Créer des fiches Google Business à sa place — c'est une donnée qui lui appartient |
 | Un article de fond par marché, écrit à partir du terrain (§2) | Un article par ville dupliqué avec le nom remplacé (§3.3) |

@@ -1,4 +1,4 @@
-# PERMISSIONS.md — [PRODUCT_NAME]
+# PERMISSIONS.md — Joliba
 
 > §8 : « Ne pas implémenter uniquement des rôles rigides. Construire un RBAC avec permissions
 > granulaires et scope par établissement. » · « Toute vérification importante doit avoir lieu côté
@@ -179,7 +179,7 @@ fichier ; les deux doivent rester alignés (un test le vérifie — voir §9).
 > `ai.actions.approve` n'est jamais accordée au même niveau que `ai.actions.propose` par défaut :
 > c'est la séparation qui empêche l'IA d'agir seule (§35).
 
-### Plateforme (équipe [PRODUCT_NAME] uniquement)
+### Plateforme (équipe Joliba uniquement)
 
 Ces permissions ne sont **jamais** attribuables par une organisation. Elles vivent dans une table
 distincte (`platformAdmins`) et une garde distincte (`requirePlatformAdmin`).

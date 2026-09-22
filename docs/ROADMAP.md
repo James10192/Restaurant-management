@@ -1,4 +1,4 @@
-# ROADMAP — [PRODUCT_NAME]
+# ROADMAP — Joliba
 
 > §108, §109, et la décision *D-012* : **tranches verticales, pas couches horizontales**.
 

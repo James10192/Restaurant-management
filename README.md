@@ -1,11 +1,11 @@
-# [PRODUCT_NAME]
+# Joliba
 
 **L'infrastructure numérique qui orchestre le service d'un restaurant.**
 
 Le QR code n'est que la porte d'entrée. Ce qui est construit derrière, c'est la coordination en
 temps réel entre le client à table, le serveur, la cuisine, le bar, la caisse et le gérant.
 
-> `[PRODUCT_NAME]` est un nom de code. Le nom commercial n'est pas arrêté — voir
+> `Joliba` est un nom de code. Le nom commercial n'est pas arrêté — voir
 > [`docs/research/naming-study.md`](docs/research/naming-study.md). Rien n'attend cette décision :
 > le code n'utilise qu'un seul littéral, remplaçable en une fois.
 

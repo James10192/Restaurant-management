@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Contrôles structurels du schéma Convex — [PRODUCT_NAME]
+ * Contrôles structurels du schéma Convex — Joliba
  *
  *   node scripts/check-schema.mjs
  *

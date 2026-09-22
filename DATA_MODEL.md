@@ -1,4 +1,4 @@
-# DATA_MODEL.md — [PRODUCT_NAME]
+# DATA_MODEL.md — Joliba
 
 > Livrable §113. Chaque table porte : **objectif · champs · index · relations · permissions ·
 > cycle de vie**. `convex/schema.ts` est écrit **après** ce document et doit lui correspondre.
@@ -248,7 +248,7 @@ courriel à chaque réveil, c'est garantir qu'elle sera débranchée.
 **Cycle** : enrôlé → actif → révoqué (immédiat, à distance).
 
 ### `platformAdmins`
-**Objectif.** L'équipe [PRODUCT_NAME]. **Table à part, garde à part** : aucun chemin de code ne doit
+**Objectif.** L'équipe Joliba. **Table à part, garde à part** : aucun chemin de code ne doit
 permettre à une organisation d'accorder un droit plateforme.
 **Champs** : `userId`, `permissions: string[]`, `status`.
 **Index** : `by_user ["userId"]`

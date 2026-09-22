@@ -1,4 +1,4 @@
-# SECURITY.md — [PRODUCT_NAME]
+# SECURITY.md — Joliba
 
 > §86, §87, §88, §90, §91. Ce document a deux publics : l'équipe qui construit, et le client qui
 > demande « est-ce que mes données sont en sécurité ? ». Les deux méritent des affirmations vraies.

@@ -1,4 +1,4 @@
-# DEPLOYMENT.md — [PRODUCT_NAME]
+# DEPLOYMENT.md — Joliba
 
 > §92 à §96. Environnements, intégration continue, observabilité, drapeaux, incidents.
 

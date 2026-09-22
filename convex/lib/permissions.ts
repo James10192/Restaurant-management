@@ -1,5 +1,5 @@
 /**
- * Catalogue des permissions — [PRODUCT_NAME]
+ * Catalogue des permissions — Joliba
  *
  * SOURCE DE VÉRITÉ. Il vit dans le code, pas en base (décision D-002) :
  *

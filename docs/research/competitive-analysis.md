@@ -416,7 +416,7 @@ Cinq acteurs sur treize ne publient **aucun prix** : me&u/Mr Yum, UEAT, Delivere
 
 ---
 
-## 9. Recommandations de différenciation pour [PRODUCT_NAME]
+## 9. Recommandations de différenciation pour Joliba
 
 Chacune est reliée à un angle mort identifié au §6 ou à une contrainte du §7.
 

@@ -1,5 +1,5 @@
 /**
- * Contrôles de la logique des montants — [PRODUCT_NAME]
+ * Contrôles de la logique des montants — Joliba
  *
  * Exécutable sans dépendance de test :
  *     node --experimental-strip-types scripts/check-money.ts

@@ -1,4 +1,4 @@
-# INFORMATION_ARCHITECTURE.md — [PRODUCT_NAME]
+# INFORMATION_ARCHITECTURE.md — Joliba
 
 > Livrable §115. Architecture de l'information et wireframes textuels de **toutes** les surfaces.
 > Ce document ne décide rien de neuf : il **traduit en écrans** ce que `PRODUCT.md` (personas, modes,
@@ -194,7 +194,7 @@ accès à plus d'un établissement. Un manager mono-site ne voit jamais cette en
 rien à comparer. Un manager affecté à Cocody et Plateau voit deux lignes dans le sélecteur, jamais
 les quatre — la portée est dans la question, pas dans le rôle *(PERMISSIONS.md §1.3)*.
 
-**Équipe [PRODUCT_NAME]** — surface `/admin/*`, chemin totalement séparé
+**Équipe Joliba** — surface `/admin/*`, chemin totalement séparé
 (`requirePlatformAdmin`), jamais mélangé à la navigation client. Un administrateur plateforme qui
 ouvre `/app` est un utilisateur ordinaire de ses propres organisations, et rien de plus.
 
@@ -513,7 +513,7 @@ qui rend ces pages citables, donc qui apporte les liens.
 l'argent. **Objectif** : « où vivent mes données, qui peut y accéder, et que se passe-t-il si je
 pars ? »
 **Sections** : où sont hébergées les données et sous quelle juridiction · qui y accède côté
-[PRODUCT_NAME], et le fait que **tout accès support est journalisé, motivé et limité dans le temps**
+Joliba, et le fait que **tout accès support est journalisé, motivé et limité dans le temps**
 *(`platform.impersonate`)* · le contrôle d'accès du client (rôles, portée par établissement) · les
 paiements : ce que nous ne stockons **jamais** · le journal d'audit · la sauvegarde et la
 restauration · **la réversibilité : vous partez avec vos données** · comment signaler une faille.
@@ -603,7 +603,7 @@ champs sauf le nom n'existe aujourd'hui dans `venues`.)*
 3. Un produit indisponible est **affiché grisé avec « épuisé »**, pas masqué : le client doit savoir
    que le plat existe habituellement.
 4. Pied : adresse, plan, horaires, téléphone, et la mention sobre « Carte propulsée par
-   [PRODUCT_NAME] », **en `rel="nofollow"`** *(seo-strategy §8.2)*.
+   Joliba », **en `rel="nofollow"`** *(seo-strategy §8.2)*.
 
 **Action principale** : **Appeler l'établissement** (ou « Itinéraire » selon ce qui est renseigné).
 C'est une vitrine : elle ne prend pas de commande, et elle ne doit pas essayer.
@@ -2502,7 +2502,7 @@ conservés ici, **la tranche faisant foi**, avec la correspondance :
 
 | Route | Persona | App. | Permission | Priorité |
 |---|---|:--:|---|---|
-| `/admin` | Équipe [PRODUCT_NAME] | 🖥 | `platform.organizations.read` | T8 · plus tard |
+| `/admin` | Équipe Joliba | 🖥 | `platform.organizations.read` | T8 · plus tard |
 | `/admin/organizations` | Support | 🖥 | `platform.organizations.read` | T8 · plus tard |
 | **`/admin/organizations/$id`** *(vue 360°)* | Support | 🖥 | `platform.organizations.read` · `platform.organizations.manage` · **`platform.impersonate`** *(motif obligatoire, durée limitée, bandeau permanent, audité — `SECURITY.md` M18)* | T8 · plus tard |
 | `/admin/venues` · `/admin/users` | Support | 🖥 | `platform.organizations.read` | T8 · plus tard |

@@ -1,4 +1,4 @@
-# Document d'architecture — [PRODUCT_NAME]
+# Document d'architecture — Joliba
 
 > **Livrable §110.** Les 28 sections demandées, chacune avec des décisions concrètes.
 > Ce document est la **synthèse opposable** ; le détail vit dans les documents cités.
