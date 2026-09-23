@@ -27,6 +27,22 @@ un contrôle au démarrage vérifie la cohérence : un environnement autre que `
 une clé de production **refuse de démarrer**. Un avertissement dans un journal ne suffit pas — il
 sera lu trop tard.
 
+### Variables de la carte client (T1)
+
+| Variable | Où | Rôle |
+|---|---|---|
+| `GUEST_PASS_SECRET` | déploiement **Convex** | Signe les laissez-passer de table (HMAC-SHA256). 32 caractères au moins, aléatoires, **différents par environnement**. Absente ou trop courte : l'échange de QR échoue — jamais de laissez-passer non signé. La changer invalide tous les clients attablés : ils rescannent. |
+| `SITE_URL` | application web | Origine publique (`https://…`, sans barre finale). Sert l'adresse canonique, les données structurées, `robots.txt` et le plan du site. À défaut, l'origine de la requête — acceptable en local, pas en production derrière un proxy. |
+| `JOLIBA_DEMO_SEED` | déploiement Convex | **Jamais en production.** `1` autorise le restaurant de démonstration (`scripts/seed-demo.mjs`) ; seul `scripts/e2e-env.sh` la pose, sur un backend local anonyme. |
+
+Les fichiers de `/assets/` sont précompressés au build (gzip, brotli) et servis avec un cache d'un
+an, `immutable` ; `/sw.js` est servi `no-cache`, sinon une correction du service worker n'atteint
+jamais les téléphones (D-054).
+
+**Mesure de la carte client** avant chaque mise en production :
+`node scripts/measure-guest.mjs <adresse de scan> 20` sur le build de production (profil DESIGN §5
+émulé), **puis** le test sur un vrai téléphone (DESIGN §12, point 6), qui seul tranche.
+
 ---
 
 ## 2. Intégration continue
@@ -193,3 +209,6 @@ qu'on ne sait pas encore, et quand on redonnera des nouvelles.
 - [ ] Alertes branchées sur un canal réellement lu
 - [ ] Point d'état de santé exposé et surveillé
 - [ ] Procédure de rotation des secrets écrite et testée
+- [ ] `GUEST_PASS_SECRET` posé en production, distinct de tous les autres environnements
+- [ ] Carte client mesurée sur un vrai Android d'entrée de gamme en 4G bridée (DESIGN §12, point 6)
+- [ ] Limitation de débit par IP sur `/r/*/t/*` en bordure (SECURITY M3)

@@ -133,6 +133,8 @@ function GroupCard({
   const setOptionPrice = useMutation(api.modifiers.setOptionPrice);
   const removeOption = useMutation(api.modifiers.removeOption);
   const reorderOptions = useMutation(api.modifiers.reorderOptions);
+  const setOptionAvailable = useMutation(api.availability.setOption);
+  const canToggle = useWorkspace().canInVenue("menu.availability.toggle");
   const [name, setName] = useState(group.name);
   const [newOption, setNewOption] = useState("");
   const [newDelta, setNewDelta] = useState<number | null>(null);
@@ -226,7 +228,19 @@ function GroupCard({
               ) : (
                 <span className="text-label text-ink-2 tabular-nums">{option.priceDelta === 0 ? "sans supplément" : `+ ${formatPrice(option.priceDelta, currency)}`}</span>
               )}
-              {!option.isAvailable ? <Badge variant="warning">Indisponible</Badge> : null}
+              {canToggle ? (
+                <Button
+                  size="sm"
+                  variant={option.isAvailable ? "quiet" : "secondary"}
+                  aria-pressed={!option.isAvailable}
+                  aria-label={option.isAvailable ? `${option.name} disponible — marquer épuisée` : `${option.name} épuisée — remettre disponible`}
+                  onClick={() => void run(() => setOptionAvailable({ venueId, optionId: option._id, isAvailable: !option.isAvailable }))}
+                >
+                  {option.isAvailable ? "Disponible" : "Épuisée"}
+                </Button>
+              ) : !option.isAvailable ? (
+                <Badge variant="warning">Épuisée</Badge>
+              ) : null}
               {canEdit ? (
                 <>
                   <Button

@@ -68,6 +68,28 @@ carte avec les vraies disponibilités.
 **Porte de sortie** : le menu client s'affiche en moins de 2,5 s au 75ᵉ centile sur un Android
 d'entrée de gamme en 4G bridée — **mesuré, pas estimé**.
 
+**État (2026-09-23) : livrée, sous réserve du test sur appareil réel.**
+- Porte de sortie, **mesurée en émulation** (`scripts/measure-guest.mjs`, 20 essais, navigateur
+  vide, profil DESIGN §5 : 1,6 Mbit/s, 300 ms, processeur ralenti 6 fois, 360 × 740) sur le
+  restaurant de démonstration (40 plats, 30 photos), du scan du QR à l'affichage :
+  **première peinture — la carte, rendue au serveur — 1,42 s au 75ᵉ centile ; plus grand élément
+  (première photo) 2,05 s**. Chromium n'a compté la latence émulée qu'une fois sur l'échange :
+  en ajoutant un aller-retour, la borne pessimiste reste sous 2,5 s (≈ 1,72 s et ≈ 2,35 s).
+  Octets : JavaScript avant interaction **104 Ko** brotli (budget 120), CSS 9 Ko, police 35 Ko,
+  deux photos prioritaires ≈ 84 Ko (budget 180). Résultat brut : `docs/perf/2026-09-23-carte-client.json`.
+- **Non fait** : la mesure sur un vrai Android d'entrée de gamme (DESIGN §12, point 6). Un
+  processeur ralenti par logiciel n'a ni la dalle ni le processeur graphique d'un téléphone à
+  100 $ : c'est l'appareil réel qui tranche, avant la première mise en service.
+- Parcours complet prouvé dans un navigateur, contre le build de production (`e2e/t1.spec.ts`) :
+  composer, publier, imprimer le QR, le scanner, couper un plat — la carte du client change sans
+  rechargement —, régénérer le QR — l'ancien et les clients qu'il avait fait entrer sont coupés.
+- Isolation : chaque fonction publique du catalogue, de la salle et des QR a son cas dans
+  `tests/convex/isolation.test.ts`.
+- Écarts assumés : pas de limitation de débit sur l'échange de QR ni de ré-encodage serveur des
+  photos (SECURITY M3, M14) ; pas de CSP stricte ; la disponibilité d'une variante se règle sur la fiche
+  produit et celle d'une option sur l'écran Options, pas encore sur l'écran de service mobile ; l'ordre des sections se change par
+  flèches, sans glisser-déposer.
+
 > Première tranche vendable. Elle ne suffit pas à gagner (le marché du menu QR est saturé et
 > Mr Yum et me&u ont fusionné), mais elle ouvre la porte et fait vivre le QR en salle.
 

@@ -38,6 +38,9 @@ export default defineConfig(({ command }) => ({
     nitro({
       // Le préréglage Vercel ne concerne que le paquet de production.
       ...(command === "build" ? { preset: process.env.NITRO_PRESET ?? "vercel" } : {}),
+      // Fichiers statiques précompressés (gzip, brotli) : un serveur Node les sert tels quels.
+      // Vercel compresse de lui-même ; ailleurs, sans cela, le JavaScript part non compressé.
+      compressPublicAssets: { gzip: true, brotli: true },
       // En-têtes de sécurité sur toutes les réponses (SECURITY.md). La CSP stricte viendra
       // avec la liste définitive des origines (Convex, PostHog, fournisseurs de paiement).
       routeRules: {

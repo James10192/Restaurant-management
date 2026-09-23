@@ -486,6 +486,8 @@ function Variants({ venueId, product }: { venueId: Id<"venues">; product: Produc
   const updateVariant = useMutation(api.products.updateVariant);
   const setVariantPrice = useMutation(api.products.setVariantPrice);
   const removeVariant = useMutation(api.products.removeVariant);
+  const setVariantAvailable = useMutation(api.availability.setVariant);
+  const canToggle = useWorkspace().canInVenue("menu.availability.toggle");
   const [name, setName] = useState("");
   const [price, setPrice] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -520,6 +522,7 @@ function Variants({ venueId, product }: { venueId: Id<"venues">; product: Produc
                 onPrice={(value) => run(() => setVariantPrice({ venueId, variantId: variant._id, price: value }))}
                 onDefault={() => run(() => updateVariant({ venueId, variantId: variant._id, isDefault: true }))}
                 onRemove={() => run(() => removeVariant({ venueId, variantId: variant._id }))}
+                onAvailable={canToggle ? (available) => run(() => setVariantAvailable({ venueId, variantId: variant._id, isAvailable: available })) : undefined}
               />
             ))}
           </ul>
@@ -573,6 +576,7 @@ function VariantRow({
   onPrice,
   onDefault,
   onRemove,
+  onAvailable,
 }: {
   variant: Product["variants"][number];
   currency: string;
@@ -582,6 +586,7 @@ function VariantRow({
   onPrice: (price: number) => Promise<void>;
   onDefault: () => Promise<void>;
   onRemove: () => Promise<void>;
+  onAvailable?: (available: boolean) => Promise<void>;
 }) {
   const [name, setName] = useState(variant.name);
   const [price, setPrice] = useState<number | null>(variant.price);
@@ -604,6 +609,13 @@ function VariantRow({
         <Button size="sm" variant="secondary" onClick={() => void onPrice(price)}>
           Enregistrer le prix
         </Button>
+      ) : null}
+      {onAvailable ? (
+        <Button size="sm" variant={variant.isAvailable ? "quiet" : "secondary"} aria-pressed={!variant.isAvailable} onClick={() => void onAvailable(!variant.isAvailable)}>
+          {variant.isAvailable ? "Disponible" : "Épuisée"}
+        </Button>
+      ) : !variant.isAvailable ? (
+        <Badge variant="warning">Épuisée</Badge>
       ) : null}
       {variant.isDefault ? (
         <Badge variant="accent" glyph={false}>

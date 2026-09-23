@@ -64,8 +64,10 @@ test("T0 — ouvrir, inviter, cloisonner", async ({ browser }) => {
   await shot(waiter, "accueil-serveur-mobile");
 
   // Le serveur n'a ni l'équipe, ni les rôles, ni les réglages : ni dans la navigation
-  // (réduite à l'accueil, elle n'est même pas affichée)…
-  await expect(waiter.getByRole("navigation", { name: "Navigation principale" })).toHaveCount(0);
+  // (qui lui montre la carte et la salle, rien d'autre)…
+  const waiterNav = waiter.getByRole("navigation", { name: "Navigation principale" });
+  await expect(waiterNav.getByRole("link")).toHaveText(["Accueil", "Carte", "Salle"]);
+  await expect(waiter.getByRole("link", { name: "Établissement" })).toHaveCount(0);
   await expect(waiter.getByRole("link", { name: "Rôles" })).toHaveCount(0);
   await expect(waiter.getByRole("link", { name: "Équipe" })).toHaveCount(0);
   // …ni par l'URL directe.

@@ -115,12 +115,16 @@ pnpm check:money         # le franc CFA n'a pas de sous-unité
 pnpm test                # isolation multi-tenant, verrous, portée (convex-test)
 pnpm check               # tout ce qui précède
 
-pnpm test:e2e            # parcours T0 dans un navigateur — voir e2e/README.md
+pnpm test:e2e            # parcours T0 et T1 dans un navigateur — voir e2e/README.md
+
+node scripts/seed-demo.mjs                        # restaurant de démonstration (backend local seulement)
+node scripts/measure-guest.mjs <adresse de scan>  # carte client en 4G bridée émulée, 75e centile
 ```
 
 Variables du déploiement Convex : `SITE_URL`, `BETTER_AUTH_SECRET`, `RESEND_API_KEY`, `EMAIL_FROM`
-(sans elles, aucun code de connexion ne part), et `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` pour
-Google (le bouton n'apparaît qu'avec `VITE_AUTH_GOOGLE=true` côté application).
+(sans elles, aucun code de connexion ne part), `GUEST_PASS_SECRET` (sans elle, aucun QR ne s'ouvre),
+et `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` pour Google (le bouton n'apparaît qu'avec
+`VITE_AUTH_GOOGLE=true` côté application). Détail dans `DEPLOYMENT.md` §1.
 
 ---
 

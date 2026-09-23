@@ -80,6 +80,11 @@ lié à sa `tableSessionId`, et rien d'autre. Un identifiant ne donne jamais acc
 du numéro de table ; limitation de débit sur l'échange de jeton, par adresse et par établissement ;
 un jeton inconnu renvoie la même réponse qu'un jeton révoqué.
 **Vérification** : test d'entropie sur la génération ; test de limitation de débit.
+**État (T1)** : 128 bits d'aléa, un jeton inconnu et un jeton révoqué reçoivent la même réponse
+(`raison=invalid`). La **limitation de débit n'est pas encore en place** : une mutation Convex ne
+voit pas l'adresse IP, et une limite par établissement permettrait à un attaquant de bloquer les
+scans des vrais clients. Elle se posera en bordure (serveur web, par IP) ; à 128 bits,
+l'énumération reste hors de portée, le risque est un coût, pas une intrusion.
 
 ### M4 — Le QR photographié (la menace la plus concrète)
 
@@ -97,6 +102,13 @@ partage sur WhatsApp. C'est le cas d'usage réel, pas une hypothèse.
 3. La session de table a une durée de vie, se clôture avec la table, et `scanCount` /
    `lastScannedAt` alimentent la détection d'anomalie.
 4. La rotation du jeton est un geste d'exploitation à un clic : on réimprime, l'ancien QR meurt.
+
+**État (T1)** : le scan ne donne que la **lecture** de la carte de la table ; il n'ouvre aucune
+session (D-045). Le laissez-passer est un HMAC signé par Convex (`GUEST_PASS_SECRET`), valable 12 h,
+dans un cookie limité au chemin `/r/<établissement>`, et **revérifié à chaque lecture** contre l'état
+et la version du QR : « Révoquer et régénérer » coupe aussitôt les clients déjà entrés par l'ancien
+(D-046, vérifié par `e2e/t1.spec.ts`). Le jeton est stocké en clair pour permettre la réimpression :
+seule la planche d'impression le lit, avec la permission `table.qr.manage`.
 
 **Ce qu'il faut assumer** : en mode `frictionless`, une photo permet de rejoindre une session
 ouverte. C'est un choix du restaurant, présenté comme tel dans l'onboarding, avec sa conséquence
@@ -193,6 +205,9 @@ le téléphone des clients — ou dans le back-office d'un autre utilisateur.
 en-tête `Content-Security-Policy` stricte, sans `unsafe-inline` ; les noms de fichiers et les
 attributs sont assainis.
 **Vérification** : test d'injection sur les champs de la carte, avec vérification du rendu.
+**État (T1)** : React échappe tout texte de la carte ; le seul HTML injecté est le JSON-LD de la carte
+publique, dont les `<` sont échappés. La **CSP stricte n'est pas encore posée** : elle attend la liste
+définitive des origines (Convex, stockage, analytique).
 
 ### M14 — Téléversement de fichier
 
@@ -200,6 +215,11 @@ attributs sont assainis.
 par l'en-tête déclaré ; taille et dimensions plafonnées ; ré-encodage systématique des images (ce
 qui neutralise la charge utile et supprime les métadonnées EXIF, dont la position GPS) ; nom de
 fichier régénéré ; service depuis une origine distincte ; nettoyage des fichiers orphelins.
+**État (T1)** : la photo est ré-encodée **dans le navigateur** (ce qui retire l'EXIF, position GPS
+comprise), puis le serveur vérifie les octets d'en-tête (JPEG, PNG, WebP) et le poids (600 Ko, 80 Ko
+pour la vignette) et efface un fichier refusé (D-047). Écart assumé : un client modifié peut envoyer
+un fichier valide non ré-encodé, EXIF compris — le ré-encodage côté serveur reste à faire. Les
+fichiers sont servis par le stockage Convex, une origine distincte de l'application.
 
 ### M15 — Injection par formule dans un export
 
@@ -310,5 +330,7 @@ Publié sur `/securite` et dans un fichier `security.txt`.
 2. **Un audit de sécurité externe** n'a pas eu lieu — donc rien ne sera affirmé à son sujet.
 3. **La localisation des données** dépend de la région du fournisseur ; à documenter honnêtement sur
    `/securite` plutôt qu'à promettre.
-4. **Le code PIN de service** (A1), s'il est retenu, demandera son propre modèle de menaces :
+4. **Limitation de débit de l'échange de jeton** (M3) et **ré-encodage serveur des photos** (M14) :
+   non faits en T1, écrits ci-dessus avec leur raison.
+5. **Le code PIN de service** (A1), s'il est retenu, demandera son propre modèle de menaces :
    partage entre employés, observation par-dessus l'épaule, appareil volé.
