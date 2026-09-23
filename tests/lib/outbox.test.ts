@@ -112,6 +112,38 @@ describe("la file", () => {
     expect(await h.store.all()).toEqual([]);
   });
 
+  test("une dépendance confirmée puis purgée ne bloque pas la file", async () => {
+    const h = harness([]);
+    await h.outbox.enqueue({ mutation: "sessions:open", args: {}, label: "Table 2", opId: "a" });
+    await h.outbox.drain();
+    // La commande qui en dépend attend une décision ; entre-temps, la minute passe.
+    await h.store.put({ ...entry("b", T0, { status: "needs_review" }), dependsOn: ["a"], goesToKitchen: true });
+    h.advance(2 * 60_000);
+    await h.outbox.drain();
+    expect((await h.store.all()).map((e) => e.opId)).toContain("a"); // gardée : on en dépend encore
+    await h.store.remove("a"); // même purgée…
+    await h.outbox.resolve("b", { kind: "send_as", args: { lateConfirmed: true } });
+    await h.outbox.enqueue({ mutation: "orders:serveTicket", args: {}, label: "Servir", opId: "c" });
+    await h.outbox.drain();
+    // …la commande part, et le geste suivant aussi.
+    expect(h.sent).toEqual(["a", "b", "c"]);
+  });
+
+  test("un geste jugé trop vieux par le serveur attend une décision, sans rien emporter", async () => {
+    const h = harness([{ kind: "review" }]);
+    await h.outbox.enqueue({ mutation: "orders:submit", args: {}, label: "Table 4", goesToKitchen: true, opId: "a" });
+    await h.outbox.drain();
+    expect((await h.store.all())[0]!.status).toBe("needs_review");
+  });
+
+  test("une file arrêtée n'envoie plus rien", async () => {
+    const h = harness([]);
+    h.outbox.dispose();
+    await h.outbox.enqueue({ mutation: "orders:serveTicket", args: {}, label: "Servir", opId: "a" });
+    await h.outbox.drain();
+    expect(h.sent).toEqual([]);
+  });
+
   test("au redémarrage, un geste interrompu en plein envoi repart", async () => {
     const store = new MemoryOutboxStore();
     await store.put(entry("a", T0, { status: "sending", attempts: 1 }));

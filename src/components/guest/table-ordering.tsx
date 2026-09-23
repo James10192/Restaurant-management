@@ -276,7 +276,9 @@ export default function TableOrdering(props: TableOrderingProps) {
             ? o.full
             : r.reason === "invalid_pass"
               ? o.noPass
-              : o.completeChoices;
+              : r.reason === "rate_limited"
+                ? o.rateLimited(Math.ceil(r.retryAfter / 1000))
+                : o.completeChoices;
       setNotice({ tone: "error", text });
       return false;
     }

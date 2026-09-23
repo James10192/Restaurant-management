@@ -185,14 +185,42 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
     setDeviceToken(null);
   }, [endAuth]);
 
-  // Appareil partagé : l'écran se reverrouille seul après une minute sans geste.
-  const idleMs = roster?.idleLockMs ?? 60_000;
+  // La liaison : sans elle, déverrouiller est impossible (le PIN se vérifie au serveur).
+  const [online, setOnline] = useState(true);
   useEffect(() => {
-    if (!operator) return;
+    let socket = true;
+    const update = () => setOnline(socket && navigator.onLine);
+    const unsubscribe = client.subscribeToConnectionState((state) => {
+      if (!state.hasEverConnected) return;
+      socket = state.isWebSocketConnected;
+      update();
+    });
+    window.addEventListener("online", update);
+    window.addEventListener("offline", update);
+    return () => {
+      unsubscribe();
+      window.removeEventListener("online", update);
+      window.removeEventListener("offline", update);
+    };
+  }, [client]);
+
+  // Appareil partagé : l'écran se reverrouille seul après une minute sans geste — mais PAS sans
+  // réseau : reverrouillée, la tablette ne se rouvrirait plus avant le retour de la connexion,
+  // et plus personne ne pourrait saisir (D-070). Les gestes rafraîchissent aussi, au plus toutes
+  // les 30 s, l'activité de la session côté serveur : consulter sans saisir ne fait pas sortir.
+  const idleMs = roster?.idleLockMs ?? 60_000;
+  const venueId = roster?.venueId;
+  useEffect(() => {
+    if (!operator || !online || !venueId) return;
     let timer = setTimeout(lock, idleMs);
+    let lastTouch = Date.now();
     const reset = () => {
       clearTimeout(timer);
       timer = setTimeout(lock, idleMs);
+      if (Date.now() - lastTouch > 30_000) {
+        lastTouch = Date.now();
+        void client.mutation(api.operators.touch, { venueId }).catch(() => undefined);
+      }
     };
     const events = ["pointerdown", "keydown", "touchstart", "scroll"] as const;
     for (const e of events) window.addEventListener(e, reset, { passive: true });
@@ -200,7 +228,7 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
       clearTimeout(timer);
       for (const e of events) window.removeEventListener(e, reset);
     };
-  }, [operator, idleMs, lock]);
+  }, [operator, online, idleMs, lock, client, venueId]);
 
   const value = useMemo<DeviceContextValue>(
     () => ({ client, deviceToken, roster, revoked, operator, kdsReady, enroll, unlock, lock, forget }),

@@ -104,6 +104,28 @@ export const importCart = mutation({
   },
 });
 
+/**
+ * Reprendre un panier dans SA saisie (D-061) : le serveur relit, retire, fait attendre un
+ * service, puis envoie comme n'importe quelle commande — par sa file, donc même hors ligne.
+ * `seenUpdatedAt` épingle la version montrée : si le client l'a changée entre-temps, on le dit
+ * au lieu de prendre autre chose que ce que le serveur a lu.
+ */
+export const takeCart = mutation({
+  args: { venueId: v.id("venues"), cartId: v.id("carts"), seenUpdatedAt: v.number() },
+  handler: async (ctx, args) => {
+    const actor = await requireServiceMutation(ctx, "order.create", { venueId: args.venueId });
+    const cart = await getInVenue(ctx, args.cartId, actor.venue._id, "Ce panier");
+    if (cart.status !== "active" || Date.now() - cart.updatedAt > CART_TTL_MS) throw conflict("Ce panier n'est plus d'actualité.");
+    if (cart.updatedAt !== args.seenUpdatedAt) throw conflict("Le client vient de modifier son panier : relisez-le avant de le reprendre.");
+    const items = await ctx.db
+      .query("cartItems")
+      .withIndex("by_cart", (q) => q.eq("cartId", cart._id))
+      .collect();
+    await ctx.db.patch(cart._id, { status: "submitted", updatedAt: Date.now() });
+    return cartLineRequests(items);
+  },
+});
+
 /** Ignorer un panier : le client le voit disparaître, rien n'est commandé. */
 export const dismissCart = mutation({
   args: { venueId: v.id("venues"), cartId: v.id("carts") },

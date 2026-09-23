@@ -172,7 +172,7 @@ describe("le personnel traite les demandes", () => {
     const [request] = (await s.waiter.as.query(api.serviceRequests.open, { venueId: s.cocody })).requests;
     expect(request).toMatchObject({ label: "Demander l'addition", status: "open", isMine: true });
     await s.waiter.as.mutation(api.serviceRequests.acknowledge, { venueId: s.cocody, requestId: request!._id });
-    expect((await s.floor.as.query(api.serviceRequests.open, { venueId: s.cocody })).requests[0]!.acknowledgedBy).toBe("serveur@maquis.ci");
+    expect((await s.floor.as.query(api.serviceRequests.open, { venueId: s.cocody })).requests[0]!.acknowledgedBy).toBe("serveur");
     await s.waiter.as.mutation(api.serviceRequests.resolve, { venueId: s.cocody, requestId: request!._id });
     expect((await s.waiter.as.query(api.serviceRequests.open, { venueId: s.cocody })).requests).toEqual([]);
   });

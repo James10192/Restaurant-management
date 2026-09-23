@@ -115,9 +115,10 @@ export const advance = mutation({
     venueId: v.id("venues"),
     ticketId: v.id("kitchenTickets"),
     action: v.union(v.literal("start"), v.literal("ready"), v.literal("recall")),
+    actingMemberId: v.optional(v.id("organizationMembers")),
   },
   handler: async (ctx, args) => {
-    const actor = await requireServiceMutation(ctx, "kitchen.ticket.update", { venueId: args.venueId });
+    const actor = await requireServiceMutation(ctx, "kitchen.ticket.update", { venueId: args.venueId, actingMemberId: args.actingMemberId });
     const ticket = await getInVenue(ctx, args.ticketId, actor.venue._id, "Ce bon");
     if (actor.device?.stationId !== undefined && actor.device.stationId !== ticket.prepStationId) throw notFound("Ce bon");
     if (ticket.status === "held") throw invalid("Ce service n'a pas encore été envoyé en cuisine.");

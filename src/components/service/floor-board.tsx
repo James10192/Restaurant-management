@@ -5,6 +5,7 @@ import { Bell, Check, ChefHat, Clock, Hand, LayoutGrid, Lock, Users, X } from "l
 import { toast } from "sonner";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
+import { APPROVAL_ESCALATE_MS } from "../../../convex/lib/ordering";
 import { EmptyState, LoadingState } from "~/components/app/states";
 import { FormField } from "~/components/app/form-field";
 import {
@@ -366,6 +367,9 @@ function RequestsTab({ data }: { data: FunctionReturnType<typeof api.serviceRequ
 
 function PendingTab({ data }: { data: FunctionReturnType<typeof api.orders.pendingAcceptance> | undefined }) {
   const scope = useServiceScope();
+  // L'alerte à 90 s se calcule ici, à l'heure qui passe : le serveur ne recalcule pas une lecture
+  // quand seul le temps avance (D-061).
+  const now = useMinuteClock(5_000);
   const money = useMoney();
   const accept = useMutation(api.orders.accept);
   const [rejecting, setRejecting] = useState<Id<"orders"> | null>(null);
@@ -374,11 +378,11 @@ function PendingTab({ data }: { data: FunctionReturnType<typeof api.orders.pendi
   return (
     <ItemGroup className="gap-2 pt-2">
       {data.map((o) => (
-        <Item key={o._id} variant="outline" className={cn(o.escalated && "border-destructive")}>
+        <Item key={o._id} variant="outline" className={cn(now - o.submittedAt > APPROVAL_ESCALATE_MS && "border-destructive")}>
           <ItemContent>
             <ItemTitle>
               Table {o.tableNumber} · {money(o.total)}
-              {o.escalated ? <Badge variant="destructive">En attente depuis plus de 90 s</Badge> : null}
+              {now - o.submittedAt > APPROVAL_ESCALATE_MS ? <Badge variant="destructive">En attente depuis {waitedLabel(now - o.submittedAt, false)}</Badge> : null}
             </ItemTitle>
             <ItemDescription className="line-clamp-none">
               {o.items.map((i) => `${i.quantity} × ${i.name}${i.variantName ? ` (${i.variantName})` : ""}${i.modifiers.length ? ` + ${i.modifiers.join(", ")}` : ""}`).join(" · ")}

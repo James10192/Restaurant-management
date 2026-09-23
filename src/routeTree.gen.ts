@@ -25,6 +25,7 @@ import { Route as AuthAppAccountRouteImport } from './routes/_auth.app.account'
 import { Route as AuthAppCuisineRouteImport } from './routes/_auth.app.cuisine'
 import { Route as AuthAppMenuRouteImport } from './routes/_auth.app.menu'
 import { Route as AuthAppOnboardingRouteImport } from './routes/_auth.app.onboarding'
+import { Route as AuthAppServiceRouteImport } from './routes/_auth.app.service'
 import { Route as AuthAppTeamRouteImport } from './routes/_auth.app.team'
 import { Route as AuthAuthOtpRouteImport } from './routes/_auth.auth.otp'
 import { Route as AuthInvitationTokenRouteImport } from './routes/_auth.invitation.$token'
@@ -128,6 +129,11 @@ const AuthAppOnboardingRoute = AuthAppOnboardingRouteImport.update({
   path: '/onboarding',
   getParentRoute: () => AuthAppRoute,
 } as any)
+const AuthAppServiceRoute = AuthAppServiceRouteImport.update({
+  id: '/service',
+  path: '/service',
+  getParentRoute: () => AuthAppRoute,
+} as any)
 const AuthAppTeamRoute = AuthAppTeamRouteImport.update({
   id: '/team',
   path: '/team',
@@ -204,9 +210,9 @@ const AuthAppRolesRoleIdRoute = AuthAppRolesRoleIdRouteImport.update({
   getParentRoute: () => AuthAppRoute,
 } as any)
 const AuthAppServiceIndexRoute = AuthAppServiceIndexRouteImport.update({
-  id: '/service/',
-  path: '/service/',
-  getParentRoute: () => AuthAppRoute,
+  id: '/',
+  path: '/',
+  getParentRoute: () => AuthAppServiceRoute,
 } as any)
 const AuthAppSettingsDevicesRoute = AuthAppSettingsDevicesRouteImport.update({
   id: '/settings/devices',
@@ -242,9 +248,9 @@ const AuthAppMenuProductsProductIdRoute =
   } as any)
 const AuthAppServiceTableTableIdRoute =
   AuthAppServiceTableTableIdRouteImport.update({
-    id: '/service/table/$tableId',
-    path: '/service/table/$tableId',
-    getParentRoute: () => AuthAppRoute,
+    id: '/table/$tableId',
+    path: '/table/$tableId',
+    getParentRoute: () => AuthAppServiceRoute,
   } as any)
 
 export interface FileRoutesByFullPath {
@@ -262,6 +268,7 @@ export interface FileRoutesByFullPath {
   '/app/cuisine': typeof AuthAppCuisineRoute
   '/app/menu': typeof AuthAppMenuRouteWithChildren
   '/app/onboarding': typeof AuthAppOnboardingRoute
+  '/app/service': typeof AuthAppServiceRouteWithChildren
   '/app/team': typeof AuthAppTeamRoute
   '/auth/otp': typeof AuthAuthOtpRoute
   '/invitation/$token': typeof AuthInvitationTokenRoute
@@ -341,6 +348,7 @@ export interface FileRoutesById {
   '/_auth/app/cuisine': typeof AuthAppCuisineRoute
   '/_auth/app/menu': typeof AuthAppMenuRouteWithChildren
   '/_auth/app/onboarding': typeof AuthAppOnboardingRoute
+  '/_auth/app/service': typeof AuthAppServiceRouteWithChildren
   '/_auth/app/team': typeof AuthAppTeamRoute
   '/_auth/auth/otp': typeof AuthAuthOtpRoute
   '/_auth/invitation/$token': typeof AuthInvitationTokenRoute
@@ -383,6 +391,7 @@ export interface FileRouteTypes {
     | '/app/cuisine'
     | '/app/menu'
     | '/app/onboarding'
+    | '/app/service'
     | '/app/team'
     | '/auth/otp'
     | '/invitation/$token'
@@ -461,6 +470,7 @@ export interface FileRouteTypes {
     | '/_auth/app/cuisine'
     | '/_auth/app/menu'
     | '/_auth/app/onboarding'
+    | '/_auth/app/service'
     | '/_auth/app/team'
     | '/_auth/auth/otp'
     | '/_auth/invitation/$token'
@@ -616,6 +626,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthAppOnboardingRouteImport
       parentRoute: typeof AuthAppRoute
     }
+    '/_auth/app/service': {
+      id: '/_auth/app/service'
+      path: '/service'
+      fullPath: '/app/service'
+      preLoaderRoute: typeof AuthAppServiceRouteImport
+      parentRoute: typeof AuthAppRoute
+    }
     '/_auth/app/team': {
       id: '/_auth/app/team'
       path: '/team'
@@ -723,10 +740,10 @@ declare module '@tanstack/react-router' {
     }
     '/_auth/app/service/': {
       id: '/_auth/app/service/'
-      path: '/service'
+      path: '/'
       fullPath: '/app/service/'
       preLoaderRoute: typeof AuthAppServiceIndexRouteImport
-      parentRoute: typeof AuthAppRoute
+      parentRoute: typeof AuthAppServiceRoute
     }
     '/_auth/app/settings/devices': {
       id: '/_auth/app/settings/devices'
@@ -772,10 +789,10 @@ declare module '@tanstack/react-router' {
     }
     '/_auth/app/service/table/$tableId': {
       id: '/_auth/app/service/table/$tableId'
-      path: '/service/table/$tableId'
+      path: '/table/$tableId'
       fullPath: '/app/service/table/$tableId'
       preLoaderRoute: typeof AuthAppServiceTableTableIdRouteImport
-      parentRoute: typeof AuthAppRoute
+      parentRoute: typeof AuthAppServiceRoute
     }
   }
 }
@@ -802,11 +819,26 @@ const AuthAppMenuRouteWithChildren = AuthAppMenuRoute._addFileChildren(
   AuthAppMenuRouteChildren,
 )
 
+interface AuthAppServiceRouteChildren {
+  AuthAppServiceIndexRoute: typeof AuthAppServiceIndexRoute
+  AuthAppServiceTableTableIdRoute: typeof AuthAppServiceTableTableIdRoute
+}
+
+const AuthAppServiceRouteChildren: AuthAppServiceRouteChildren = {
+  AuthAppServiceIndexRoute: AuthAppServiceIndexRoute,
+  AuthAppServiceTableTableIdRoute: AuthAppServiceTableTableIdRoute,
+}
+
+const AuthAppServiceRouteWithChildren = AuthAppServiceRoute._addFileChildren(
+  AuthAppServiceRouteChildren,
+)
+
 interface AuthAppRouteChildren {
   AuthAppAccountRoute: typeof AuthAppAccountRoute
   AuthAppCuisineRoute: typeof AuthAppCuisineRoute
   AuthAppMenuRoute: typeof AuthAppMenuRouteWithChildren
   AuthAppOnboardingRoute: typeof AuthAppOnboardingRoute
+  AuthAppServiceRoute: typeof AuthAppServiceRouteWithChildren
   AuthAppTeamRoute: typeof AuthAppTeamRoute
   AuthAppIndexRoute: typeof AuthAppIndexRoute
   AuthAppFloorPrintRoute: typeof AuthAppFloorPrintRoute
@@ -816,8 +848,6 @@ interface AuthAppRouteChildren {
   AuthAppSettingsVenueRoute: typeof AuthAppSettingsVenueRoute
   AuthAppFloorIndexRoute: typeof AuthAppFloorIndexRoute
   AuthAppRolesIndexRoute: typeof AuthAppRolesIndexRoute
-  AuthAppServiceIndexRoute: typeof AuthAppServiceIndexRoute
-  AuthAppServiceTableTableIdRoute: typeof AuthAppServiceTableTableIdRoute
 }
 
 const AuthAppRouteChildren: AuthAppRouteChildren = {
@@ -825,6 +855,7 @@ const AuthAppRouteChildren: AuthAppRouteChildren = {
   AuthAppCuisineRoute: AuthAppCuisineRoute,
   AuthAppMenuRoute: AuthAppMenuRouteWithChildren,
   AuthAppOnboardingRoute: AuthAppOnboardingRoute,
+  AuthAppServiceRoute: AuthAppServiceRouteWithChildren,
   AuthAppTeamRoute: AuthAppTeamRoute,
   AuthAppIndexRoute: AuthAppIndexRoute,
   AuthAppFloorPrintRoute: AuthAppFloorPrintRoute,
@@ -834,8 +865,6 @@ const AuthAppRouteChildren: AuthAppRouteChildren = {
   AuthAppSettingsVenueRoute: AuthAppSettingsVenueRoute,
   AuthAppFloorIndexRoute: AuthAppFloorIndexRoute,
   AuthAppRolesIndexRoute: AuthAppRolesIndexRoute,
-  AuthAppServiceIndexRoute: AuthAppServiceIndexRoute,
-  AuthAppServiceTableTableIdRoute: AuthAppServiceTableTableIdRoute,
 }
 
 const AuthAppRouteWithChildren =

@@ -32,4 +32,8 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
   // Côté client, par QR : une photo du code qui circule ne doit pas inonder la salle.
   guestRequest: { kind: "fixed window", rate: 12, period: 10 * MINUTE },
   guestOrder: { kind: "fixed window", rate: 6, period: 10 * MINUTE },
+  // Paniers montrés, par QR : de quoi corriger souvent, pas de quoi inonder le serveur.
+  guestCart: { kind: "fixed window", rate: 40, period: 10 * MINUTE },
+  // Nouveaux convives, par tablée : une photo du QR ne doit pas remplir la table de faux invités.
+  guestJoin: { kind: "fixed window", rate: 15, period: 10 * MINUTE },
 });

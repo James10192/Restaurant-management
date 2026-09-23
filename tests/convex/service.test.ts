@@ -55,7 +55,7 @@ async function openAndOrder(s: Service) {
     heldCourses: [3],
     idempotencyKey,
   });
-  if (!sent.ok) throw new Error(JSON.stringify(sent.problems));
+  if (!sent.ok) throw new Error(JSON.stringify(sent));
   return { sessionId, orderId: sent.orderId, reference: sent.reference, idempotencyKey };
 }
 
@@ -328,6 +328,83 @@ describe("rejeu d'une file hors ligne (D-062)", () => {
       }),
       "INVALID_ARGUMENT",
     );
+  });
+
+  test("plus de trois minutes : rien ne part seul en cuisine, une personne décide", async () => {
+    const s = await serviceReady();
+    const sessionId = await s.waiter.as.mutation(api.sessions.open, { venueId: s.cocody, tableId: s.tableId });
+    const late = { venueId: s.cocody, sessionId, lines: [line(s.products.alloco)], heldCourses: [], clientCreatedAt: Date.now() - 4 * 60_000 };
+    expect(await s.waiter.as.mutation(api.orders.submit, { ...late, idempotencyKey: key() })).toEqual({ ok: false, late: true });
+    expect(await s.t.run((ctx) => ctx.db.query("kitchenTickets").collect())).toEqual([]);
+    const confirmed = await s.waiter.as.mutation(api.orders.submit, { ...late, idempotencyKey: key(), lateConfirmed: true });
+    expect(confirmed.ok).toBe(true);
+    // « Envoyez la suite » suit la même règle.
+    expect(await s.waiter.as.mutation(api.orders.fireCourse, { venueId: s.cocody, sessionId, courseNumber: 3, clientCreatedAt: Date.now() - 4 * 60_000 })).toEqual({
+      ok: false,
+      late: true,
+    });
+  });
+
+  test("un geste en file ne part jamais sous le nom d'une autre personne", async () => {
+    const s = await serviceReady();
+    await expectCode(
+      s.floor.as.mutation(api.sessions.open, { venueId: s.cocody, tableId: s.tableId, actingMemberId: s.waiter.memberId }),
+      "CONFLICT",
+    );
+    const sessionId = await s.waiter.as.mutation(api.sessions.open, { venueId: s.cocody, tableId: s.tableId, actingMemberId: s.waiter.memberId });
+    expect(sessionId).toBeTruthy();
+  });
+
+  test("la tablée a changé depuis la saisie : la commande ne va pas chez la suivante", async () => {
+    const s = await serviceReady();
+    const typedAt = Date.now() - 60_000;
+    // La table a été ouverte par un collègue APRÈS la saisie hors ligne (autre tablée).
+    await s.floor.as.mutation(api.sessions.open, { venueId: s.cocody, tableId: s.tableId });
+    await expectCode(
+      s.waiter.as.mutation(api.orders.submit, {
+        venueId: s.cocody,
+        sessionRef: { clientRef: ref(9), tableId: s.tableId },
+        lines: [line(s.products.alloco)],
+        heldCourses: [],
+        idempotencyKey: key(),
+        clientCreatedAt: typedAt,
+      }),
+      "CONFLICT",
+    );
+  });
+
+  test("« déjà préparée » garde en attente le service qui n'était pas parti", async () => {
+    const s = await serviceReady();
+    const sessionId = await s.waiter.as.mutation(api.sessions.open, { venueId: s.cocody, tableId: s.tableId });
+    const sent = await s.waiter.as.mutation(api.orders.submit, {
+      venueId: s.cocody,
+      sessionId,
+      lines: [line(s.products.alloco, 1), line(s.products.poulet, 3)],
+      heldCourses: [3],
+      idempotencyKey: key(),
+      clientCreatedAt: Date.now() - 10 * 60_000,
+      recordOnly: true,
+    });
+    if (!sent.ok) throw new Error("commande refusée");
+    const tickets = await ticketsOf(s, sent.orderId);
+    expect(tickets.map((t) => [t.courseNumber, t.status]).sort()).toEqual([
+      [1, "served"],
+      [3, "held"],
+    ]);
+    expect(await s.waiter.as.mutation(api.orders.fireCourse, { venueId: s.cocody, sessionId, courseNumber: 3 })).toBe(1);
+  });
+
+  test("un plat prêt s'annule quand le client est parti ; la table se clôt ensuite", async () => {
+    const s = await serviceReady();
+    const sessionId = await s.waiter.as.mutation(api.sessions.open, { venueId: s.cocody, tableId: s.tableId });
+    const sent = await s.waiter.as.mutation(api.orders.submit, { venueId: s.cocody, sessionId, lines: [line(s.products.alloco)], heldCourses: [], idempotencyKey: key() });
+    if (!sent.ok) throw new Error("commande refusée");
+    const [ticket] = await ticketsOf(s, sent.orderId);
+    await s.cook.as.mutation(api.kitchen.advance, { venueId: s.cocody, ticketId: ticket!._id, action: "ready" });
+    const [item] = await s.t.run((ctx) => ctx.db.query("orderItems").withIndex("by_order", (q) => q.eq("orderId", sent.orderId)).collect());
+    await s.floor.as.mutation(api.orders.cancelItem, { venueId: s.cocody, itemId: item!._id, reason: "client parti" });
+    expect((await s.t.run((ctx) => ctx.db.get(sent.orderId)))!.status).toBe("cancelled");
+    await s.floor.as.mutation(api.sessions.close, { venueId: s.cocody, sessionId });
   });
 
   test("« déjà préparée » : enregistrée comme servie, jamais montrée à la cuisine", async () => {

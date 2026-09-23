@@ -21,6 +21,7 @@ import { conflict, invalid, notFound } from "./lib/errors";
 import { memberCoversVenue, requirePermission } from "./lib/guards";
 import { ENROLLMENT_CODE_TTL_MS, formatCode, generateCode, hashCode, isWellFormedCode } from "./lib/pin";
 import { rateLimiter } from "./lib/rateLimits";
+import { memberDisplayName } from "./lib/service";
 import { generateToken, sha256Hex } from "./lib/tokens";
 import { OPERATOR_SESSION_MAX_MS } from "./lib/serviceActor";
 
@@ -142,12 +143,8 @@ export const enroll = mutation({
 });
 
 async function memberLabel(ctx: Parameters<typeof getInVenue>[0], id: Id<"organizationMembers"> | undefined) {
-  if (!id) return null;
-  const member = await ctx.db.get(id);
-  if (!member) return null;
-  if (member.displayName) return member.displayName;
-  const user = member.userId ? await ctx.db.get(member.userId) : null;
-  return user ? (user.name ?? user.email) : null;
+  const member = id ? await ctx.db.get(id) : null;
+  return member ? memberDisplayName(ctx, member) : null;
 }
 
 export const list = query({

@@ -17,7 +17,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { writeAudit } from "./lib/audit";
 import { getInVenue } from "./lib/catalogAccess";
 import { conflict, invalid, notFound } from "./lib/errors";
-import { memberCoversVenue, type ReadCtx } from "./lib/guards";
+import { memberCoversVenue, type MutationCtx, type ReadCtx } from "./lib/guards";
 import { requireServiceActor, requireServiceMutation } from "./lib/serviceActor";
 import { ACTIVE_ORDER, isClientRef, type OrderStatus } from "./lib/ordering";
 import { activeSessionOf, isOpenSession, memberName, nextCounter, OPEN_SESSION, settingsOf } from "./lib/service";
@@ -27,6 +27,21 @@ async function sessionReference(ctx: Parameters<typeof nextCounter>[0], venue: D
   const year = new Intl.DateTimeFormat("en-CA", { timeZone: venue.timezone, year: "numeric" }).format(new Date(now));
   const n = await nextCounter(ctx, venue._id, `session:${year}`);
   return `TS-${year}-${String(n).padStart(6, "0")}`;
+}
+
+/** La table redevient libre, et les appels de la tablée partent avec elle : la suivante n'en hérite pas. */
+async function releaseTable(ctx: MutationCtx, session: Doc<"tableSessions">, now: number) {
+  const table = await ctx.db.get(session.tableId);
+  if (table && table.activeSessionId === session._id) {
+    await ctx.db.patch(table._id, { status: "available", activeSessionId: undefined });
+  }
+  for (const status of ["open", "acknowledged"] as const) {
+    const pending = await ctx.db
+      .query("serviceRequests")
+      .withIndex("by_venue_status_created", (q) => q.eq("venueId", session.venueId).eq("status", status))
+      .collect();
+    for (const r of pending) if (r.tableId === session.tableId) await ctx.db.patch(r._id, { status: "resolved", resolvedAt: now });
+  }
 }
 
 async function ordersOf(ctx: ReadCtx, sessionId: Id<"tableSessions">) {
@@ -48,9 +63,11 @@ export const open = mutation({
     guestCount: v.optional(v.number()),
     /** Présente quand l'ouverture vient de la file d'un appareil (D-062). */
     clientRef: v.optional(v.string()),
+    /** La personne qui a fait le geste, pour un geste venu de la file (D-062). */
+    actingMemberId: v.optional(v.id("organizationMembers")),
   },
   handler: async (ctx, args) => {
-    const actor = await requireServiceMutation(ctx, "table.session.open", { venueId: args.venueId });
+    const actor = await requireServiceMutation(ctx, "table.session.open", { venueId: args.venueId, actingMemberId: args.actingMemberId });
     const table = await getInVenue(ctx, args.tableId, actor.venue._id, "Cette table");
     if (args.clientRef !== undefined) {
       if (!isClientRef(args.clientRef)) throw invalid("Référence d'appareil invalide.");
@@ -152,10 +169,7 @@ export const close = mutation({
       ...(actor.member ? { closedByMemberId: actor.member._id } : {}),
       lastActivityAt: now,
     });
-    const table = await ctx.db.get(session.tableId);
-    if (table && table.activeSessionId === session._id) {
-      await ctx.db.patch(table._id, { status: "available", activeSessionId: undefined });
-    }
+    await releaseTable(ctx, session, Date.now());
     await writeAudit(ctx, {
       organizationId: actor.organization._id,
       venueId: actor.venue._id,
@@ -183,10 +197,7 @@ export const abandonIfIdle = internalMutation({
       return;
     }
     await ctx.db.patch(session._id, { status: "abandoned", closedAt: Date.now() });
-    const table = await ctx.db.get(session.tableId);
-    if (table && table.activeSessionId === session._id) {
-      await ctx.db.patch(table._id, { status: "available", activeSessionId: undefined });
-    }
+    await releaseTable(ctx, session, Date.now());
   },
 });
 

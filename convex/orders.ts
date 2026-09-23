@@ -24,6 +24,7 @@ import { requireServiceActor, requireServiceMutation, type ServiceActor } from "
 import { loadLiveAvailability } from "./lib/guestMenu";
 import {
   APPROVAL_ESCALATE_MS,
+  OFFLINE_AUTO_SEND_MAX_MS,
   OFFLINE_REPLAY_MAX_MS,
   ORDER_LIMITS,
   isClientRef,
@@ -145,11 +146,15 @@ export async function createOrder(
     lines.push({ ...line, tax: lineTax(line.lineTotal, rates.filter((r) => codes.has(r.code)), settings.tax.pricesIncludeTax), stationId: product?.prepStationId });
   }
   const reference = orderReference(await nextCounter(ctx, venue._id, `order:${serviceDayKey(now, venue.timezone)}`));
+  // « Déjà préparée » ne vaut que pour ce qui a été fait sur papier : un service retenu
+  // (le dessert « à suivre ») attend toujours l'appel du serveur.
+  const servedOnPaper = (course: number) => params.enteredOffline === true && !params.heldCourses.includes(course);
+  const anyHeld = params.lines.some((l) => params.heldCourses.includes(l.courseNumber));
   const orderId = await ctx.db.insert("orders", {
     venueId: venue._id,
     tableSessionId: session._id,
     reference,
-    status: params.enteredOffline ? "served" : params.accepted ? "accepted" : "pending_acceptance",
+    status: params.enteredOffline ? (anyHeld ? "partially_served" : "served") : params.accepted ? "accepted" : "pending_acceptance",
     channel: params.channel,
     ...(params.placedByMemberId ? { placedByMemberId: params.placedByMemberId } : {}),
     ...(params.placedByGuestSessionId ? { placedByGuestSessionId: params.placedByGuestSessionId } : {}),
@@ -160,7 +165,7 @@ export async function createOrder(
     idempotencyKey: params.idempotencyKey,
     ...(params.notes ? { notes: params.notes } : {}),
     ...(params.clientCreatedAt !== undefined ? { clientCreatedAt: params.clientCreatedAt } : {}),
-    ...(params.enteredOffline ? { enteredOffline: true, servedAt: now, readyAt: now } : {}),
+    ...(params.enteredOffline ? { enteredOffline: true, ...(anyHeld ? {} : { servedAt: now, readyAt: now }) } : {}),
   });
   const itemIds: Id<"orderItems">[] = [];
   for (const line of lines) {
@@ -180,7 +185,7 @@ export async function createOrder(
         taxSnapshot: line.tax,
         ...(line.instructions ? { instructions: line.instructions } : {}),
         courseNumber: line.courseNumber,
-        status: params.enteredOffline ? "served" : "ordered",
+        status: servedOnPaper(line.courseNumber) ? "served" : "ordered",
         assignedGuestSessionIds: params.placedByGuestSessionId ? [params.placedByGuestSessionId] : [],
       }),
     );
@@ -234,6 +239,7 @@ export async function createTickets(
   const multiCourse = new Set([...byKey.values()].map((b) => b.course)).size > 1;
   for (const { station, course, items: lines } of byKey.values()) {
     const held = heldCourses.includes(course);
+    const served = options.recordOnly === true && !held;
     const allergies = new Set<string>();
     const products = new Map<Id<"products">, Doc<"products"> | null>();
     for (const line of lines) {
@@ -248,11 +254,11 @@ export async function createTickets(
       reference: `${reference}-${stationCode(station.name)}${multiCourse ? `-${course}` : ""}`,
       tableNumber: table?.number ?? "?",
       // Une commande déjà servie sur papier ne remonte jamais sur l'écran de cuisine.
-      status: options.recordOnly ? "served" : held ? "held" : "queued",
+      status: served ? "served" : held ? "held" : "queued",
       courseNumber: course,
       priority: 0,
       ...(held ? {} : { queuedAt: now }),
-      ...(options.recordOnly ? { readyAt: now, servedAt: now } : {}),
+      ...(served ? { readyAt: now, servedAt: now } : {}),
       allergyFlags: [...allergies],
       itemCount: lines.reduce((s, l) => s + l.quantity, 0),
     });
@@ -267,7 +273,7 @@ export async function createTickets(
         modifiersSnapshot: line.modifiers.map((m) => m.optionName),
         quantity: line.quantity,
         ...(line.instructions ? { instructions: line.instructions } : {}),
-        status: options.recordOnly ? "ready" : "pending",
+        status: served ? "ready" : "pending",
         ...(lineAllergens.length > 0 ? { allergyNote: lineAllergens.join(", ") } : {}),
       });
     }
@@ -282,6 +288,7 @@ async function resolveSession(
   ctx: MutationCtx,
   venueId: Id<"venues">,
   args: { sessionId?: Id<"tableSessions">; sessionRef?: { clientRef: string; tableId: Id<"restaurantTables"> } },
+  clientCreatedAt?: number,
 ): Promise<Doc<"tableSessions">> {
   if ((args.sessionId === undefined) === (args.sessionRef === undefined)) throw invalid("Désignez la table.");
   if (args.sessionId) return getInVenue(ctx, args.sessionId, venueId, "Cette table");
@@ -295,6 +302,11 @@ async function resolveSession(
   const table = await getInVenue(ctx, ref.tableId, venueId, "Cette table");
   const active = await activeSessionOf(ctx, table._id);
   if (!active) throw conflict(`La table ${table.number} n'est pas ouverte.`);
+  // Ouverte APRÈS la saisie : c'est une autre tablée. Commander chez elle mettrait la commande
+  // sur l'addition de gens qui ne l'ont pas passée.
+  if (clientCreatedAt !== undefined && active.openedAt > clientCreatedAt) {
+    throw conflict(`La tablée de la table ${table.number} a changé depuis la saisie : ressaisissez la commande si elle vaut encore.`);
+  }
   return active;
 }
 
@@ -317,12 +329,19 @@ export const submit = mutation({
     clientCreatedAt: v.optional(v.number()),
     /** « Déjà préparée » : enregistrer sans envoyer en cuisine (liste « À régulariser »). */
     recordOnly: v.optional(v.boolean()),
+    /** Une personne a relu cette commande restée plus de 3 min en file, et l'envoie quand même. */
+    lateConfirmed: v.optional(v.boolean()),
+    actingMemberId: v.optional(v.id("organizationMembers")),
   },
   handler: async (
     ctx,
     args,
-  ): Promise<{ ok: true; orderId: Id<"orders">; reference: string; replayed: boolean } | { ok: false; problems: LineProblem[] }> => {
-    const actor = await requireServiceMutation(ctx, "order.create", { venueId: args.venueId });
+  ): Promise<
+    | { ok: true; orderId: Id<"orders">; reference: string; replayed: boolean }
+    | { ok: false; problems: LineProblem[] }
+    | { ok: false; late: true }
+  > => {
+    const actor = await requireServiceMutation(ctx, "order.create", { venueId: args.venueId, actingMemberId: args.actingMemberId });
     assertIdempotencyKey(args.idempotencyKey);
     // Rejouée (double appui, file hors ligne) : on renvoie la commande déjà créée.
     const previous = await ctx.db
@@ -336,8 +355,13 @@ export const submit = mutation({
     if (args.clientCreatedAt !== undefined && now - args.clientCreatedAt > OFFLINE_REPLAY_MAX_MS) {
       throw invalid("Commande saisie il y a plus de six heures : un gérant doit la relire et la ressaisir.");
     }
+    // Au-delà de trois minutes, elle a pu être faite sur papier : elle ne part pas seule en
+    // cuisine, même renvoyée d'elle-même par le client à la reconnexion. Une personne décide.
+    if (args.clientCreatedAt !== undefined && now - args.clientCreatedAt > OFFLINE_AUTO_SEND_MAX_MS && !args.recordOnly && !args.lateConfirmed) {
+      return { ok: false, late: true };
+    }
     if (args.recordOnly && !actor.permissions.has("order.serve")) throw forbidden();
-    const session = await resolveSession(ctx, actor.venue._id, args);
+    const session = await resolveSession(ctx, actor.venue._id, args, args.clientCreatedAt);
     if (!isOpenSession(session)) throw conflict("Cette table est clôturée : ouvrez-la de nouveau pour commander.");
     const notes = args.notes?.trim() || undefined;
     if (notes && notes.length > ORDER_LIMITS.note) throw invalid(`La note tient en ${ORDER_LIMITS.note} caractères.`);
@@ -345,7 +369,6 @@ export const submit = mutation({
     if (heldCourses.some((c) => !Number.isInteger(c) || c < 2 || c > ORDER_LIMITS.courses)) {
       throw invalid("Seuls les services 2 à 4 peuvent attendre.");
     }
-    if (args.recordOnly && heldCourses.length > 0) throw invalid("Une commande déjà servie n'a pas de service en attente.");
     const priced = await priceRequest(ctx, actor.venue, args.lines, now);
     if (priced.problems.length > 0) return { ok: false, problems: priced.problems };
     const created = await createOrder(ctx, {
@@ -369,9 +392,21 @@ export const submit = mutation({
 
 /** « Envoyez la suite » : les bons en attente d'un service partent en cuisine. */
 export const fireCourse = mutation({
-  args: { venueId: v.id("venues"), sessionId: v.id("tableSessions"), courseNumber: v.number() },
-  handler: async (ctx, args) => {
-    const actor = await requireServiceMutation(ctx, "order.course.fire", { venueId: args.venueId });
+  args: {
+    venueId: v.id("venues"),
+    sessionId: v.id("tableSessions"),
+    courseNumber: v.number(),
+    clientCreatedAt: v.optional(v.number()),
+    lateConfirmed: v.optional(v.boolean()),
+    actingMemberId: v.optional(v.id("organizationMembers")),
+  },
+  handler: async (ctx, args): Promise<number | { ok: false; late: true }> => {
+    const actor = await requireServiceMutation(ctx, "order.course.fire", { venueId: args.venueId, actingMemberId: args.actingMemberId });
+    // Même règle que l'envoi d'une commande : un « envoyez la suite » vieux de plus de trois
+    // minutes a pu être crié en cuisine ; une personne décide (D-062).
+    if (args.clientCreatedAt !== undefined && Date.now() - args.clientCreatedAt > OFFLINE_AUTO_SEND_MAX_MS && !args.lateConfirmed) {
+      return { ok: false, late: true };
+    }
     const session = await getInVenue(ctx, args.sessionId, actor.venue._id, "Cette table");
     const held = (
       await ctx.db
@@ -386,9 +421,9 @@ export const fireCourse = mutation({
 
 /** Porter à table : un bon prêt devient servi, ses lignes aussi. */
 export const serveTicket = mutation({
-  args: { venueId: v.id("venues"), ticketId: v.id("kitchenTickets") },
+  args: { venueId: v.id("venues"), ticketId: v.id("kitchenTickets"), actingMemberId: v.optional(v.id("organizationMembers")), },
   handler: async (ctx, args) => {
-    const actor = await requireServiceMutation(ctx, "order.serve", { venueId: args.venueId });
+    const actor = await requireServiceMutation(ctx, "order.serve", { venueId: args.venueId, actingMemberId: args.actingMemberId });
     const ticket = await getInVenue(ctx, args.ticketId, actor.venue._id, "Ce bon");
     await advanceTicket(ctx, ticket, "serve", actor.event);
   },
@@ -515,6 +550,11 @@ export const cancelOrder = mutation({
       .query("orderItems")
       .withIndex("by_order", (q) => q.eq("orderId", order._id))
       .collect();
+    // Annuler toute la commande ne contourne pas le droit d'annuler un plat déjà en cuisine :
+    // un rôle personnalisé peut avoir l'un sans l'autre.
+    if (items.some((i) => i.status === "preparing" || i.status === "ready") && !actor.permissions.has("order.modify.after_fire")) {
+      throw forbidden("Des plats sont déjà en préparation : les annuler demande un droit que vous n'avez pas.");
+    }
     for (const item of items) {
       if (item.status === "cancelled" || item.status === "served") continue;
       const ticketItem = await ctx.db
@@ -578,6 +618,22 @@ export const reject = mutation({
       .collect();
     for (const item of items) await ctx.db.patch(item._id, { status: "cancelled", cancelledReason: reason, ...(actor.member ? { cancelledByMemberId: actor.member._id } : {}) });
     await writeOrderEvent(ctx, order, "rejected", actor.event, { reason });
+  },
+});
+
+/**
+ * Cette commande en file est-elle arrivée ? Avant de décider d'une commande « à régulariser »,
+ * l'écran le demande : un envoi a pu aboutir sans que l'appareil en reçoive la réponse.
+ */
+export const lookupSubmission = query({
+  args: { venueId: v.id("venues"), idempotencyKey: v.string() },
+  handler: async (ctx, args) => {
+    const actor = await requireServiceActor(ctx, "order.read", { venueId: args.venueId });
+    const order = await ctx.db
+      .query("orders")
+      .withIndex("by_venue_idempotency", (q) => q.eq("venueId", actor.venue._id).eq("idempotencyKey", args.idempotencyKey))
+      .unique();
+    return order ? { reference: order.reference, status: order.status, submittedAt: order.submittedAt } : null;
   },
 });
 

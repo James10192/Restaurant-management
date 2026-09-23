@@ -43,7 +43,12 @@ export type OutboxEntry = {
   confirmedAt?: number;
 };
 
-export type SendOutcome = { kind: "ok"; result: unknown } | { kind: "rejected"; code: string; message: string } | { kind: "network" };
+export type SendOutcome =
+  | { kind: "ok"; result: unknown }
+  | { kind: "rejected"; code: string; message: string }
+  | { kind: "network" }
+  /** Le serveur l'a jugé trop vieux pour partir seul (plus de 3 min) : une personne décide. */
+  | { kind: "review" };
 
 /** UUIDv7 : horodaté, donc trié dans l'ordre des gestes, et unique sans coordination. */
 export function uuidv7(now = Date.now(), random: (bytes: Uint8Array) => Uint8Array = (b) => crypto.getRandomValues(b)): string {
@@ -68,12 +73,16 @@ export type DrainStep = { action: "send"; entry: OutboxEntry } | { action: "revi
 export function nextStep(entries: readonly OutboxEntry[], now: number): DrainStep {
   const ordered = [...entries].sort((a, b) => a.createdAt - b.createdAt || a.opId.localeCompare(b.opId));
   const confirmed = new Set(ordered.filter((e) => e.status === "confirmed").map((e) => e.opId));
+  const present = new Set(ordered.map((e) => e.opId));
+  // Une dépendance absente de la file est réglée : confirmée puis purgée, ou abandonnée à la
+  // main (le serveur refusera alors ce qui en dépend). L'attendre bloquerait toute la file.
+  const settled = (opId: string) => confirmed.has(opId) || !present.has(opId);
   for (const entry of ordered) {
     if (entry.status !== "pending") continue;
     const age = now - entry.createdAt;
     if (age > REPLAY_MAX_MS) return { action: "review", entry, why: "too_old" };
     if (entry.goesToKitchen && age > AUTO_SEND_MAX_MS) return { action: "review", entry, why: "stale_kitchen" };
-    if (entry.dependsOn.every((d) => confirmed.has(d))) return { action: "send", entry };
+    if (entry.dependsOn.every(settled)) return { action: "send", entry };
     // Une dépendance encore en attente passera avant ; une dépendance à relire bloque ce geste aussi.
     return null;
   }
@@ -173,6 +182,7 @@ export class Outbox {
   private running: Promise<void> | null = null;
   private again = false;
   private listeners = new Set<(entries: OutboxEntry[]) => void>();
+  private disposed = false;
 
   constructor(
     private readonly store: OutboxStore,
@@ -190,6 +200,16 @@ export class Outbox {
     }
     await this.notify();
     void this.drain();
+  }
+
+  /**
+   * Arrête la file : plus aucun envoi ne part d'elle. Sur un appareil partagé, la file d'Awa
+   * s'arrête quand Koffi déverrouille — sinon sa boucle, encore en cours, continuerait avec
+   * l'identité de Koffi.
+   */
+  dispose(): void {
+    this.disposed = true;
+    this.listeners.clear();
   }
 
   subscribe(listener: (entries: OutboxEntry[]) => void): () => void {
@@ -249,10 +269,12 @@ export class Outbox {
   /** Renvoie `true` si le réseau a manqué. */
   private async drainOnce(): Promise<boolean> {
     for (;;) {
+      if (this.disposed) return true;
       const now = this.clock();
       const entries = await this.store.all();
+      const needed = new Set(entries.filter((e) => e.status !== "confirmed").flatMap((e) => e.dependsOn));
       for (const e of entries) {
-        if (e.status === "confirmed" && now - (e.confirmedAt ?? e.createdAt) > CONFIRMED_KEPT_MS) await this.store.remove(e.opId);
+        if (e.status === "confirmed" && !needed.has(e.opId) && now - (e.confirmedAt ?? e.createdAt) > CONFIRMED_KEPT_MS) await this.store.remove(e.opId);
       }
       const step = nextStep(entries, now);
       if (!step) return false;
@@ -269,7 +291,9 @@ export class Outbox {
         await this.notify();
         return true;
       }
-      if (outcome.kind === "ok") {
+      if (outcome.kind === "review") {
+        await this.store.put({ ...step.entry, status: "needs_review", attempts: step.entry.attempts + 1 });
+      } else if (outcome.kind === "ok") {
         await this.store.put({ ...step.entry, status: "confirmed", attempts: step.entry.attempts + 1, result: outcome.result, confirmedAt: this.clock() });
       } else {
         const all = cascadeRejection(await this.store.all(), step.entry.opId, { code: outcome.code, message: outcome.message });

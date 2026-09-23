@@ -11,6 +11,7 @@
  *    une identité : la perdre, c'est seulement repartir d'un panier vide.
  */
 
+import { rateLimiter } from "./rateLimits";
 import type { Doc } from "../_generated/dataModel";
 import type { MutationCtx, ReadCtx } from "./guards";
 import { verifyGuestPass } from "./guestPass";
@@ -83,6 +84,8 @@ export async function joinSession(
       .collect()
   ).length;
   if (count >= MAX_GUESTS_PER_SESSION) return { error: "full" };
+  // Faux convives en série (photo du QR, script) : la table est « complète » pour eux.
+  if (!(await rateLimiter.limit(ctx, "guestJoin", { key: session._id })).ok) return { error: "full" };
   const id = await ctx.db.insert("guestSessions", {
     venueId: guestTable.venue._id,
     tableSessionId: session._id,

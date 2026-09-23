@@ -257,12 +257,19 @@ export async function recountTicket(ctx: MutationCtx, ticket: Doc<"kitchenTicket
   return items.length;
 }
 
-/** Le nom affiché d'un membre : celui qu'il porte sans compte, sinon celui de son compte. */
+/**
+ * Le nom affiché d'un membre : celui qu'il porte sans compte, sinon le nom de son compte, sinon
+ * le début de son adresse. Jamais l'adresse entière : ce nom s'affiche sur les tablettes
+ * partagées de la salle.
+ */
+export async function memberDisplayName(ctx: ReadCtx, member: Doc<"organizationMembers">): Promise<string> {
+  if (member.displayName) return member.displayName;
+  const user = member.userId ? await ctx.db.get(member.userId) : null;
+  return user?.name ?? user?.email.split("@")[0] ?? "Membre";
+}
+
 export async function memberName(ctx: ReadCtx, memberId: Id<"organizationMembers"> | undefined): Promise<string | null> {
   if (!memberId) return null;
   const member = await ctx.db.get(memberId);
-  if (!member) return null;
-  if (member.displayName) return member.displayName;
-  const user = member.userId ? await ctx.db.get(member.userId) : null;
-  return user ? (user.name ?? user.email) : null;
+  return member ? memberDisplayName(ctx, member) : null;
 }

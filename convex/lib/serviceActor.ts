@@ -21,7 +21,7 @@
 
 import type { Doc, Id } from "../_generated/dataModel";
 import { applyEntitlements } from "./entitlements";
-import { forbidden, notFound, unauthenticated } from "./errors";
+import { conflict, forbidden, notFound, unauthenticated } from "./errors";
 import {
   effectiveEntitlements,
   loadActiveVenue,
@@ -193,13 +193,21 @@ const ACTIVITY_WRITE_MS = 15_000;
 /**
  * La garde des MUTATIONS du service : celle des lectures, plus l'horodatage d'activité de la
  * session d'opérateur — c'est lui que l'inactivité mesure.
+ *
+ * `actingMemberId` : la personne qui a fait le geste, telle que l'appareil l'a noté en le
+ * mettant en file. Sur une tablette partagée, un geste d'Awa resté en file ne doit jamais
+ * partir sous le nom de Koffi, qui a déverrouillé après elle — pas même si le client Convex
+ * le renvoie de lui-même à la reconnexion (D-062). Refusé, il attend qu'Awa revienne.
  */
 export async function requireServiceMutation(
   ctx: MutationCtx,
   permission: Permission,
-  scope: { venueId: Id<"venues"> },
+  scope: { venueId: Id<"venues">; actingMemberId?: Id<"organizationMembers"> },
 ): Promise<ServiceActor> {
   const actor = await requireServiceActor(ctx, permission, scope);
+  if (scope.actingMemberId !== undefined && actor.member?._id !== scope.actingMemberId) {
+    throw conflict("Ce geste a été saisi par une autre personne : il partira quand elle s'identifiera de nouveau.");
+  }
   const now = Date.now();
   if (actor.operatorSession && now - actor.operatorSession.lastActivityAt > ACTIVITY_WRITE_MS) {
     await ctx.db.patch(actor.operatorSession._id, { lastActivityAt: now });

@@ -230,7 +230,9 @@ const TICKET_TRANSITIONS: Record<TicketStatus, Partial<Record<TicketAction, Tick
   // Un plat rappelé repasse en cuisine : c'est une information de service, pas une faute
   // à effacer (R13). Il se reprend (`start`) ou se déclare prêt directement.
   recalled: { start: "started", ready: "ready", cancel: "cancelled" },
-  ready: { recall: "recalled", serve: "served" },
+  // Un plat prêt peut encore être annulé : le client est parti avant d'être servi. Sans cela,
+  // la commande resterait active et la table impossible à clôturer.
+  ready: { recall: "recalled", serve: "served", cancel: "cancelled" },
   served: {},
   cancelled: {},
 };

@@ -8,6 +8,17 @@ import { FormField } from "~/components/app/form-field";
 import { PendingButton } from "~/components/app/pending-button";
 import { EmptyState } from "~/components/app/states";
 import { Alert, AlertDescription } from "~/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "~/components/ui/alert-dialog";
 import { Avatar, AvatarFallback } from "~/components/ui/avatar";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
@@ -368,13 +379,33 @@ function ActivateScreen({ onDone }: { onDone: () => void }) {
   );
 }
 
-/** Oublier l'appareil (à faire avant de le donner ou de le changer de restaurant). */
+/**
+ * Oublier l'appareil (avant de le donner ou de le changer de restaurant). Seulement sur cet
+ * appareil : pour qu'il ne compte plus, un gérant le révoque dans Réglages › Appareils.
+ */
 export function ForgetDeviceButton() {
   const device = useDevice();
   return (
-    <Button variant="link" size="sm" className="text-muted-foreground" onClick={device.forget}>
-      <Smartphone />
-      Ce n'est plus l'appareil de ce restaurant
-    </Button>
+    <AlertDialog>
+      <AlertDialogTrigger asChild>
+        <Button variant="link" size="sm" className="text-muted-foreground">
+          <Smartphone />
+          Ce n'est plus l'appareil de ce restaurant
+        </Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Oublier cet appareil ?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Il faudra un nouveau code d'enrôlement pour s'en servir. Les gestes non envoyés restent sur l'appareil. Pour
+            qu'il ne compte plus du tout, un gérant le révoque dans Réglages › Appareils.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Garder</AlertDialogCancel>
+          <AlertDialogAction onClick={device.forget}>Oublier</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }

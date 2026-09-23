@@ -153,11 +153,20 @@ export const presence = query({
  */
 export const saveCart = mutation({
   args: { ...guestArgs, lines: v.array(lineArg) },
-  handler: async (ctx, args): Promise<{ ok: true; problems: LineProblem[] } | { ok: false; reason: "invalid_pass" | "table_not_open" | "full" | "bad_key" | "too_many_lines" }> => {
+  handler: async (
+    ctx,
+    args,
+  ): Promise<
+    | { ok: true; problems: LineProblem[] }
+    | { ok: false; reason: "invalid_pass" | "table_not_open" | "full" | "bad_key" | "too_many_lines" }
+    | { ok: false; reason: "rate_limited"; retryAfter: number }
+  > => {
     // garde : laissez-passer revérifié ; la table doit avoir été ouverte par le personnel
     const resolved = await resolveGuestTable(ctx, args.pass, args.venueSlug);
     if (!resolved) return { ok: false, reason: "invalid_pass" };
     if (args.lines.length > CART_MAX_LINES) return { ok: false, reason: "too_many_lines" };
+    const limit = await rateLimiter.limit(ctx, "guestCart", { key: resolved.code._id });
+    if (!limit.ok) return { ok: false, reason: "rate_limited", retryAfter: limit.retryAfter };
     const joined = await joinSession(ctx, resolved, args.guestKey);
     if ("error" in joined) return { ok: false, reason: joined.error };
     const now = Date.now();

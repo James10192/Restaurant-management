@@ -48,9 +48,9 @@ export const open = query({
 
 /** « J'y vais. » Rejoué ou pris par un collègue entre-temps : sans effet. */
 export const acknowledge = mutation({
-  args: { venueId: v.id("venues"), requestId: v.id("serviceRequests") },
+  args: { venueId: v.id("venues"), requestId: v.id("serviceRequests"), actingMemberId: v.optional(v.id("organizationMembers")), },
   handler: async (ctx, args) => {
-    const actor = await requireServiceMutation(ctx, "service_request.handle", { venueId: args.venueId });
+    const actor = await requireServiceMutation(ctx, "service_request.handle", { venueId: args.venueId, actingMemberId: args.actingMemberId });
     const request = await getInVenue(ctx, args.requestId, actor.venue._id, "Cette demande");
     if (request.status !== "open") return;
     await ctx.db.patch(request._id, {
@@ -62,9 +62,9 @@ export const acknowledge = mutation({
 });
 
 export const resolve = mutation({
-  args: { venueId: v.id("venues"), requestId: v.id("serviceRequests") },
+  args: { venueId: v.id("venues"), requestId: v.id("serviceRequests"), actingMemberId: v.optional(v.id("organizationMembers")), },
   handler: async (ctx, args) => {
-    const actor = await requireServiceMutation(ctx, "service_request.handle", { venueId: args.venueId });
+    const actor = await requireServiceMutation(ctx, "service_request.handle", { venueId: args.venueId, actingMemberId: args.actingMemberId });
     const request = await getInVenue(ctx, args.requestId, actor.venue._id, "Cette demande");
     if (request.status === "resolved" || request.status === "cancelled") return;
     await ctx.db.patch(request._id, {

@@ -95,7 +95,7 @@ async function serviceFor(
       idempotencyKey: `isolation-${tag}-0000000001`,
     })
     .finally(() => vi.useRealTimers());
-  if (!sent.ok) throw new Error(`commande refusée : ${JSON.stringify(sent.problems)}`);
+  if (!sent.ok) throw new Error(`commande refusée : ${JSON.stringify(sent)}`);
   return t.run(async (ctx) => {
     const ticket = (await ctx.db.query("kitchenTickets").withIndex("by_order", (q) => q.eq("orderId", sent.orderId)).unique())!;
     const item = (await ctx.db.query("orderItems").withIndex("by_order", (q) => q.eq("orderId", sent.orderId)).unique())!;
@@ -1167,6 +1167,15 @@ const CASES: Record<string, (w: Awaited<ReturnType<typeof twoTenants>>) => Promi
     );
     expect((await w.t.run((ctx) => ctx.db.get(b.cartId)))!.status).toBe("active");
   },
+  "carts.takeCart": async (w) => {
+    const b = await guestAtB(w);
+    const seen = (await w.t.run((ctx) => ctx.db.get(b.cartId)))!.updatedAt;
+    await bothRefused(
+      w.a.owner.as.mutation(api.carts.takeCart, { venueId: w.b.venueId, cartId: b.cartId, seenUpdatedAt: seen }),
+      w.a.owner.as.mutation(api.carts.takeCart, { venueId: w.a.venueId, cartId: b.cartId, seenUpdatedAt: seen }),
+    );
+    expect((await w.t.run((ctx) => ctx.db.get(b.cartId)))!.status).toBe("active");
+  },
   "carts.dismissCart": async (w) => {
     const b = await guestAtB(w);
     await bothRefused(
@@ -1200,6 +1209,18 @@ const CASES: Record<string, (w: Awaited<ReturnType<typeof twoTenants>>) => Promi
     await expectCode(a.owner.as.mutation(api.venues.setOrderingMode, { venueId: b.venueId, orderingMode: "guest_with_approval" }), "NOT_FOUND");
     const settings = await t.run(async (ctx) => (await ctx.db.query("venueSettings").withIndex("by_venue", (q) => q.eq("venueId", b.venueId)).unique())!);
     expect(settings.service.orderingMode).toBe("staff_only");
+  },
+  "orders.lookupSubmission": async (w) => {
+    await withServiceB(w);
+    const idempotencyKey = "isolation-B-0000000001";
+    await expectCode(w.a.owner.as.query(api.orders.lookupSubmission, { venueId: w.b.venueId, idempotencyKey }), "NOT_FOUND");
+    // Dans son propre établissement, A ne voit pas la clé de B : elle n'existe pas chez lui.
+    expect(await w.a.owner.as.query(api.orders.lookupSubmission, { venueId: w.a.venueId, idempotencyKey })).toBeNull();
+    expect(await w.b.owner.as.query(api.orders.lookupSubmission, { venueId: w.b.venueId, idempotencyKey })).toMatchObject({ reference: "A-001" });
+  },
+  "operators.touch": async ({ a, b }) => {
+    await expectCode(a.owner.as.mutation(api.operators.touch, { venueId: b.venueId }), "NOT_FOUND");
+    expect(typeof (await a.owner.as.mutation(api.operators.touch, { venueId: a.venueId })).now).toBe("number");
   },
   "operators.me": async ({ a, b }) => {
     await expectCode(a.owner.as.query(api.operators.me, { venueId: b.venueId }), "NOT_FOUND");

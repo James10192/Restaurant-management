@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { api } from "../../../convex/_generated/api";
 import { availabilityIndex } from "../../../convex/lib/availabilityIndex";
 import type { GuestMenu } from "../../../convex/lib/guestMenu";
-import { indexPublishedProducts, ORDER_LIMITS, priceLine, type LineRequest, type PricedLine } from "../../../convex/lib/ordering";
+import { indexPublishedProducts, ORDER_LIMITS, priceLine, productBasePrice, type LineRequest, type PricedLine } from "../../../convex/lib/ordering";
 import { LoadingState } from "~/components/app/states";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
@@ -122,6 +122,14 @@ export function OrderComposer({
   const [course, setCourse] = useState(1);
   const [choosing, setChoosing] = useState<{ product: Product } | null>(null);
   const [step, setStep] = useState<"menu" | "review">("menu");
+  // Chaque saisie repart du service 1 : un service 3 resté choisi enverrait les bières
+  // suivantes « à suivre », et le bar ne les verrait jamais.
+  useEffect(() => {
+    if (open) {
+      setCourse(1);
+      setStep("menu");
+    }
+  }, [open]);
 
   const view = useMemo(() => {
     if (!data) return null;
@@ -251,7 +259,7 @@ export function OrderComposer({
                         </ItemContent>
                         <ItemActions>
                           <span className="text-sm tabular-nums">
-                            {money(product.variants.length > 0 ? Math.min(...product.variants.map((v) => v.price)) : (product.promoPrice ?? product.basePrice))}
+                            {money(product.variants.length > 0 ? Math.min(...product.variants.map((v) => v.price)) : productBasePrice(product, now))}
                           </span>
                           <Plus className="size-4" />
                         </ItemActions>

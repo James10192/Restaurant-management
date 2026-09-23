@@ -32,6 +32,7 @@ describe("bons : transitions", () => {
       "started -cancel-> cancelled",
       "ready -recall-> recalled",
       "ready -serve-> served",
+      "ready -cancel-> cancelled",
       "recalled -start-> started",
       "recalled -ready-> ready",
       "recalled -cancel-> cancelled",
@@ -45,8 +46,8 @@ describe("bons : transitions", () => {
     }
   });
 
-  test("un plat prêt ne s'annule plus : il se rappelle ou se sert", () => {
-    expect(nextTicketStatus("ready", "cancel")).toBeNull();
+  test("un plat prêt s'annule encore : le client est parti avant d'être servi (D-069)", () => {
+    expect(nextTicketStatus("ready", "cancel")).toBe("cancelled");
   });
 
   test("l'état d'une ligne suit son bon", () => {

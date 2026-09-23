@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useConvex } from "convex/react";
+import { api } from "../../../convex/_generated/api";
 import { makeFunctionReference } from "convex/server";
 import { ConvexError } from "convex/values";
 import { describeError } from "~/lib/errors";
@@ -24,6 +25,10 @@ import { useServiceScope } from "./service-scope";
 
 /** Au-delà, on considère que la requête ne partira pas : le client Convex garde en mémoire, sans jamais échouer. */
 const SEND_TIMEOUT_MS = 15_000;
+/** Une erreur qui n'est ni un refus métier ni une coupure : on retente, mais pas sans fin. */
+const UNKNOWN_ERROR_ATTEMPTS = 5;
+/** Les gestes datés : le serveur refuse ce qui a plus de 3 minutes sans décision humaine (D-062). */
+const DATED = new Set(["orders:submit", "orders:fireCourse"]);
 
 type OutboxContextValue = {
   entries: OutboxEntry[];
@@ -58,13 +63,25 @@ function isRefusal(result: unknown): result is { ok: false; problems: { message:
   return typeof result === "object" && result !== null && (result as { ok?: unknown }).ok === false && Array.isArray((result as { problems?: unknown }).problems);
 }
 
+function isLate(result: unknown): boolean {
+  return typeof result === "object" && result !== null && (result as { late?: unknown }).late === true;
+}
+
 export function OutboxProvider({ children }: { children: ReactNode }) {
   const convex = useConvex();
   const scope = useServiceScope();
   const key = `${scope.venueId}:${scope.memberId ?? scope.via}`;
   const connectedRef = useRef(true);
+  // Écart entre l'horloge de l'appareil et celle du serveur : les gestes sont datés à l'heure du
+  // serveur, sinon une tablette en retard de dix minutes enverrait tout « à relire ».
+  const offsetRef = useRef(0);
+  const clock = useCallback(() => Date.now() + offsetRef.current, []);
 
-  const outbox = useMemo(() => {
+  // Créée dans un effet, pas dans un `useMemo` : l'effet qui l'arrête doit pouvoir la recréer
+  // (React monte deux fois en développement ; une file arrêtée n'enverrait plus jamais rien).
+  const [outbox, setOutbox] = useState<Outbox | null>(null);
+  const outboxRef = useRef<Outbox | null>(null);
+  useEffect(() => {
     const send = async (entry: OutboxEntry): Promise<SendOutcome> => {
       if (!connectedRef.current) return { kind: "network" };
       const ref = makeFunctionReference<"mutation">(entry.mutation);
@@ -76,6 +93,7 @@ export function OutboxProvider({ children }: { children: ReactNode }) {
             timer = setTimeout(() => reject(new Error("timeout")), SEND_TIMEOUT_MS);
           }),
         ]);
+        if (isLate(result)) return { kind: "review" };
         // Une réponse « refusé ligne par ligne » (plat épuisé…) est un refus métier : il ne repart pas.
         if (isRefusal(result)) return { kind: "rejected", code: "CONFLICT", message: result.problems.map((p) => p.message).join(" ") };
         return { kind: "ok", result };
@@ -83,7 +101,7 @@ export function OutboxProvider({ children }: { children: ReactNode }) {
         if (!(error instanceof ConvexError)) {
           // Délai dépassé ou coupure : la clé d'idempotence rend le renvoi sans danger.
           if (error instanceof Error && error.message === "timeout") return { kind: "network" };
-          if (!connectedRef.current) return { kind: "network" };
+          if (!connectedRef.current || entry.attempts + 1 < UNKNOWN_ERROR_ATTEMPTS) return { kind: "network" };
           return { kind: "rejected", code: "UNKNOWN", message: describeError(error).message };
         }
         const { code, message } = describeError(error);
@@ -94,8 +112,27 @@ export function OutboxProvider({ children }: { children: ReactNode }) {
         clearTimeout(timer);
       }
     };
-    return new Outbox(storeFor(key), send);
-  }, [convex, key]);
+    const created = new Outbox(storeFor(key), send, clock);
+    outboxRef.current = created;
+    setOutbox(created);
+    // Une file par personne : quand la personne change, l'ancienne file s'arrête net.
+    return () => created.dispose();
+  }, [convex, key, clock]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const sentAt = Date.now();
+    void convex
+      .mutation(api.operators.touch, { venueId: scope.venueId })
+      .then(({ now }) => {
+        // L'heure du serveur, au milieu de l'aller-retour.
+        if (!cancelled) offsetRef.current = now - (sentAt + (Date.now() - sentAt) / 2);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [convex, scope.venueId]);
 
   const [entries, setEntries] = useState<OutboxEntry[]>([]);
   const [connected, setConnected] = useState(true);
@@ -103,6 +140,7 @@ export function OutboxProvider({ children }: { children: ReactNode }) {
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
+    if (!outbox) return;
     const unsubscribe = outbox.subscribe((list) => setEntries([...list].sort((a, b) => a.createdAt - b.createdAt)));
     void outbox.recover();
     return unsubscribe;
@@ -122,7 +160,7 @@ export function OutboxProvider({ children }: { children: ReactNode }) {
         if (since !== null) recordOutage(since, Date.now());
         since = null;
         setOfflineSince(null);
-        void outbox.drain();
+        void outboxRef.current?.drain();
       }
     };
     // Deux signaux : la liaison Convex (lente à constater une coupure, battement de cœur) et le
@@ -145,7 +183,7 @@ export function OutboxProvider({ children }: { children: ReactNode }) {
       window.removeEventListener("online", update);
       window.removeEventListener("offline", update);
     };
-  }, [convex, outbox]);
+  }, [convex]);
 
   // Une horloge lente : les messages « annoncez-la » et « service dégradé » dépendent du temps.
   const busy = offlineSince !== null || entries.some((e) => e.status === "pending" || e.status === "sending");
@@ -154,19 +192,41 @@ export function OutboxProvider({ children }: { children: ReactNode }) {
     const id = setInterval(() => {
       setNow(Date.now());
       // Un envoi tombé en délai dépassé ne se relance pas seul : on retente tant qu'il reste du travail.
-      if (connectedRef.current) void outbox.drain();
+      if (connectedRef.current) void outboxRef.current?.drain();
     }, 5_000);
     return () => clearInterval(id);
-  }, [busy, outbox]);
+  }, [busy]);
 
-  const enqueue = useCallback<Outbox["enqueue"]>((input) => outbox.enqueue(input), [outbox]);
-  const resolve = useCallback<Outbox["resolve"]>((opId, decision) => outbox.resolve(opId, decision), [outbox]);
+  // Chaque geste porte la personne qui l'a fait, et les gestes de cuisine leur heure : c'est le
+  // serveur qui refuse un geste parti sous un autre nom, ou trop tard pour partir seul.
+  const memberId = scope.memberId;
+  const enqueue = useCallback<Outbox["enqueue"]>(
+    (input) => {
+      if (!outbox) throw new Error("File d'envoi pas encore prête.");
+      return outbox.enqueue({
+        ...input,
+        args: {
+          ...input.args,
+          ...(memberId ? { actingMemberId: memberId } : {}),
+          ...(DATED.has(input.mutation) ? { clientCreatedAt: clock() } : {}),
+        },
+      });
+    },
+    [outbox, memberId, clock],
+  );
+  const resolve = useCallback<Outbox["resolve"]>(async (opId, decision) => outbox?.resolve(opId, decision), [outbox]);
 
   const value = useMemo<OutboxContextValue>(
     () => ({ entries, online: connected, offlineFor: offlineSince === null ? 0 : Math.max(0, now - offlineSince), enqueue, resolve }),
     [entries, connected, offlineSince, now, enqueue, resolve],
   );
+  if (!outbox) return null;
   return <OutboxContext.Provider value={value}>{children}</OutboxContext.Provider>;
+}
+
+/** Hors d'un fournisseur (écran de réglages…), `null` : on suppose le réseau présent. */
+export function useOptionalOutbox(): OutboxContextValue | null {
+  return useContext(OutboxContext);
 }
 
 export function useOutbox(): OutboxContextValue {

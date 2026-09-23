@@ -1,11 +1,15 @@
 import { useState } from "react";
+import { useQuery } from "convex/react";
+import { api } from "../../../convex/_generated/api";
 import { CircleAlert, ClipboardList, Megaphone, WifiOff } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "~/components/ui/alert";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemTitle } from "~/components/ui/item";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "~/components/ui/sheet";
+import type { OutboxEntry } from "~/lib/outbox";
 import { AUTO_SEND_MAX_MS, useOutbox, useToRegularize, useUnannounced } from "./outbox-provider";
+import { useServiceScope } from "./service-scope";
 
 const time = new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", minute: "2-digit" });
 
@@ -45,7 +49,7 @@ export function ServiceStatus() {
       {unannounced.length > 0 ? (
         <Alert variant="destructive">
           <Megaphone />
-          <AlertTitle>La cuisine ne l'a PAS reçue — annoncez-la</AlertTitle>
+          <AlertTitle>Pas confirmée par la cuisine — annoncez-la de vive voix</AlertTitle>
           <AlertDescription>{unannounced.map((e) => e.label).join(" · ")}</AlertDescription>
         </Alert>
       ) : null}
@@ -67,11 +71,10 @@ export function ServiceStatus() {
 
 /** Chaque geste en suspens, et ce qu'on peut en faire. Rien ne part sans qu'une personne le décide. */
 function RegularizeSheet({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
-  const { resolve } = useOutbox();
   const entries = useToRegularize();
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" className="data-[side=bottom]:max-h-[85dvh] overflow-y-auto">
+      <SheetContent side="bottom" className="overflow-y-auto data-[side=bottom]:max-h-[85dvh]">
         <SheetHeader>
           <SheetTitle>À régulariser</SheetTitle>
           <SheetDescription>
@@ -80,40 +83,63 @@ function RegularizeSheet({ open, onOpenChange }: { open: boolean; onOpenChange: 
         </SheetHeader>
         <ItemGroup className="px-4 pb-4">
           {entries.length === 0 ? <p className="text-sm text-muted-foreground">Rien à régulariser.</p> : null}
-          {entries.map((e) => {
-            const isOrder = e.mutation === "orders:submit";
-            return (
-              <Item key={e.opId} variant="outline">
-                <ItemContent>
-                  <ItemTitle>
-                    {e.label}
-                    {e.status === "rejected" ? <Badge variant="destructive">Refusé</Badge> : <Badge variant="secondary">En attente de décision</Badge>}
-                  </ItemTitle>
-                  <ItemDescription>
-                    Saisi à {time.format(e.createdAt)}
-                    {e.error ? ` — ${e.error.message}` : ""}
-                  </ItemDescription>
-                </ItemContent>
-                <ItemActions className="flex-wrap">
-                  {e.status === "needs_review" && isOrder ? (
-                    <Button size="sm" onClick={() => void resolve(e.opId, { kind: "send_as", args: { ...e.args, recordOnly: true, heldCourses: [] } })}>
-                      Déjà préparée
-                    </Button>
-                  ) : null}
-                  {e.status === "needs_review" ? (
-                    <Button size="sm" variant="outline" onClick={() => void resolve(e.opId, { kind: "send" })}>
-                      {isOrder ? "Envoyer en cuisine" : "Envoyer"}
-                    </Button>
-                  ) : null}
-                  <Button size="sm" variant="ghost" onClick={() => void resolve(e.opId, { kind: "drop" })}>
-                    {e.status === "rejected" ? "Retirer" : "Annuler"}
-                  </Button>
-                </ItemActions>
-              </Item>
-            );
-          })}
+          {entries.map((e) => (
+            <RegularizeItem key={e.opId} entry={e} />
+          ))}
         </ItemGroup>
       </SheetContent>
     </Sheet>
+  );
+}
+
+function RegularizeItem({ entry: e }: { entry: OutboxEntry }) {
+  const scope = useServiceScope();
+  const { resolve, online } = useOutbox();
+  const isOrder = e.mutation === "orders:submit";
+  // Avant de décider : le serveur l'a-t-il déjà reçue ? Un envoi a pu aboutir sans réponse.
+  const arrived = useQuery(
+    api.orders.lookupSubmission,
+    isOrder && e.status === "needs_review" && typeof e.args.idempotencyKey === "string" ? { venueId: scope.venueId, idempotencyKey: e.args.idempotencyKey } : "skip",
+  );
+  const late = { ...e.args, lateConfirmed: true };
+  return (
+    <Item variant="outline">
+      <ItemContent>
+        <ItemTitle>
+          {e.label}
+          {e.status === "rejected" ? <Badge variant="destructive">Refusé</Badge> : <Badge variant="secondary">En attente de décision</Badge>}
+        </ItemTitle>
+        <ItemDescription>
+          Saisi à {time.format(e.createdAt)}
+          {e.error ? ` — ${e.error.message}` : ""}
+          {arrived ? ` — arrivée en cuisine à ${time.format(arrived.submittedAt)} (${arrived.reference}) : rien à renvoyer.` : ""}
+        </ItemDescription>
+      </ItemContent>
+      <ItemActions className="flex-wrap">
+        {arrived ? (
+          <Button size="sm" onClick={() => void resolve(e.opId, { kind: "drop" })}>
+            Compris
+          </Button>
+        ) : e.status === "needs_review" ? (
+          <>
+            {isOrder ? (
+              <Button size="sm" disabled={!online || arrived === undefined} onClick={() => void resolve(e.opId, { kind: "send_as", args: { ...e.args, recordOnly: true } })}>
+                Déjà préparée
+              </Button>
+            ) : null}
+            <Button size="sm" variant="outline" disabled={!online || (isOrder && arrived === undefined)} onClick={() => void resolve(e.opId, { kind: "send_as", args: late })}>
+              {isOrder ? "Envoyer en cuisine" : "Envoyer"}
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => void resolve(e.opId, { kind: "drop" })}>
+              Annuler
+            </Button>
+          </>
+        ) : (
+          <Button size="sm" variant="ghost" onClick={() => void resolve(e.opId, { kind: "drop" })}>
+            Retirer
+          </Button>
+        )}
+      </ItemActions>
+    </Item>
   );
 }

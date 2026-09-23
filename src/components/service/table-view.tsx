@@ -35,6 +35,7 @@ import { describeError } from "~/lib/errors";
 import { uuidv7 } from "~/lib/outbox";
 import { cn } from "~/lib/utils";
 import { ActionButton } from "./action-button";
+import type { LineRequest } from "../../../convex/lib/ordering";
 import { EMPTY_DRAFT, OrderComposer, type Draft } from "./order-composer";
 import { useOutbox } from "./outbox-provider";
 import { useMoney, useServiceScope } from "./service-scope";
@@ -68,10 +69,11 @@ const ITEM_STATUS: Record<string, string> = {
 const inProduction = (status: string) => status === "preparing" || status === "ready";
 const time = new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", minute: "2-digit" });
 
-const draftKey = (tableId: string) => `joliba.saisie.${tableId}`;
-function loadDraft(tableId: string): Draft {
+/** Le brouillon est à une personne : sur une tablette partagée, Koffi n'envoie pas celui d'Awa. */
+const draftKey = (tableId: string, owner: string) => `joliba.saisie.${owner}.${tableId}`;
+function loadDraft(key: string): Draft {
   try {
-    const raw = sessionStorage.getItem(draftKey(tableId));
+    const raw = sessionStorage.getItem(key);
     return raw ? (JSON.parse(raw) as Draft) : EMPTY_DRAFT;
   } catch {
     return EMPTY_DRAFT;
@@ -85,6 +87,7 @@ function loadDraft(tableId: string): Draft {
  */
 export function TableView({ tableId }: { tableId: Id<"restaurantTables"> }) {
   const scope = useServiceScope();
+  const money = useMoney();
   const floor = useQuery(api.sessions.floor, { venueId: scope.venueId });
   const { entries, enqueue } = useOutbox();
   const table = floor?.areas.flatMap((a) => a.tables).find((t) => t._id === tableId);
@@ -95,14 +98,15 @@ export function TableView({ tableId }: { tableId: Id<"restaurantTables"> }) {
 
   const [composing, setComposing] = useState(false);
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
-  useEffect(() => setDraft(loadDraft(tableId)), [tableId]);
+  const key = draftKey(tableId, scope.memberId ?? scope.via);
+  useEffect(() => setDraft(loadDraft(key)), [key]);
   useEffect(() => {
     try {
-      sessionStorage.setItem(draftKey(tableId), JSON.stringify(draft));
+      sessionStorage.setItem(key, JSON.stringify(draft));
     } catch {
       /* brouillon non gardé ; la saisie en cours reste à l'écran */
     }
-  }, [draft, tableId]);
+  }, [draft, key]);
 
   if (floor === undefined) return <LoadingState />;
   if (!table) return <EmptyState title="Table introuvable" description="Elle a peut-être été retirée du plan." action={<Button onClick={scope.nav.board}>Retour</Button>} />;
@@ -132,7 +136,6 @@ export function TableView({ tableId }: { tableId: Id<"restaurantTables"> }) {
         heldCourses: d.held,
         ...(d.notes.trim() ? { notes: d.notes.trim() } : {}),
         idempotencyKey: opId,
-        clientCreatedAt: Date.now(),
       },
       dependsOn: !sessionId && openEntry ? [openEntry.opId] : [],
       goesToKitchen: true,
@@ -153,7 +156,12 @@ export function TableView({ tableId }: { tableId: Id<"restaurantTables"> }) {
           <h1 className="text-2xl font-semibold tracking-tight">Table {table.number}</h1>
           <p className="truncate text-sm text-muted-foreground">
             {detail
-              ? [detail.waiterName ?? "Sans serveur", detail.guestCount ? `${detail.guestCount} couverts` : null, `ouverte à ${time.format(detail.openedAt)}`]
+              ? [
+                  detail.waiterName ?? "Sans serveur",
+                  detail.guestCount ? `${detail.guestCount} couverts` : null,
+                  `ouverte à ${time.format(detail.openedAt)}`,
+                  detail.runningTotal > 0 ? `en cours ${money(detail.runningTotal)}` : null,
+                ]
                   .filter(Boolean)
                   .join(" · ")
               : openEntry
@@ -173,7 +181,16 @@ export function TableView({ tableId }: { tableId: Id<"restaurantTables"> }) {
         />
       ) : null}
 
-      {sessionId ? <GuestCarts sessionId={sessionId} tableNumber={table.number} /> : null}
+      {sessionId ? (
+        <GuestCarts
+          sessionId={sessionId}
+          onTake={(lines) => {
+            // Le panier du client rejoint la saisie du serveur : il relit, retire, retient un service.
+            setDraft((d) => ({ ...d, lines: [...d.lines, ...lines.map((request) => ({ key: crypto.randomUUID(), request }))] }));
+            setComposing(true);
+          }}
+        />
+      ) : null}
 
       {localOrders.map((e) => (
         <Alert key={e.opId} variant={e.status === "rejected" ? "destructive" : "default"}>
@@ -207,6 +224,7 @@ export function TableView({ tableId }: { tableId: Id<"restaurantTables"> }) {
 
 function TableActions({ detail }: { detail: Detail }) {
   const scope = useServiceScope();
+  const { online } = useOutbox();
   const assign = useMutation(api.sessions.assignWaiter);
   const close = useMutation(api.sessions.close);
   const [closing, setClosing] = useState(false);
@@ -229,7 +247,7 @@ function TableActions({ detail }: { detail: Detail }) {
         </ActionButton>
       ) : null}
       {detail.can.close ? (
-        <Button variant="outline" onClick={() => setClosing(true)}>
+        <Button variant="outline" disabled={!online} title={online ? undefined : "Pas de clôture sans réseau."} onClick={() => setClosing(true)}>
           Clôturer
         </Button>
       ) : null}
@@ -244,6 +262,7 @@ function TableActions({ detail }: { detail: Detail }) {
           <AlertDialogFooter>
             <AlertDialogCancel>Annuler</AlertDialogCancel>
             <AlertDialogAction
+              disabled={!online}
               onClick={async (e) => {
                 e.preventDefault();
                 try {
@@ -288,6 +307,7 @@ function HeldCourses({ detail }: { detail: Detail }) {
               void enqueue({
                 mutation: "orders:fireCourse",
                 args: { venueId: scope.venueId, sessionId: detail._id, courseNumber: c },
+                goesToKitchen: true,
                 label: `Table ${detail.tableNumber} — envoyer le service ${c}`,
               })
             }
@@ -471,12 +491,15 @@ function CancelItemDialog({ item, afterFire, onClose }: { item: Order["items"][n
 
 /* ─────────────────────────── Paniers des clients ─────────────────────────── */
 
-/** « Panier préparé : 3 articles » — le client montre, le serveur importe d'un geste (D-061). */
-function GuestCarts({ sessionId, tableNumber }: { sessionId: Id<"tableSessions">; tableNumber: string }) {
+/**
+ * « Panier préparé : 3 articles » — le client montre, le serveur le reprend dans SA saisie
+ * (D-061) : il relit, retire, fait attendre le dessert, puis envoie comme d'habitude.
+ */
+function GuestCarts({ sessionId, onTake }: { sessionId: Id<"tableSessions">; onTake: (lines: LineRequest[]) => void }) {
   const scope = useServiceScope();
   const money = useMoney();
   const carts = useQuery(api.carts.forSession, scope.can("order.create") ? { venueId: scope.venueId, sessionId } : "skip");
-  const importCart = useMutation(api.carts.importCart);
+  const take = useMutation(api.carts.takeCart);
   const dismiss = useMutation(api.carts.dismissCart);
   if (!carts || carts.length === 0) return null;
   return (
@@ -486,7 +509,7 @@ function GuestCarts({ sessionId, tableNumber }: { sessionId: Id<"tableSessions">
           <ShoppingBasket className="size-4" />
           Panier{carts.length > 1 ? "s" : ""} préparé{carts.length > 1 ? "s" : ""} par les clients
         </CardTitle>
-        <CardDescription>Rien n'est commandé tant que vous ne l'importez pas.</CardDescription>
+        <CardDescription>Rien n'est commandé tant que vous ne l'envoyez pas.</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         {carts.map((cart) => (
@@ -515,16 +538,14 @@ function GuestCarts({ sessionId, tableNumber }: { sessionId: Id<"tableSessions">
               <ActionButton
                 onAction={async () => {
                   try {
-                    const result = await importCart({ venueId: scope.venueId, cartId: cart._id, idempotencyKey: uuidv7() });
-                    if (result.ok) toast.success(`Table ${tableNumber} : panier envoyé en cuisine (${result.reference}).`);
-                    else toast.error(result.problems.map((p) => p.message).join(" "));
+                    onTake(await take({ venueId: scope.venueId, cartId: cart._id, seenUpdatedAt: cart.updatedAt }));
                   } catch (error) {
                     toast.error(describeError(error).message);
                   }
                 }}
               >
-                <Send />
-                Importer et envoyer
+                <ShoppingBasket />
+                Reprendre dans ma saisie
               </ActionButton>
             </ItemActions>
           </Item>

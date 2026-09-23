@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import { useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
-import { CircleAlert, Flame, Lock, RotateCcw, TriangleAlert, Undo2 } from "lucide-react";
+import { CircleAlert, Flame, Lock, RotateCcw, TriangleAlert, Undo2, Volume2 } from "lucide-react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { ALLERGENS } from "../../../convex/lib/allergens";
@@ -33,6 +34,7 @@ export function KdsBoard({ stationId }: { stationId: Id<"prepStations"> }) {
   const board = useQuery(api.kitchen.board, { venueId: scope.venueId, stationId });
   const now = useMinuteClock(1_000);
   const [allDay, setAllDay] = useState(false);
+  const sound = useArrivalSignals(board);
 
   if (board === undefined) return <LoadingState />;
   const late = board.active.filter((t) => t.queuedAt !== null && now - t.queuedAt > board.station.lateThresholdMinutes * 60_000).length;
@@ -48,6 +50,12 @@ export function KdsBoard({ stationId }: { stationId: Id<"prepStations"> }) {
           </p>
         </div>
         <div className="flex gap-2">
+          {sound.blocked ? (
+            <Button variant="outline" onClick={sound.enable}>
+              <Volume2 />
+              Activer le son
+            </Button>
+          ) : null}
           <Button variant="outline" onClick={() => setAllDay(true)}>
             À produire
           </Button>
@@ -105,6 +113,55 @@ export function KdsBoard({ stationId }: { stationId: Id<"prepStations"> }) {
       </Sheet>
     </div>
   );
+}
+
+/**
+ * Ce qui arrive et ce qui disparaît se signale : un son quand un bon arrive (si le poste l'a
+ * réglé), et un message quand un bon en cours est annulé — sinon il s'évanouit de l'écran
+ * pendant que le cuisinier le prépare. Le navigateur n'accepte le son qu'après un premier geste.
+ */
+function useArrivalSignals(board: Board | undefined) {
+  const seen = useRef<Map<string, string> | null>(null);
+  const audio = useRef<AudioContext | null>(null);
+  const [blocked, setBlocked] = useState(false);
+
+  useEffect(() => {
+    if (!board) return;
+    const active = new Map(board.active.map((t) => [t._id as string, t.tableNumber]));
+    const ready = new Set(board.ready.map((t) => t._id as string));
+    const previous = seen.current;
+    seen.current = active;
+    if (!previous) return;
+    const arrived = [...active.keys()].some((id) => !previous.has(id));
+    for (const [id, table] of previous) {
+      if (!active.has(id) && !ready.has(id)) toast.warning(`Table ${table} : bon annulé ou retiré.`);
+    }
+    if (arrived && board.station.soundEnabled) {
+      try {
+        audio.current ??= new AudioContext();
+        if (audio.current.state === "suspended") {
+          setBlocked(true);
+          return;
+        }
+        const osc = audio.current.createOscillator();
+        const gain = audio.current.createGain();
+        osc.frequency.value = 880;
+        gain.gain.value = 0.2;
+        osc.connect(gain).connect(audio.current.destination);
+        osc.start();
+        osc.stop(audio.current.currentTime + 0.25);
+      } catch {
+        /* pas de son possible : l'écran reste la source */
+      }
+    }
+  }, [board]);
+
+  return {
+    blocked,
+    enable: () => {
+      void audio.current?.resume().then(() => setBlocked(false));
+    },
+  };
 }
 
 /** Le geste d'un bon part par la file : une tablette de cuisine perd le réseau aussi (D-062). */
@@ -178,12 +235,12 @@ function TicketCard({ ticket, board, now }: { ticket: Ticket; board: Board; now:
       {board.canUpdate ? (
         <CardFooter className="gap-2 px-4">
           {status === "queued" || status === "recalled" ? (
-            <Button size="lg" variant="outline" className="flex-1" onClick={() => advance(ticket, "start")}>
+            <Button size="lg" variant="outline" className="h-14 flex-1 text-base" onClick={() => advance(ticket, "start")}>
               <Flame />
               Commencer
             </Button>
           ) : null}
-          <Button size="lg" className="flex-1" disabled={status === "ready"} onClick={() => advance(ticket, "ready")}>
+          <Button size="lg" className="h-14 flex-1 text-base" disabled={status === "ready"} onClick={() => advance(ticket, "ready")}>
             {status === "ready" ? "Envoi…" : "Prêt"}
           </Button>
         </CardFooter>

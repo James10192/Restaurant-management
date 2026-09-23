@@ -53,7 +53,7 @@ export function useNavItems(): NavItem[] {
   return [
     { to: "/app", label: "Accueil", icon: House, show: true, exact: true },
     { to: "/app/service", label: "Service", icon: ConciergeBell, show: w.canInVenue("table.read") },
-    { to: "/app/cuisine", label: "Cuisine", icon: ChefHat, show: w.canInVenue("kitchen.read") },
+    { to: "/app/cuisine", label: "Cuisine", icon: ChefHat, show: w.canInVenue("kitchen.ticket.update") },
     { to: "/app/team", label: "Équipe", icon: Users, show: w.canInVenue("team.read") || w.canInOrganization("team.read") },
     {
       to: "/app/menu",

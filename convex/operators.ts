@@ -23,7 +23,8 @@ import { memberCoversVenue, type MutationCtx, type ReadCtx } from "./lib/guards"
 import { signOperatorJwt } from "./lib/operatorJwt";
 import { deviceFailure, hashCode, hashPin, isWellFormedCode, memberFailure, pinProblem, sameDigest } from "./lib/pin";
 import { rateLimiter } from "./lib/rateLimits";
-import { isOperatorSessionExpired, OPERATOR_IDLE_MS, requireServiceActor } from "./lib/serviceActor";
+import { memberDisplayName } from "./lib/service";
+import { isOperatorSessionExpired, OPERATOR_IDLE_MS, requireServiceActor, requireServiceMutation } from "./lib/serviceActor";
 import { generateToken, sha256Hex } from "./lib/tokens";
 
 type Refusal =
@@ -33,11 +34,6 @@ type Refusal =
   | { ok: false; reason: "pin_unavailable" }
   | { ok: false; reason: "not_here" };
 
-async function memberDisplayName(ctx: ReadCtx, member: Doc<"organizationMembers">): Promise<string> {
-  if (member.displayName) return member.displayName;
-  const user = member.userId ? await ctx.db.get(member.userId) : null;
-  return user?.name ?? user?.email.split("@")[0] ?? "Membre";
-}
 
 async function credentialOf(ctx: ReadCtx, memberId: Id<"organizationMembers">) {
   return ctx.db
@@ -327,6 +323,20 @@ export const lock = mutation({
       .withIndex("by_device", (q) => q.eq("deviceId", device._id))
       .collect();
     for (const s of sessions) if (s.endedAt === undefined) await ctx.db.patch(s._id, { endedAt: now, endReason: "locked" });
+  },
+});
+
+/**
+ * « Je suis là. » Sur une tablette, consulter sans rien saisir ne doit pas faire sortir le
+ * serveur : l'écran le signale au plus toutes les 30 secondes quand on le touche. Renvoie
+ * l'heure du serveur, dont la file se sert pour dater ses gestes malgré une horloge d'appareil
+ * fausse (D-062).
+ */
+export const touch = mutation({
+  args: { venueId: v.id("venues") },
+  handler: async (ctx, args) => {
+    await requireServiceMutation(ctx, "venue.read", { venueId: args.venueId });
+    return { now: Date.now() };
   },
 });
 
