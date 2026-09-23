@@ -23,7 +23,7 @@ import { memberCoversVenue, type MutationCtx, type ReadCtx } from "./lib/guards"
 import { signOperatorJwt } from "./lib/operatorJwt";
 import { deviceFailure, hashCode, hashPin, isWellFormedCode, memberFailure, pinProblem, sameDigest } from "./lib/pin";
 import { rateLimiter } from "./lib/rateLimits";
-import { isOperatorSessionExpired, OPERATOR_IDLE_MS } from "./lib/serviceActor";
+import { isOperatorSessionExpired, OPERATOR_IDLE_MS, requireServiceActor } from "./lib/serviceActor";
 import { generateToken, sha256Hex } from "./lib/tokens";
 
 type Refusal =
@@ -327,5 +327,29 @@ export const lock = mutation({
       .withIndex("by_device", (q) => q.eq("deviceId", device._id))
       .collect();
     for (const s of sessions) if (s.endedAt === undefined) await ctx.db.patch(s._id, { endedAt: now, endReason: "locked" });
+  },
+});
+
+/**
+ * Qui agit, et ce qu'il peut faire ici — la même réponse pour un compte, un PIN ou un écran de
+ * cuisine. Les écrans de service s'en servent pour MASQUER ; la garde de chaque fonction reste
+ * seule juge.
+ */
+export const me = query({
+  args: { venueId: v.id("venues") },
+  handler: async (ctx, args) => {
+    const actor = await requireServiceActor(ctx, "venue.read", { venueId: args.venueId });
+    return {
+      via: actor.via,
+      venueName: actor.venue.name,
+      venueSlug: actor.venue.slug,
+      currency: actor.venue.currency,
+      timezone: actor.venue.timezone,
+      memberId: actor.member?._id ?? null,
+      name: actor.member ? await memberDisplayName(ctx, actor.member) : actor.device?.label ?? null,
+      deviceType: actor.device?.deviceType ?? null,
+      stationId: actor.device?.stationId ?? null,
+      permissions: [...actor.permissions],
+    };
   },
 });

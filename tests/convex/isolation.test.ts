@@ -1201,6 +1201,10 @@ const CASES: Record<string, (w: Awaited<ReturnType<typeof twoTenants>>) => Promi
     const settings = await t.run(async (ctx) => (await ctx.db.query("venueSettings").withIndex("by_venue", (q) => q.eq("venueId", b.venueId)).unique())!);
     expect(settings.service.orderingMode).toBe("staff_only");
   },
+  "operators.me": async ({ a, b }) => {
+    await expectCode(a.owner.as.query(api.operators.me, { venueId: b.venueId }), "NOT_FOUND");
+    expect((await a.owner.as.query(api.operators.me, { venueId: a.venueId })).venueName).toBe("Maquis A — Cocody");
+  },
 };
 
 describe("isolation multi-tenant : A ne voit ni ne touche rien de B", () => {

@@ -180,6 +180,18 @@ export class Outbox {
     private readonly clock: () => number = () => Date.now(),
   ) {}
 
+  /**
+   * Au démarrage : un geste resté « en cours d'envoi » a été interrompu (onglet fermé, téléphone
+   * éteint). Il redevient « en attente » — le renvoyer est sans risque, il porte sa clé.
+   */
+  async recover(): Promise<void> {
+    for (const e of await this.store.all()) {
+      if (e.status === "sending") await this.store.put({ ...e, status: "pending" });
+    }
+    await this.notify();
+    void this.drain();
+  }
+
   subscribe(listener: (entries: OutboxEntry[]) => void): () => void {
     this.listeners.add(listener);
     void this.store.all().then(listener);
@@ -284,4 +296,11 @@ export class Outbox {
     await this.notify();
     void this.drain();
   }
+}
+
+/** Une commande que la cuisine devrait avoir et n'a pas : « annoncez-la » (D-062). */
+export const ANNOUNCE_AFTER_MS = 45_000;
+
+export function needsAnnouncing(entry: OutboxEntry, now: number): boolean {
+  return entry.goesToKitchen && (entry.status === "pending" || entry.status === "sending") && now - entry.createdAt > ANNOUNCE_AFTER_MS;
 }

@@ -111,4 +111,15 @@ describe("la file", () => {
     await h.outbox.resolve("a", { kind: "drop" });
     expect(await h.store.all()).toEqual([]);
   });
+
+  test("au redémarrage, un geste interrompu en plein envoi repart", async () => {
+    const store = new MemoryOutboxStore();
+    await store.put(entry("a", T0, { status: "sending", attempts: 1 }));
+    const sent: string[] = [];
+    const outbox = new Outbox(store, async (e) => (sent.push(e.opId), { kind: "ok", result: null }), () => T0 + 1000);
+    await outbox.recover();
+    await outbox.drain();
+    expect(sent).toEqual(["a"]);
+    expect((await store.all())[0]!.status).toBe("confirmed");
+  });
 });
