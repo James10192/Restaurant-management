@@ -14,3 +14,29 @@ export const lirePuisVerifier = mutation({
     await requirePermission(ctx, "order.read", { venueId: order.venueId });
   },
 });
+
+// Une garde en commentaire n'est pas une garde.
+export const gardeCommentee = query({
+  args: {},
+  handler: async (ctx) => {
+    // await requireUser(ctx);
+    return ctx.db.query("x").first();
+  },
+});
+
+// Le nom d'une garde dans une chaîne non plus.
+export const gardeDansUneChaine = query({
+  args: {},
+  handler: async (ctx) => {
+    const note = "requireUser(ctx) sera ajouté plus tard";
+    return { note, first: await ctx.db.query("x").first() };
+  },
+});
+
+// garde : une exemption hors du handler ne vaut rien.
+export const exemptionMalPlacee = query({
+  args: {},
+  handler: async (ctx) => {
+    return ctx.db.query("x").first();
+  },
+});

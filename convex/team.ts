@@ -19,7 +19,7 @@ import { action, internalMutation, mutation, query, type MutationCtx } from "./_
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { writeAudit } from "./lib/audit";
-import { assertCanHandleRoles, assertNotSelfOrOwner } from "./lib/authority";
+import { assertCanHandleRoles, assertNotSelfOrOwner, effectivePermissionsInScope, missingPermissions } from "./lib/authority";
 import { invitationEmail, isEmailConfigured, maskEmail, sendEmail } from "./lib/email";
 import { appError, conflict, forbidden, invalid, notFound } from "./lib/errors";
 import {
@@ -28,8 +28,10 @@ import {
   requirePermission,
   requireUser,
   resolvePermissions,
+  resolvePermissionSets,
   type Actor,
   type OrganizationActor,
+  type ReadCtx,
 } from "./lib/guards";
 import { logEvent } from "./lib/log";
 import { rateLimiter } from "./lib/rateLimits";
@@ -115,6 +117,8 @@ export const listMembers = query({
         status: member.status,
         isOwner,
         isSelf: member.userId === actor.user._id,
+        // Même calcul que `setMemberStatus` : l'écran ne propose pas ce que le serveur refusera.
+        canChangeStatus: await hasAuthorityOverMember(ctx, actor, member),
         joinedAt: member.joinedAt ?? null,
         roles,
       });
@@ -169,14 +173,14 @@ async function authorizeGrant(
 ): Promise<Actor> {
   if (venueIds.length === 0) {
     const actor = await requirePermission(ctx, "team.manage", { organizationId });
-    assertCanHandleRoles(actor.permissions, [role], "organization");
+    assertCanHandleRoles(actor.authority, [role], "organization");
     return actor;
   }
   let actor: Actor | null = null;
   for (const venueId of venueIds) {
     const venueActor = await requirePermission(ctx, "team.manage", { venueId });
     if (venueActor.organization._id !== organizationId) throw notFound("Cet établissement");
-    assertCanHandleRoles(venueActor.permissions, [role], "venue");
+    assertCanHandleRoles(venueActor.authority, [role], "venue");
     actor = venueActor;
   }
   return actor!;
@@ -203,6 +207,10 @@ export const createInvitation = internalMutation({
     if (!limit.ok) {
       throw appError("RATE_LIMITED", "Trop d'invitations envoyées. Réessayez dans une heure.");
     }
+    const orgLimit = await rateLimiter.limit(ctx, "invitationPerOrganization", { key: base.organization._id });
+    if (!orgLimit.ok) {
+      throw appError("RATE_LIMITED", "Cette organisation a envoyé beaucoup d'invitations aujourd'hui. Réessayez demain, ou contactez le support.");
+    }
 
     const invitedUser = await ctx.db.query("users").withIndex("by_email", (q) => q.eq("email", email)).first();
     if (invitedUser) {
@@ -210,8 +218,22 @@ export const createInvitation = internalMutation({
         .query("organizationMembers")
         .withIndex("by_org_user", (q) => q.eq("organizationId", base.organization._id).eq("userId", invitedUser._id))
         .unique();
+      // Une invitation ne doit jamais servir à RÉACTIVER quelqu'un : la suspension garde
+      // ses affectations, et les lui rendre exige l'autorité sur chacune d'elles
+      // (`setMemberStatus`), pas seulement le droit d'inviter.
+      if (existing && existing.status === "suspended") {
+        throw conflict("Cette personne est suspendue. Réactivez-la depuis la liste des membres, si vous en avez l'autorité.");
+      }
       if (existing && existing.status === "active") {
-        throw conflict("Cette personne fait déjà partie de l'équipe. Modifiez ses rôles depuis la liste des membres.");
+        const held = await ctx.db
+          .query("memberRoleAssignments")
+          .withIndex("by_member", (q) => q.eq("memberId", existing._id))
+          .first();
+        // Membre sans aucune affectation (tous ses rôles retirés) : l'inviter est le moyen
+        // normal de lui en redonner un.
+        if (held) {
+          throw conflict("Cette personne fait déjà partie de l'équipe. Modifiez ses rôles depuis la liste des membres.");
+        }
       }
     }
 
@@ -298,7 +320,8 @@ export const previewInvitation = query({
     const organization = await ctx.db.get(inv.organizationId);
     const role = await ctx.db.get(inv.roleId);
     const inviter = await ctx.db.get(inv.invitedByUserId);
-    if (!organization || organization.status !== "active" || !role) return null;
+    if (!organization || organization.status !== "active" || !role || role.archivedAt !== undefined) return null;
+    if (!(await inviterStillEntitled(ctx, organization, inv.invitedByUserId, role, inv.venueIds))) return null;
     const viewer = await getCurrentUser(ctx);
     return {
       organizationName: organization.name,
@@ -306,6 +329,8 @@ export const previewInvitation = query({
       inviterName: inviter?.name ?? null,
       maskedEmail: maskEmail(inv.email),
       viewerEmailMatches: viewer ? viewer.email === inv.email : null,
+      // L'écran l'annonce AVANT de proposer d'accepter : le serveur refuserait.
+      viewerEmailVerified: viewer ? viewer.emailVerifiedAt !== undefined : null,
     };
   },
 });
@@ -327,12 +352,42 @@ export const myInvitations = query({
       if (inv.status !== "pending" || inv.expiresAt < now) continue;
       const organization = await ctx.db.get(inv.organizationId);
       const role = await ctx.db.get(inv.roleId);
-      if (!organization || organization.status !== "active" || !role) continue;
+      if (!organization || organization.status !== "active" || !role || role.archivedAt !== undefined) continue;
+      // Même filtre que l'aperçu : on ne propose pas ce que l'acceptation refuserait.
+      if (!(await inviterStillEntitled(ctx, organization, inv.invitedByUserId, role, inv.venueIds))) continue;
       result.push({ invitationId: inv._id, organizationName: organization.name, roleLabel: role.label });
     }
     return result;
   },
 });
+
+/** L'invitant a-t-il ENCORE le droit d'attribuer ce rôle dans ces portées ? */
+async function inviterStillEntitled(
+  ctx: ReadCtx,
+  organization: Doc<"organizations">,
+  inviterUserId: Id<"users">,
+  role: Doc<"roles">,
+  venueIds: readonly Id<"venues">[],
+): Promise<boolean> {
+  const inviter = await ctx.db.get(inviterUserId);
+  if (!inviter || inviter.status !== "active") return false;
+  const member = await ctx.db
+    .query("organizationMembers")
+    .withIndex("by_org_user", (q) => q.eq("organizationId", organization._id).eq("userId", inviter._id))
+    .unique();
+  if (!member || member.status !== "active") return false;
+  const actor: OrganizationActor = { user: inviter, organization, member, isOwner: organization.ownerUserId === inviter._id };
+  const scopes: (Doc<"venues"> | null)[] = [];
+  if (venueIds.length === 0) scopes.push(null);
+  for (const venueId of venueIds) scopes.push(await ctx.db.get(venueId));
+  for (const venue of scopes) {
+    const { granted, effective } = await resolvePermissionSets(ctx, actor, venue);
+    if (!effective.has("team.manage")) return false;
+    const scopeType = venue ? "venue" : "organization";
+    if (missingPermissions(granted, effectivePermissionsInScope(role.permissions, scopeType)).length > 0) return false;
+  }
+  return true;
+}
 
 /**
  * Accepte une invitation. Elle doit être adressée à l'adresse du compte connecté : Joliba
@@ -379,6 +434,14 @@ async function acceptInvitationDoc(
     throw appError("NOT_FOUND", "L'établissement concerné n'existe plus. Demandez une nouvelle invitation.");
   }
 
+  // L'invitation n'est qu'une autorisation DIFFÉRÉE : on rejoue, au moment d'accepter,
+  // l'autorité de la personne qui l'a envoyée. Retirée, suspendue, ou privée du rôle
+  // entre-temps, son invitation ne vaut plus rien — sinon un responsable pourrait semer des
+  // invitations vers ses propres adresses et revenir après son départ.
+  if (!(await inviterStillEntitled(ctx, organization, inv.invitedByUserId, role, venueIds))) {
+    throw appError("NOT_FOUND", "Cette invitation n'est plus valable. Demandez-en une nouvelle à un responsable de l'équipe.");
+  }
+
   const now = Date.now();
   let member = await ctx.db
     .query("organizationMembers")
@@ -393,8 +456,13 @@ async function acceptInvitationDoc(
       joinedAt: now,
     });
     member = (await ctx.db.get(memberId))!;
+  } else if (member.status === "suspended") {
+    // Jamais de réactivation par invitation : ses anciennes affectations redeviendraient
+    // effectives sans que personne d'habilité l'ait décidé.
+    throw forbidden("Votre accès à cette organisation est suspendu. Contactez son responsable.");
   } else if (member.status !== "active") {
-    await ctx.db.patch(member._id, { status: "active", joinedAt: now });
+    // Retiré : il n'a plus aucune affectation, il revient avec celle de l'invitation seule.
+    await ctx.db.patch(member._id, { status: "active", joinedAt: now, removedAt: undefined });
   }
 
   const existing = await ctx.db
@@ -512,7 +580,7 @@ export const setMemberRoles = mutation({
       const role = await ctx.db.get(a.roleId);
       if (role) previousRoles.push(role);
     }
-    assertCanHandleRoles(actor.permissions, [...previousRoles, ...nextRoles], scopeType);
+    assertCanHandleRoles(actor.authority, [...previousRoles, ...nextRoles], scopeType);
 
     const now = Date.now();
     for (const a of inScope) {
@@ -547,26 +615,38 @@ export const setMemberRoles = mutation({
  * L'acteur a-t-il autorité sur TOUTES les affectations de ce membre ? Pour suspendre ou
  * retirer quelqu'un, il faut pouvoir gérer chacun de ses rôles, là où il les tient.
  */
+async function hasAuthorityOverMember(
+  ctx: ReadCtx,
+  base: OrganizationActor,
+  member: Doc<"organizationMembers">,
+): Promise<boolean> {
+  if (member.userId === base.user._id || member.userId === base.organization.ownerUserId) return false;
+  const assignments = await ctx.db
+    .query("memberRoleAssignments")
+    .withIndex("by_member", (q) => q.eq("memberId", member._id))
+    .collect();
+  if (assignments.length === 0) {
+    return (await resolvePermissions(ctx, base, null)).has("team.manage");
+  }
+  for (const a of assignments) {
+    const role = await ctx.db.get(a.roleId);
+    if (!role) continue;
+    const venue = a.venueId ? await ctx.db.get(a.venueId) : null;
+    const { granted, effective } = await resolvePermissionSets(ctx, base, venue);
+    if (!effective.has("team.manage")) return false;
+    // L'autorité se mesure AVANT le plan tarifaire (voir `resolvePermissionSets`).
+    if (missingPermissions(granted, effectivePermissionsInScope(role.permissions, a.scopeType)).length > 0) return false;
+  }
+  return true;
+}
+
 async function assertAuthorityOverMember(
   ctx: MutationCtx,
   base: OrganizationActor,
   member: Doc<"organizationMembers">,
 ): Promise<void> {
-  const assignments = await ctx.db
-    .query("memberRoleAssignments")
-    .withIndex("by_member", (q) => q.eq("memberId", member._id))
-    .collect();
-  for (const a of assignments) {
-    const role = await ctx.db.get(a.roleId);
-    if (!role) continue;
-    const venue = a.venueId ? await ctx.db.get(a.venueId) : null;
-    const permissions = await resolvePermissions(ctx, base, venue);
-    if (!permissions.has("team.manage")) throw forbidden("Cette personne a des rôles que vous ne gérez pas.");
-    assertCanHandleRoles(permissions, [role], a.scopeType);
-  }
-  if (assignments.length === 0) {
-    const permissions = await resolvePermissions(ctx, base, null);
-    if (!permissions.has("team.manage")) throw forbidden();
+  if (!(await hasAuthorityOverMember(ctx, base, member))) {
+    throw forbidden("Cette personne a des rôles que vous ne gérez pas : seule une personne qui en détient tous les droits peut la suspendre ou la retirer.");
   }
 }
 
@@ -597,6 +677,17 @@ export const setMemberStatus = mutation({
       await ctx.db.patch(member._id, { status: "removed", removedAt: now });
     } else {
       await ctx.db.patch(member._id, { status: args.status });
+    }
+    if (args.status !== "active") {
+      // Ses invitations en attente tomberaient de toute façon à l'acceptation (l'autorité
+      // de l'invitant y est rejouée) ; on les révoque pour que la liste dise la vérité.
+      const pending = await ctx.db
+        .query("organizationInvitations")
+        .withIndex("by_org_status", (q) => q.eq("organizationId", base.organization._id).eq("status", "pending"))
+        .collect();
+      for (const inv of pending) {
+        if (inv.invitedByUserId === member.userId) await ctx.db.patch(inv._id, { status: "revoked" });
+      }
     }
     await writeAudit(ctx, {
       organizationId: base.organization._id,

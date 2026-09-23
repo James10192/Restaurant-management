@@ -97,6 +97,27 @@ export const createAuth = (ctx: GenericCtx<DataModel>) =>
       // d'un gérant prendrait son accès (SECURITY.md M7).
       accountLinking: { enabled: true },
     },
+    databaseHooks: {
+      user: {
+        create: {
+          /**
+           * Aucun compte ne naît avec une adresse NON prouvée. Sans cela : un tiers crée un
+           * compte Google portant l'adresse d'un gérant (non vérifiée), le gérant se connecte
+           * plus tard par code — ce qui vérifie l'adresse du compte existant — et le compte
+           * Google du tiers, resté lié, ouvre désormais le compte du gérant.
+           * Aucun chemin légitime n'est bloqué : la connexion par code crée un compte vérifié,
+           * et Google, dans le cas normal, atteste l'adresse.
+           */
+          before: async (user) => {
+            if (!user.emailVerified) {
+              throw new APIError("FORBIDDEN", {
+                message: "Cette adresse n'est pas vérifiée par votre fournisseur. Connectez-vous avec un code reçu par e-mail.",
+              });
+            }
+          },
+        },
+      },
+    },
     session: {
       expiresIn: 60 * 60 * 24 * 30,
       updateAge: 60 * 60 * 24,
@@ -131,6 +152,12 @@ export const createAuth = (ctx: GenericCtx<DataModel>) =>
           // Les routes d'authentification s'exécutent dans une action HTTP : `runMutation`
           // y est disponible. Sans lui, pas d'envoi — mieux vaut refuser que ne rien limiter.
           if (!("runMutation" in ctx)) throw new APIError("INTERNAL_SERVER_ERROR");
+          const global = await rateLimiter.limit(ctx, "otpGlobal");
+          if (!global.ok) {
+            throw new APIError("TOO_MANY_REQUESTS", {
+              message: "Le service d'envoi de codes est momentanément saturé. Réessayez dans une minute.",
+            });
+          }
           const limit = await rateLimiter.limit(ctx, "otpEmail", { key: email.toLowerCase() });
           if (!limit.ok) {
             throw new APIError("TOO_MANY_REQUESTS", {

@@ -122,8 +122,13 @@ appareil ; message neutre identique que l'adresse existe ou non (anti-énumérat
 ralenti.
 **En place (T0)** : 6 chiffres, 10 minutes, 3 essais puis invalidation, code stocké **haché** ;
 limite par IP (Better Auth, en-têtes posés par Vercel) **et** par adresse (5 codes / 10 min, D-034).
-La limite **par appareil** n'est pas implémentée. Épuisement des essais vérifié dans
-`e2e/t0.spec.ts`.
+Un **plafond global** (120 codes/min, rafale 240) borne en outre le coût d'envoi : l'IP se
+falsifie sur un appel direct au backend Convex, et la limite par adresse ne protège pas contre
+une rafale sur des adresses toutes différentes. La limite **par appareil** n'est pas implémentée.
+Épuisement des essais vérifié dans `e2e/otp.spec.ts`.
+**À vérifier au premier déploiement** : que Vercel écrase bien `x-vercel-forwarded-for` quand le
+client l'envoie (documenté, non mesuré ici). Si ce n'est pas le cas, la limite par IP devient
+contournable — les limites par adresse et globale restent.
 
 ### M7 — Rattachement de compte OAuth
 
@@ -134,8 +139,12 @@ fournisseur atteste que l'adresse est vérifiée** ; sinon, on exige une vérifi
 référence, aurait fait lier même une adresse non vérifiée. Et un compte dont l'adresse n'est pas
 prouvée (`users.emailVerifiedAt` absent) ne peut accepter aucune invitation : sans cela, créer un
 compte Google avec l'adresse d'un invité suffisait à prendre sa place.
+Enfin, aucun compte ne **naît** avec une adresse non prouvée (`databaseHooks.user.create.before`) :
+sans cela, un tiers créait un compte Google non vérifié à l'adresse d'un gérant, le gérant se
+connectait plus tard par code — ce qui vérifiait l'adresse du compte existant — et le compte Google
+du tiers, resté lié, ouvrait celui du gérant.
 **Vérification** : `tests/convex/permissions.test.ts` — « un compte dont l'adresse n'est pas prouvée
-n'accepte rien ».
+n'accepte rien » ; `tests/convex/authority.test.ts` — aperçu visible, acceptation impossible.
 
 ### M8 — Élévation de privilège
 

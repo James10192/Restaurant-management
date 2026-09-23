@@ -174,15 +174,22 @@ function TeamView({
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem onSelect={() => setEditing(m)}>Modifier les rôles</DropdownMenuItem>
-                      {m.status === "suspended" ? (
-                        <DropdownMenuItem onSelect={() => void changeStatus(m, "active")}>Réactiver</DropdownMenuItem>
+                      {m.canChangeStatus ? (
+                        <>
+                          {m.status === "suspended" ? (
+                            <DropdownMenuItem onSelect={() => void changeStatus(m, "active")}>Réactiver</DropdownMenuItem>
+                          ) : (
+                            <DropdownMenuItem onSelect={() => void changeStatus(m, "suspended")}>Suspendre l'accès</DropdownMenuItem>
+                          )}
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem className="text-danger-700" onSelect={() => setRemoving(m)}>
+                            Retirer de l'équipe
+                          </DropdownMenuItem>
+                        </>
                       ) : (
-                        <DropdownMenuItem onSelect={() => void changeStatus(m, "suspended")}>Suspendre l'accès</DropdownMenuItem>
+                        // Désactivé avec la raison plutôt que masqué : sinon on croit à un bogue.
+                        <DropdownMenuItem disabled>Suspendre ou retirer : réservé à qui gère tous ses rôles</DropdownMenuItem>
                       )}
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem className="text-danger-700" onSelect={() => setRemoving(m)}>
-                        Retirer de l'équipe
-                      </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
                 ) : null}
@@ -249,7 +256,7 @@ function TeamView({
         scopeLabel={scopeLabel}
         onClose={() => setEditing(null)}
       />
-      <Dialog open={removing !== null} onOpenChange={(open) => !open && setRemoving(null)}>
+      <Dialog open={removing !== null} onOpenChange={(open) => { if (!open) { setRemoving(null); setError(null); } }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Retirer {removing?.name ?? removing?.email} ?</DialogTitle>
@@ -258,6 +265,12 @@ function TeamView({
               Son historique reste dans le journal.
             </DialogDescription>
           </DialogHeader>
+          {/* L'erreur s'affiche DANS la modale : derrière elle, personne ne la verrait. */}
+          {error ? (
+            <Alert variant="danger" className="mt-4">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          ) : null}
           <DialogFooter className="mt-6">
             <Button variant="quiet" onClick={() => setRemoving(null)}>
               Annuler

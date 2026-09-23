@@ -135,7 +135,7 @@ export const listForGrant = query({
     return roles
       .filter((role) => role.archivedAt === undefined)
       .map((role) => {
-        const missing = missingPermissions(actor.permissions, effectivePermissionsInScope(role.permissions, scopeType));
+        const missing = missingPermissions(actor.authority, effectivePermissionsInScope(role.permissions, scopeType));
         return {
           _id: role._id,
           label: role.label,
@@ -156,8 +156,9 @@ async function loadOwnRole(actor: Actor, ctx: ReadCtx, roleId: Doc<"roles">["_id
   return role;
 }
 
+/** Verrou 1, mesuré sur l'AUTORITÉ de l'acteur (avant le plan tarifaire). */
 function assertHolds(actor: Actor, permissions: readonly Permission[]): void {
-  const missing = missingPermissions(actor.permissions, permissions);
+  const missing = missingPermissions(actor.authority, permissions);
   if (missing.length > 0) {
     throw forbidden(
       "Ce rôle contiendrait des droits que vous n'avez pas vous-même. Retirez-les, ou demandez à une personne qui les détient.",

@@ -152,9 +152,14 @@ export const update = mutation({
     if (description !== undefined) patch.description = description;
     if (args.address !== undefined) {
       const city = args.address.city.trim();
-      if (city.length < 2) throw invalid("La ville est requise.");
+      if (city.length < 2 || city.length > 80) throw invalid("La ville doit contenir entre 2 et 80 caractères.");
+      const address: Record<string, string> = { city, countryCode: venue.countryCode };
+      for (const key of ["line1", "line2", "district", "landmark"] as const) {
+        const value = optionalText(160, "Chaque ligne d'adresse", args.address[key]);
+        if (value) address[key] = value;
+      }
       // La venue garde son pays : un changement de pays changerait devise et fuseau.
-      patch.address = { ...args.address, city, countryCode: venue.countryCode };
+      patch.address = address;
     }
     if (Object.keys(patch).length === 0) return;
     const before: Record<string, unknown> = {};

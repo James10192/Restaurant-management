@@ -13,11 +13,14 @@ function run(dir?: string) {
 }
 
 describe("scripts/check-guards.mjs", () => {
-  test("refuse une fonction sans garde et une lecture avant la garde", () => {
+  test("refuse une fonction sans garde, une lecture avant la garde, une garde en commentaire ou en chaîne, une exemption hors du handler", () => {
     const result = run("tests/fixtures/guards");
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("lectureLibre (query) : aucune garde");
     expect(result.stderr).toContain("lirePuisVerifier (mutation) : accès à ctx.db AVANT la garde");
+    expect(result.stderr).toContain("gardeCommentee (query) : aucune garde");
+    expect(result.stderr).toContain("gardeDansUneChaine (query) : aucune garde");
+    expect(result.stderr).toContain("exemptionMalPlacee (query) : aucune garde");
     expect(result.stderr).not.toContain("correcte");
     expect(result.stderr).not.toContain("exemptee");
   });

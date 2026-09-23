@@ -16,4 +16,12 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
   // falsifie auprès d'un appel direct au déploiement, l'adresse visée, non. Protège aussi
   // la boîte de la personne visée contre une inondation de codes.
   otpEmail: { kind: "fixed window", rate: 5, period: 10 * MINUTE },
+  // Plafond GLOBAL des codes : la limite par IP se contourne en appelant le déploiement
+  // directement avec un en-tête d'IP inventé, et la limite par adresse n'empêche pas de
+  // viser des milliers d'adresses. Borne le coût d'envoi et protège la réputation du domaine.
+  // Largement au-dessus d'un usage réel (une connexion par personne et par jour).
+  otpGlobal: { kind: "token bucket", rate: 120, period: MINUTE, capacity: 240 },
+  // Une invitation porte un nom d'organisation et d'invitant choisis par l'appelant, envoyés
+  // depuis le domaine Joliba : plafond par organisation, en plus de celui par personne.
+  invitationPerOrganization: { kind: "fixed window", rate: 100, period: 24 * HOUR },
 });

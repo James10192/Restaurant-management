@@ -53,7 +53,10 @@ export type OrganizationActor = {
 export type Actor = OrganizationActor & {
   /** Présent quand la question portait sur un établissement. */
   venue: Doc<"venues"> | null;
+  /** Ce que l'acteur peut faire, plan tarifaire appliqué. */
   permissions: ReadonlySet<Permission>;
+  /** Ce que ses rôles lui accordent, avant le plan : mesure de son autorité (verrous). */
+  authority: ReadonlySet<Permission>;
 };
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -178,16 +181,26 @@ async function effectiveEntitlements(
 }
 
 /**
- * Permissions effectives de l'acteur, dans une portée donnée.
+ * Les droits de l'acteur dans une portée, sous deux formes :
+ *
+ *  - `granted` : ce que ses rôles lui ACCORDENT, avant le plan tarifaire. C'est la mesure
+ *    de son AUTORITÉ, et c'est elle que les verrous comparent (donner, retirer, composer un
+ *    rôle). Sans cette séparation, un plan qui retire l'IA empêchait jusqu'au propriétaire
+ *    de gérer un rôle contenant `ai.use` : le plan décidait de qui commande, pas seulement
+ *    de ce qu'on peut utiliser.
+ *  - `effective` : `granted` moins ce que le plan ne couvre pas. C'est ce que l'acteur peut
+ *    FAIRE, et c'est ce que vérifie `requirePermission`.
  *
  * `venue` absent : seules les affectations au niveau organisation comptent.
- * `venue` présent : affectations organisation + affectations sur CET établissement.
+ * `venue` présent : affectations organisation + affectations sur CET établissement — et de
+ * ces dernières, seules les permissions de portée « établissement » : une permission
+ * d'organisation ne s'obtient que par une affectation d'organisation (D-032).
  */
-export async function resolvePermissions(
+export async function resolvePermissionSets(
   ctx: ReadCtx,
   actor: OrganizationActor,
   venue: Doc<"venues"> | null,
-): Promise<Set<Permission>> {
+): Promise<{ granted: Set<Permission>; effective: Set<Permission> }> {
   let granted: Set<Permission>;
   if (actor.isOwner) {
     granted = new Set(ALL_PERMISSIONS);
@@ -195,20 +208,31 @@ export async function resolvePermissions(
     granted = new Set();
     const assignments = await assignmentsOf(ctx, actor.member._id);
     for (const a of assignments) {
-      const applies =
-        a.scopeType === "organization" || (venue !== null && a.venueId === venue._id);
-      if (!applies) continue;
+      const orgWide = a.scopeType === "organization";
+      if (!orgWide && (venue === null || a.venueId !== venue._id)) continue;
       const role = await ctx.db.get(a.roleId);
       // Un rôle archivé ou d'une autre organisation ne confère rien, quoi qu'en dise
       // l'affectation : la ligne d'affectation n'est pas une source de vérité suffisante.
       if (!role || role.archivedAt !== undefined) continue;
       if (role.organizationId !== actor.organization._id) continue;
       for (const p of role.permissions) {
-        if (isPermission(p)) granted.add(p);
+        if (!isPermission(p)) continue;
+        if (!orgWide && permissionMeta(p).scope !== "venue") continue;
+        granted.add(p);
       }
     }
   }
-  return applyEntitlements(granted, await effectiveEntitlements(ctx, actor.organization._id));
+  const effective = applyEntitlements(granted, await effectiveEntitlements(ctx, actor.organization._id));
+  return { granted, effective };
+}
+
+/** Ce que l'acteur peut faire (après le plan). */
+export async function resolvePermissions(
+  ctx: ReadCtx,
+  actor: OrganizationActor,
+  venue: Doc<"venues"> | null,
+): Promise<Set<Permission>> {
+  return (await resolvePermissionSets(ctx, actor, venue)).effective;
 }
 
 /**
@@ -243,19 +267,9 @@ export async function requirePermission(
     "venueId" in scope
       ? await requireVenueAccess(ctx, scope.venueId)
       : { ...(await requireOrganizationMember(ctx, scope.organizationId)), venue: null };
-  const permissions = await resolvePermissions(ctx, base, base.venue);
-  if (!permissions.has(permission)) throw forbidden();
-  return { ...base, permissions };
-}
-
-/** Variante qui répond oui/non sans lever, pour composer des vues. */
-export async function hasPermission(
-  ctx: ReadCtx,
-  actor: OrganizationActor,
-  permission: Permission,
-  venue: Doc<"venues"> | null,
-): Promise<boolean> {
-  return (await resolvePermissions(ctx, actor, venue)).has(permission);
+  const { granted, effective } = await resolvePermissionSets(ctx, base, base.venue);
+  if (!effective.has(permission)) throw forbidden();
+  return { ...base, permissions: effective, authority: granted };
 }
 
 /**

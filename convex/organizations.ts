@@ -111,6 +111,7 @@ export async function createVenueRecords(
     ),
   );
   const city = args.city?.trim();
+  if (city && city.length > 80) throw invalid("Le nom de la ville ne doit pas dépasser 80 caractères.");
   const venueId = await ctx.db.insert("venues", {
     organizationId: args.organizationId,
     name: args.name,

@@ -78,6 +78,29 @@ function InvitationPage() {
     );
   }
 
+  if (preview.viewerEmailMatches && preview.viewerEmailVerified === false) {
+    return (
+      <AuthLayout title="Confirmez votre adresse" description={intro}>
+        <Alert variant="warning">
+          <AlertDescription>
+            Votre compte n'a pas encore prouvé qu'il détient cette adresse. Reconnectez-vous avec un code reçu par e-mail :
+            l'invitation sera alors acceptable.
+          </AlertDescription>
+        </Alert>
+        <Button
+          size="lg"
+          className="mt-6 w-full"
+          onClick={async () => {
+            await authClient.signOut();
+            await navigate({ to: "/connexion", search: { redirect: here } });
+          }}
+        >
+          Recevoir un code
+        </Button>
+      </AuthLayout>
+    );
+  }
+
   if (preview.viewerEmailMatches === false) {
     return (
       <AuthLayout title="Mauvaise adresse" description={intro}>

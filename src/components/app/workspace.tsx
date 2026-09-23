@@ -49,6 +49,18 @@ function write(key: string, value: string) {
   }
 }
 
+/**
+ * Oublie l'organisation choisie. Utilisé quand l'espace courant devient introuvable — la
+ * personne a été retirée, ou l'établissement fermé, pendant qu'elle travaillait.
+ */
+export function forgetWorkspaceSelection() {
+  try {
+    localStorage.removeItem(ORG_KEY);
+  } catch {
+    /* rien à oublier */
+  }
+}
+
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const organizations = useQuery(api.organizations.listMine, {});
   const [preferredOrg, setPreferredOrg] = useState<string | null>(null);

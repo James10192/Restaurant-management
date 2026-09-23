@@ -51,6 +51,12 @@ export function InviteDialog({
     setCopied(false);
   }
 
+  /** Fermer remet à zéro : une réouverture ne doit jamais montrer l'ancien lien. */
+  function close() {
+    reset();
+    onOpenChange(false);
+  }
+
   async function submit(event: FormEvent) {
     event.preventDefault();
     const value = email.trim().toLowerCase();
@@ -132,7 +138,7 @@ export function InviteDialog({
               <Button variant="quiet" onClick={reset}>
                 Inviter quelqu'un d'autre
               </Button>
-              <Button onClick={() => onOpenChange(false)}>Terminé</Button>
+              <Button onClick={close}>Terminé</Button>
             </DialogFooter>
           </>
         ) : (
@@ -178,7 +184,7 @@ export function InviteDialog({
               ) : null}
             </div>
             <DialogFooter className="mt-6">
-              <Button variant="quiet" onClick={() => onOpenChange(false)}>
+              <Button variant="quiet" onClick={close}>
                 Annuler
               </Button>
               <Button type="submit" loading={sending} loadingText="Envoi…">
