@@ -1,5 +1,8 @@
 # Prompts — logo et slogan de Joliba
 
+> **Logo adopté le 2026-09-23 (D-059)** : fichiers d'origine dans `docs/brand/source/`, versions
+> vectorielles dans `public/brand/`, favicon dans `public/favicon.svg`, couleur **#044E5A**.
+
 > Prompts prêts à coller dans un générateur d'images (Midjourney, Ideogram, DALL·E, Recraft…)
 > ou dans un assistant de rédaction. Ils sont en anglais quand ils visent un générateur d'images,
 > parce que ces outils suivent mieux l'anglais ; chaque prompt est expliqué en français.
@@ -138,5 +141,4 @@ Classe-les du plus clair au plus audacieux. Signale ceux qui pourraient être ma
 2. Faire une recherche d'antériorité de marque (OAPI, EUIPO, USPTO) : le nom n'a été vérifié
    que pour les domaines (voir `naming-study.md` §8).
 3. Faire valider le sens de « Joliba » par des locuteurs mandingues.
-4. Remplacer la marque provisoire `JolibaMark` (`src/components/app/auth-layout.tsx`) et le
-   `favicon.svg`.
+4. ~~Remplacer la marque provisoire `JolibaMark` et le `favicon.svg`~~ — fait (D-059).

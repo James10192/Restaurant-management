@@ -19,7 +19,7 @@ function Home() {
       </header>
       <section className="mx-auto flex w-full max-w-2xl flex-1 flex-col justify-center gap-6 px-4 py-12">
         <h1 className="text-4xl font-semibold tracking-tight text-balance md:text-5xl">
-          Le service, visible de la salle à la caisse.
+          Le service qui coule de source.
         </h1>
         <p className="text-lg text-muted-foreground">
           Joliba relie la carte, la salle, la cuisine et la caisse de votre restaurant. Chaque membre de l'équipe voit ce que son

@@ -110,6 +110,9 @@ components:
 > - **toujours en vigueur** : les huit règles nommées (§4, R-D1 à R-D8), les états d'écran (§10),
 >   le budget de performance de la carte client et les exigences d'accessibilité.
 > Le front-matter ci-dessus est conservé pour l'historique ; il ne pilote plus le code.
+>
+> **Marque (D-059)** : logo et favicon dans `public/brand/` et `public/favicon.svg`, couleur **#044E5A**
+> posée comme `--primary` du thème shadcn. Sources et prompts : `docs/brand/`.
 
 > Ce document est **opposable**. Chaque valeur qu'il contient est justifiée par un usage réel :
 > une cuisine bruyante, un coup de feu à dix-neuf heures, un téléphone Android à 100 $ sur une 4G
