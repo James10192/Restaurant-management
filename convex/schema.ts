@@ -327,6 +327,10 @@ export default defineSchema({
       taxId: v.optional(v.string()),
       fneEnabled: v.boolean(),
       receiptFooter: v.optional(v.string()),
+      /** Identité légale du vendeur, recopiée sur chaque pièce (D-063). */
+      legalName: v.optional(v.string()),
+      rccm: v.optional(v.string()),
+      legalAddress: v.optional(v.string()),
     }),
     /**
      * Fournisseurs de paiement actifs, PAR ÉTABLISSEMENT. D-026 exige de pouvoir changer
@@ -1335,14 +1339,55 @@ export default defineSchema({
     venueId: v.id("venues"),
     checkId: v.id("checks"),
     tableSessionId: v.id("tableSessions"),
+    /**
+     * Vente ou avoir. Une pièce émise ne se modifie JAMAIS (seuls les champs `fiscal*` évoluent) :
+     * un remboursement crée un avoir lié, qui la corrige sans la réécrire (D-063).
+     */
+    kind: v.union(v.literal("sale"), v.literal("credit_note")),
+    correctsBillId: v.optional(v.id("bills")),
+    /**
+     * Numérotation locale sans trou, par établissement, année fiscale (fuseau de l'établissement)
+     * et sorte de pièce, tirée de `venueCounters` DANS la mutation d'émission. Distincte du numéro
+     * que l'administration fiscale attribuera.
+     */
+    fiscalYear: v.number(),
+    sequenceNumber: v.number(),
     reference: v.string(),
-    snapshot: v.any(),
+    /** Figé à l'émission, et typé : ce que la pièce dit, pas ce que la base dit aujourd'hui. */
+    snapshot: v.object({
+      seller: v.object({
+        name: v.string(),
+        legalName: v.optional(v.string()),
+        taxId: v.optional(v.string()),
+        rccm: v.optional(v.string()),
+        regime: v.string(),
+        address: v.optional(v.string()),
+      }),
+      buyer: v.optional(v.object({ taxId: v.string(), legalName: v.string() })),
+      lines: v.array(
+        v.object({
+          name: v.string(),
+          quantity: v.number(),
+          unitPrice: money,
+          lineTotal: money,
+          taxes: v.array(v.object({ code: v.string(), percent: v.number(), base: money, amount: money })),
+        }),
+      ),
+      totals: v.object({ subtotal: money, discounts: money, tax: money, serviceCharge: money, total: money }),
+      payments: v.array(v.object({ method: v.string(), amount: money })),
+      currency: v.string(),
+      servedBy: v.optional(v.string()),
+    }),
     format: v.string(),
     /** `none` = simple ticket. `rne` = reçu certifié B2C. `fne` = facture certifiée B2B. */
     fiscalType: v.union(v.literal("none"), v.literal("rne"), v.literal("fne")),
-    /** Reste `none` tant que la spécification FNE/RNE n'est pas en main (A7, D-020). */
+    /**
+     * Reste `none` tant que la procédure de la DGI n'est pas lue (A7, D-063). `not_required` :
+     * pièce que l'administration n'attend pas (établissement hors champ).
+     */
     fiscalStatus: v.union(
       v.literal("none"),
+      v.literal("not_required"),
       v.literal("pending"),
       v.literal("submitted"),
       v.literal("accepted"),
@@ -1351,6 +1396,10 @@ export default defineSchema({
     fiscalReference: v.optional(v.string()),
     fiscalQrPayload: v.optional(v.string()),
     fiscalSubmittedAt: v.optional(v.number()),
+    fiscalAttempts: v.optional(v.number()),
+    certifiedAt: v.optional(v.number()),
+    /** La réponse brute de l'administration, conservée telle quelle. */
+    fiscalResponseStorageId: v.optional(v.id("_storage")),
     fiscalError: v.optional(v.string()),
     /** Renseigné en B2B seulement : le FNE exige d'identifier l'acheteur. */
     buyerTaxId: v.optional(v.string()),
@@ -1360,7 +1409,10 @@ export default defineSchema({
   })
     .index("by_check", ["checkId"])
     .index("by_venue_issuedAt", ["venueId", "issuedAt"])
-    .index("by_reference", ["reference"]) // vérification publique d'une pièce
+    // Par établissement, jamais globale : aucune page publique de « vérification » de nos tickets,
+    // qui pourrait passer pour le contrôle officiel de l'administration (D-063).
+    .index("by_venue_reference", ["venueId", "reference"])
+    .index("by_corrects", ["correctsBillId"])
     .index("by_venue_fiscal", ["venueId", "fiscalStatus"]),
 
   /* ══════════════════════════════════════════════════════════════════════════

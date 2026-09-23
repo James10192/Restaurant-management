@@ -824,14 +824,23 @@ remis au particulier) et « facture » le **FNE** (remis à un professionnel) : 
 **certifiées par la DGI**. Un ticket non certifié ne peut porter ni l'un ni l'autre de ces noms —
 ni dans l'interface, ni dans le code. La table s'appelle donc `bills`, et la pièce porte son type
 réel dans `fiscalType` une fois certifiée *(D-024)*.
-**Champs** : `organizationId`, `venueId`, `checkId`, `tableSessionId`, `reference`, `snapshot`
-(établissement, lignes, taxes, paiements, serveur), `format`, `fiscalType` (`none`/`rne`/`fne`), `fiscalStatus`
-(`none`/`pending`/`submitted`/`accepted`/`rejected`), `fiscalReference?`, `fiscalQrPayload?`, `buyerTaxId?`,
-`issuedAt`, `deliveredVia` (`screen`/`email`/`print`/`whatsapp`), `storageId?`.
+**Champs** : `venueId`, `checkId`, `tableSessionId`, `kind` (`sale`/`credit_note`), `correctsBillId?`
+(l'avoir désigne la pièce qu'il corrige), `fiscalYear` + `sequenceNumber` (numérotation sans trou par
+établissement, année et sorte, tirée de `venueCounters` dans la mutation d'émission), `reference`,
+`snapshot` **typé** (vendeur avec son identité légale — raison sociale, NCC, RCCM, régime —, acheteur
+en B2B, lignes avec leurs taxes, totaux, paiements par moyen, devise, serveur), `format`, `fiscalType`
+(`none`/`rne`/`fne`), `fiscalStatus` (`none`/`not_required`/`pending`/`submitted`/`accepted`/`rejected`),
+`fiscalReference?`, `fiscalQrPayload?`, `fiscalSubmittedAt?`, `fiscalAttempts?`, `certifiedAt?`,
+`fiscalResponseStorageId?` (réponse brute de l'administration), `fiscalError?`, `buyerTaxId?`, `issuedAt`,
+`deliveredVia` (`screen`/`email`/`print`/`whatsapp`), `storageId?`.
 **Index** : `by_check ["checkId"]` · `by_venue_issuedAt ["venueId","issuedAt"]` ·
-`by_reference ["reference"]` (vérification publique) · `by_venue_fiscal ["venueId","fiscalStatus"]`
-(file de soumission)
-**Cycle** : émis → (si le pays l'exige) soumis à l'administration → accepté avec sa référence.
+`by_venue_reference ["venueId","reference"]` — **jamais un index global** : aucune page publique de
+vérification de nos tickets, qui pourrait passer pour le contrôle officiel de la DGI (D-063) ·
+`by_corrects ["correctsBillId"]` · `by_venue_fiscal ["venueId","fiscalStatus"]` (file de soumission)
+**Cycle** : émise → **immuable** (seuls les champs `fiscal*` évoluent) → (si le pays l'exige) soumise à
+l'administration → acceptée avec sa référence. Un remboursement crée un **avoir lié**, jamais une
+modification. Conservation dix ans au moins, jamais supprimée ni anonymisée. « Paiement enregistré »
+n'est pas « pièce remise » : la certification est une étape asynchrone.
 
 > Les champs `fiscal*` existent **dès maintenant** parce que la conformité est un motif d'achat
 > *(A7 révisé, D-020)*, mais ils restent à `none` tant que la spécification d'intégration n'est pas
