@@ -14,6 +14,7 @@
 import { describe, expect, test, vi } from "vitest";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
+import { activateAndUnlock, enrollDevice, pinMember } from "./deviceFixtures";
 import { expectCode, inviteAndJoin, modules, openOrganization, setup, type Session } from "./setup";
 
 async function twoTenants() {
@@ -1004,6 +1005,101 @@ const CASES: Record<string, (w: Awaited<ReturnType<typeof twoTenants>>) => Promi
       w.a.owner.as.mutation(api.kitchen.advance, { venueId: w.a.venueId, ticketId: s.ticketId, action: "ready" }),
     );
   },
+  /* ─── Appareils et PIN (D-060) ─── */
+  "devices.createEnrollment": async (w) => {
+    const s = await withServiceB(w);
+    await expectCode(w.a.owner.as.mutation(api.devices.createEnrollment, { venueId: w.b.venueId, label: "Intrus", deviceType: "shared" }), "NOT_FOUND");
+    // Son établissement, le poste de B ; puis le serveur de B comme propriétaire d'un téléphone.
+    await expectCode(
+      w.a.owner.as.mutation(api.devices.createEnrollment, { venueId: w.a.venueId, label: "Intrus", deviceType: "kds", stationId: s.stationId }),
+      "NOT_FOUND",
+    );
+    await expectCode(
+      w.a.owner.as.mutation(api.devices.createEnrollment, { venueId: w.a.venueId, label: "Intrus", deviceType: "personal", memberId: w.waiterB.memberId }),
+      "NOT_FOUND",
+    );
+  },
+  "devices.enroll": async (w) => {
+    const device = await enrollDevice(w.t, w.a.owner, w.a.venueId, { deviceType: "shared" });
+    const stored = await w.t.run((ctx) => ctx.db.get(device.deviceId));
+    expect(stored!.venueId).toBe(w.a.venueId);
+  },
+  "devices.list": async ({ t, a, b }) => {
+    await enrollDevice(t, b.owner, b.venueId, { deviceType: "shared", label: "Tablette B" });
+    await expectCode(a.owner.as.query(api.devices.list, { venueId: b.venueId }), "NOT_FOUND");
+    expect(await a.owner.as.query(api.devices.list, { venueId: a.venueId })).toEqual([]);
+  },
+  "devices.revoke": async ({ t, a, b }) => {
+    const deviceB = await enrollDevice(t, b.owner, b.venueId, { deviceType: "shared" });
+    await bothRefused(
+      a.owner.as.mutation(api.devices.revoke, { venueId: b.venueId, deviceId: deviceB.deviceId }),
+      a.owner.as.mutation(api.devices.revoke, { venueId: a.venueId, deviceId: deviceB.deviceId }),
+    );
+    expect((await t.run((ctx) => ctx.db.get(deviceB.deviceId)))!.revokedAt).toBeUndefined();
+  },
+  "staff.createPinMember": async ({ a, b }) => {
+    await expectCode(
+      a.owner.as.mutation(api.staff.createPinMember, { organizationId: b.organizationId, displayName: "Intrus", roleId: b.roleId("waiter"), venueIds: [] }),
+      "NOT_FOUND",
+    );
+    await expectCode(
+      a.owner.as.mutation(api.staff.createPinMember, { organizationId: a.organizationId, displayName: "Intrus", roleId: b.roleId("waiter"), venueIds: [] }),
+      "NOT_FOUND",
+    );
+    await expectCode(
+      a.owner.as.mutation(api.staff.createPinMember, { organizationId: a.organizationId, displayName: "Intrus", roleId: a.roleId("waiter"), venueIds: [b.venueId] }),
+      "NOT_FOUND",
+    );
+  },
+  "staff.issueActivationCode": async ({ a, b, waiterB }) => {
+    await expectCode(a.owner.as.mutation(api.staff.issueActivationCode, { organizationId: b.organizationId, memberId: waiterB.memberId }), "NOT_FOUND");
+    await expectCode(a.owner.as.mutation(api.staff.issueActivationCode, { organizationId: a.organizationId, memberId: waiterB.memberId }), "NOT_FOUND");
+  },
+  "staff.disablePin": async ({ a, b, waiterB }) => {
+    await expectCode(a.owner.as.mutation(api.staff.disablePin, { organizationId: b.organizationId, memberId: waiterB.memberId }), "NOT_FOUND");
+    await expectCode(a.owner.as.mutation(api.staff.disablePin, { organizationId: a.organizationId, memberId: waiterB.memberId }), "NOT_FOUND");
+  },
+  "operators.roster": async ({ t, a, b }) => {
+    const deviceA = await enrollDevice(t, a.owner, a.venueId, { deviceType: "shared" });
+    const koffiB = await pinMember(b.owner, b.organizationId, b.roleId("waiter"), [b.venueId], "Koffi B");
+    const deviceB = await enrollDevice(t, b.owner, b.venueId, { deviceType: "shared" });
+    await activateAndUnlock(t, deviceB.deviceToken, koffiB.code, "2468");
+    const roster = await t.query(api.operators.roster, { deviceToken: deviceA.deviceToken });
+    expect(roster.venueName).toBe("Maquis A — Cocody");
+    expect(JSON.stringify(roster)).not.toContain("Koffi B");
+  },
+  "operators.activate": async ({ t, a, b }) => {
+    const deviceA = await enrollDevice(t, a.owner, a.venueId, { deviceType: "shared" });
+    const koffiB = await pinMember(b.owner, b.organizationId, b.roleId("waiter"), [b.venueId], "Koffi B");
+    // Le code de B sur un appareil de A : refusé, et le PIN de B n'est pas posé.
+    expect(await t.mutation(api.operators.activate, { deviceToken: deviceA.deviceToken, code: koffiB.code, pin: "2468" })).toMatchObject({ ok: false, reason: "invalid_code" });
+    const credential = await t.run((ctx) => ctx.db.query("staffCredentials").withIndex("by_member", (q) => q.eq("memberId", koffiB.memberId)).unique());
+    expect(credential!.status).toBe("pending");
+  },
+  "operators.unlock": async ({ t, a, b }) => {
+    const deviceA = await enrollDevice(t, a.owner, a.venueId, { deviceType: "shared" });
+    const koffiB = await pinMember(b.owner, b.organizationId, b.roleId("waiter"), [b.venueId], "Koffi B");
+    const deviceB = await enrollDevice(t, b.owner, b.venueId, { deviceType: "shared" });
+    await activateAndUnlock(t, deviceB.deviceToken, koffiB.code, "2468");
+    // Le bon PIN d'un membre de B, sur la tablette de A : rien.
+    expect(await t.action(api.operators.unlock, { deviceToken: deviceA.deviceToken, memberId: koffiB.memberId, pin: "2468" })).toMatchObject({ ok: false, reason: "not_here" });
+  },
+  "operators.refresh": async ({ t, a, b }) => {
+    const deviceA = await enrollDevice(t, a.owner, a.venueId, { deviceType: "shared" });
+    const koffiB = await pinMember(b.owner, b.organizationId, b.roleId("waiter"), [b.venueId], "Koffi B");
+    const deviceB = await enrollDevice(t, b.owner, b.venueId, { deviceType: "shared" });
+    const opB = await activateAndUnlock(t, deviceB.deviceToken, koffiB.code, "2468");
+    // Le secret de renouvellement de B, présenté par l'appareil de A : refusé.
+    expect(await t.action(api.operators.refresh, { deviceToken: deviceA.deviceToken, refreshSecret: opB.refreshSecret })).toEqual({ ok: false });
+  },
+  "operators.lock": async ({ t, a, b }) => {
+    const deviceA = await enrollDevice(t, a.owner, a.venueId, { deviceType: "shared" });
+    const koffiB = await pinMember(b.owner, b.organizationId, b.roleId("waiter"), [b.venueId], "Koffi B");
+    const deviceB = await enrollDevice(t, b.owner, b.venueId, { deviceType: "shared" });
+    const opB = await activateAndUnlock(t, deviceB.deviceToken, koffiB.code, "2468");
+    await t.mutation(api.operators.lock, { deviceToken: deviceA.deviceToken });
+    expect((await t.run((ctx) => ctx.db.get(opB.sessionId)))!.endedAt).toBeUndefined();
+  },
 };
 
 describe("isolation multi-tenant : A ne voit ni ne touche rien de B", () => {
@@ -1016,7 +1112,7 @@ describe("isolation multi-tenant : A ne voit ni ne touche rien de B", () => {
       expect(org.name).toBe("Lounge B");
       expect(org.venues.map((v) => v.name)).toEqual(["Lounge B — Plateau"]);
       const members = await world.b.owner.as.query(api.team.listMembers, { scope: { organizationId: world.b.organizationId } });
-      expect(members.map((m) => m.email).sort()).toEqual(["bakary@lounge-b.ci", "serveur@lounge-b.ci"]);
+      expect(members.filter((m) => m.kind === "account").map((m) => m.email).sort()).toEqual(["bakary@lounge-b.ci", "serveur@lounge-b.ci"]);
       expect(members.find((m) => m.email === "serveur@lounge-b.ci")?.status).toBe("active");
       // Et la carte de B est intacte : produit, prix, disponibilité, version en ligne.
       const productB = await world.b.owner.as.query(api.products.get, { venueId: world.b.venueId, productId: world.catalogB.productId });

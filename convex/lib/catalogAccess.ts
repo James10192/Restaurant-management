@@ -13,6 +13,7 @@ import type { ReadCtx } from "./guards";
 
 type VenueScopedTable =
   | "menus"
+  | "trustedDevices"
   | "menuSections"
   | "products"
   | "productVariants"

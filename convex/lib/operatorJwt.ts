@@ -38,7 +38,8 @@ export function operatorSubject(subject: OperatorSubject): string {
 /** Lit un sujet ; `null` pour tout ce qui n'est pas de notre émetteur ou mal formé. */
 export function parseOperatorSubject(issuer: string, subject: string): OperatorSubject | null {
   if (!isOperatorIssuer(issuer)) return null;
-  const match = /^(op|dev):([a-z0-9]+)$/.exec(subject);
+  // L'identifiant est validé ensuite par `normalizeId` : ici, seulement sa forme générale.
+  const match = /^(op|dev):([^\s:]{1,64})$/.exec(subject);
   if (!match) return null;
   return { kind: match[1] === "op" ? "operator" : "device", id: match[2]! };
 }

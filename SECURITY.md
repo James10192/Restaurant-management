@@ -111,6 +111,21 @@ et la version du QR : « Révoquer et régénérer » coupe aussitôt les client
 requête, une requête Convex en cache ne se réévaluant pas avec l'heure (D-057). Le jeton est stocké en clair pour permettre la réimpression :
 seule la planche d'impression le lit, avec la permission `table.qr.manage`.
 
+**Appareils enrôlés et PIN de service (T2, D-060).** Un appareil s'enrôle par un code à usage unique
+(8 caractères, 10 minutes, plafond global d'essais) ; il garde un jeton de 256 bits dont seul le
+SHA-256 est stocké. Ce jeton ne donne aucun droit métier : il permet de voir les noms de l'équipe et
+de tenter un PIN. Le PIN (4 chiffres, codes évidents refusés, pas de contrôle d'unicité) est haché
+en HMAC-SHA256 sous `PIN_PEPPER`, jamais journalisé, choisi par l'employé lui-même à partir d'un code
+d'activation que le gérant lui remet. Verrous côté serveur : 5 échecs en 15 minutes verrouillent le
+PIN 15 minutes sur tous les appareils ; 10 échecs depuis la dernière réussite le désactivent ;
+15 échecs en une heure sur un même appareil y suspendent tous les PIN 30 minutes et laissent une
+trace au journal. Les échecs sont comptés dans une mutation qui **renvoie** le refus au lieu de
+lever : une erreur annulerait la transaction et avec elle le compteur. Un déverrouillage réussi
+donne un jeton ES256 de 10 minutes signé par Convex (second fournisseur `customJwt`, à côté de
+Better Auth) ; chaque appel relit l'appareil, la session d'opérateur (12 heures au plus, 3 minutes
+d'inactivité sur un appareil partagé), le membre et son PIN. Révoquer l'appareil coupe tout
+immédiatement et oblige ceux qui s'y sont identifiés depuis 12 heures à rechoisir leur PIN.
+
 **Ce qu'il faut assumer** : en mode `frictionless`, une photo permet de rejoindre une session
 ouverte. C'est un choix du restaurant, présenté comme tel dans l'onboarding, avec sa conséquence
 écrite noir sur blanc. On ne prétend pas que le mode le plus fluide est aussi le plus sûr.

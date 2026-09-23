@@ -32,6 +32,9 @@ sera lu trop tard.
 | Variable | Où | Rôle |
 |---|---|---|
 | `GUEST_PASS_SECRET` | déploiement **Convex** | Signe les laissez-passer de table (HMAC-SHA256). 32 caractères au moins, aléatoires, **différents par environnement**. Absente ou trop courte : l'échange de QR échoue — jamais de laissez-passer non signé. La changer invalide tous les clients attablés : ils rescannent. |
+| `PIN_PEPPER` | déploiement **Convex** | Secret sous lequel les PIN de service et les codes d'activation sont hachés (HMAC-SHA256, D-060). 32 caractères au moins, aléatoires, **différents par environnement**. Absent : aucun PIN ne se choisit ni ne se vérifie. Le changer rend tous les PIN invalides : chacun doit recevoir un nouveau code d'activation. |
+| `OPERATOR_JWT_PRIVATE_KEY` | déploiement **Convex** | Clé privée ES256 (JWK) qui signe les jetons d'appareil et de PIN, 10 minutes. `node scripts/operator-keys.mjs --apply` la fabrique et la pose sans l'écrire nulle part. |
+| `OPERATOR_JWKS` | déploiement **Convex** | La clé publique correspondante, lue par `convex/auth.config.ts` **au déploiement** : redéployer après l'avoir changée. Absente : le second fournisseur n'existe pas, et aucun jeton d'opérateur n'est accepté. |
 | `SITE_URL` | application web | Origine publique (`https://…`, sans barre finale). Sert l'adresse canonique, les données structurées, `robots.txt` et le plan du site. À défaut, l'origine de la requête — acceptable en local, pas en production derrière un proxy. |
 | `JOLIBA_DEMO_SEED` | déploiement Convex | **Jamais en production.** `1` autorise le restaurant de démonstration (`scripts/seed-demo.mjs`) ; seul `scripts/e2e-env.sh` la pose, sur un backend local anonyme. |
 
@@ -210,5 +213,6 @@ qu'on ne sait pas encore, et quand on redonnera des nouvelles.
 - [ ] Point d'état de santé exposé et surveillé
 - [ ] Procédure de rotation des secrets écrite et testée
 - [ ] `GUEST_PASS_SECRET` posé en production, distinct de tous les autres environnements
+- [ ] `PIN_PEPPER`, `OPERATOR_JWT_PRIVATE_KEY`, `OPERATOR_JWKS` posés en production, distincts de tous les autres environnements
 - [ ] Carte client mesurée sur un vrai Android d'entrée de gamme en 4G bridée (DESIGN §12, point 6)
 - [ ] Limitation de débit par IP sur `/r/*/t/*` en bordure (SECURITY M3)

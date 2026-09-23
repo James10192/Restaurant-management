@@ -125,6 +125,8 @@ node scripts/measure-guest.mjs <adresse de scan>  # carte client en 4G bridée �
 
 Variables du déploiement Convex : `SITE_URL`, `BETTER_AUTH_SECRET`, `RESEND_API_KEY`, `EMAIL_FROM`
 (sans elles, aucun code de connexion ne part), `GUEST_PASS_SECRET` (sans elle, aucun QR ne s'ouvre),
+`PIN_PEPPER`, `OPERATOR_JWT_PRIVATE_KEY` et `OPERATOR_JWKS` (sans elles, aucun appareil enrôlé ni PIN
+de service ; `node scripts/operator-keys.mjs --apply` pose les deux dernières),
 et `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` pour Google (le bouton n'apparaît qu'avec
 `VITE_AUTH_GOOGLE=true` côté application). Détail dans `DEPLOYMENT.md` §1.
 

@@ -11,6 +11,7 @@
 import type * as auth from "../auth.js";
 import type * as availability from "../availability.js";
 import type * as devSeed from "../devSeed.js";
+import type * as devices from "../devices.js";
 import type * as floor from "../floor.js";
 import type * as guest from "../guest.js";
 import type * as health from "../health.js";
@@ -51,6 +52,7 @@ import type * as lib_venueDefaults from "../lib/venueDefaults.js";
 import type * as menuImport from "../menuImport.js";
 import type * as menus from "../menus.js";
 import type * as modifiers from "../modifiers.js";
+import type * as operators from "../operators.js";
 import type * as orders from "../orders.js";
 import type * as organizations from "../organizations.js";
 import type * as products from "../products.js";
@@ -58,6 +60,7 @@ import type * as publications from "../publications.js";
 import type * as qr from "../qr.js";
 import type * as roles from "../roles.js";
 import type * as sessions from "../sessions.js";
+import type * as staff from "../staff.js";
 import type * as stations from "../stations.js";
 import type * as team from "../team.js";
 import type * as users from "../users.js";
@@ -73,6 +76,7 @@ declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   availability: typeof availability;
   devSeed: typeof devSeed;
+  devices: typeof devices;
   floor: typeof floor;
   guest: typeof guest;
   health: typeof health;
@@ -113,6 +117,7 @@ declare const fullApi: ApiFromModules<{
   menuImport: typeof menuImport;
   menus: typeof menus;
   modifiers: typeof modifiers;
+  operators: typeof operators;
   orders: typeof orders;
   organizations: typeof organizations;
   products: typeof products;
@@ -120,6 +125,7 @@ declare const fullApi: ApiFromModules<{
   qr: typeof qr;
   roles: typeof roles;
   sessions: typeof sessions;
+  staff: typeof staff;
   stations: typeof stations;
   team: typeof team;
   users: typeof users;

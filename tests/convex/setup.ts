@@ -27,6 +27,12 @@ process.env.GUEST_PASS_SECRET ??= "secret-de-test-pour-les-laissez-passer-de-tab
 process.env.CONVEX_SITE_URL ??= "http://127.0.0.1:3211";
 // Le secret sous lequel les PIN sont hachés (convex/lib/pin.ts).
 process.env.PIN_PEPPER ??= "poivre-de-test-pour-les-pin-de-service";
+// La clé qui signe les jetons d'opérateur : fabriquée pour la durée des tests, jamais écrite.
+if (!process.env.OPERATOR_JWT_PRIVATE_KEY) {
+  const { privateKey } = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);
+  process.env.OPERATOR_JWT_PRIVATE_KEY = JSON.stringify({ ...(await crypto.subtle.exportKey("jwk", privateKey)), kid: "test" });
+}
+export const OPERATOR_ISSUER = `${process.env.CONVEX_SITE_URL}/operator`;
 
 export function setup() {
   const t = convexTest(schema, modules);

@@ -342,6 +342,17 @@ d'une autre organisation confirme son existence.
 3. **Aucune permission `platform.*` n'est attribuable** par une organisation, même à un rôle
    personnalisé. Filtrée à l'écriture, pas seulement masquée dans l'UI.
 
+### Le plafond du PIN de service (D-060)
+
+Sur un appareil enrôlé, une personne identifiée par son PIN n'a pas tous les droits de ses rôles :
+elle a ceux de ses rôles **∩** les permissions marquées `pin` dans le catalogue. C'est un plafond,
+jamais un octroi. Aucune permission sensible, de portée organisation, d'équipe, d'appareil,
+d'export ou de réglage n'y figure (vérifié par `tests/lib/pin.test.ts`) : ces gestes se font depuis
+un compte. Un écran de cuisine, sans humain, a des droits fixes (`venue.read`, `menu.read`,
+`kitchen.read`, `kitchen.ticket.update`) limités à son poste. La garde qui applique ces règles est
+`requireServiceActor` (convex/lib/serviceActor.ts) ; les fonctions d'administration, elles, gardent
+`requirePermission`, qui ne reconnaît qu'un compte.
+
 ---
 
 ## 8. Côté frontend
