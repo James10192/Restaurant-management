@@ -19,6 +19,6 @@ export async function signIn(page: Page, email: string) {
   expect(code, "le code doit figurer dans l'objet de l'e-mail").toBeTruthy();
   await shot(page, `otp-${email.split("@")[0]}`);
   // Collage d'un code complet, comme depuis l'e-mail.
-  await page.getByRole("textbox", { name: /Chiffre 1/ }).focus();
+  await page.getByLabel("Code de connexion").focus();
   await page.keyboard.insertText(code!);
 }

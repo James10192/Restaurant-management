@@ -1,14 +1,23 @@
 import { useState, type FormEvent } from "react";
 import { useAction, useQuery } from "convex/react";
-import { Check, Copy, MessageCircle } from "lucide-react";
+import { Check, CircleAlert, Copy, MessageCircle } from "lucide-react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
+import { FormField } from "~/components/app/form-field";
+import { PendingButton } from "~/components/app/pending-button";
+import {
+  ResponsiveDialog,
+  ResponsiveDialogContent,
+  ResponsiveDialogDescription,
+  ResponsiveDialogFooter,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+} from "~/components/app/responsive-dialog";
 import { Alert, AlertDescription } from "~/components/ui/alert";
 import { Button } from "~/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "~/components/ui/dialog";
-import { Field } from "~/components/ui/field";
+import { FieldDescription, FieldGroup } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
-import { NativeSelect } from "~/components/ui/native-select";
+import { NativeSelect, NativeSelectOptGroup, NativeSelectOption } from "~/components/ui/native-select";
 import { describeError } from "~/lib/errors";
 import type { TeamScope } from "./scope";
 
@@ -90,68 +99,76 @@ export function InviteDialog({
   const blocked = roles?.filter((r) => !r.grantable) ?? [];
 
   return (
-    <Dialog
+    <ResponsiveDialog
       open={open}
       onOpenChange={(next) => {
         if (!next) reset();
         onOpenChange(next);
       }}
     >
-      <DialogContent>
+      <ResponsiveDialogContent>
         {result ? (
-          <>
-            <DialogHeader>
-              <DialogTitle>Invitation prête</DialogTitle>
-              <DialogDescription>
+          <div className="grid gap-4">
+            <ResponsiveDialogHeader>
+              <ResponsiveDialogTitle>Invitation prête</ResponsiveDialogTitle>
+              <ResponsiveDialogDescription>
                 {result.emailSent
                   ? `Un e-mail est parti vers ${result.email}. Vous pouvez aussi lui transmettre le lien vous-même.`
                   : `L'e-mail n'a pas pu partir. Transmettez ce lien à ${result.email} : il n'ouvre l'accès qu'à cette adresse.`}
-              </DialogDescription>
-            </DialogHeader>
-            <div className="mt-4 flex flex-col gap-3">
+              </ResponsiveDialogDescription>
+            </ResponsiveDialogHeader>
+            <FieldGroup className="gap-3">
               <Input readOnly value={result.link} aria-label="Lien d'invitation" onFocus={(e) => e.currentTarget.select()} />
-              <div className="flex flex-wrap gap-2">
+              <div className="grid gap-2 sm:grid-cols-2">
                 <Button
-                  variant="secondary"
+                  variant="outline"
                   onClick={async () => {
                     await navigator.clipboard.writeText(result.link);
                     setCopied(true);
                   }}
                 >
-                  {copied ? <Check aria-hidden="true" className="size-4" /> : <Copy aria-hidden="true" className="size-4" />}
+                  {copied ? <Check data-icon="inline-start" aria-hidden="true" /> : <Copy data-icon="inline-start" aria-hidden="true" />}
                   {copied ? "Lien copié" : "Copier le lien"}
                 </Button>
-                <Button variant="secondary" asChild>
+                <Button variant="outline" asChild>
                   <a
                     href={`https://wa.me/?text=${encodeURIComponent(`Rejoins-nous sur Joliba : ${result.link}`)}`}
                     target="_blank"
                     rel="noopener noreferrer"
                   >
-                    <MessageCircle aria-hidden="true" className="size-4" />
+                    <MessageCircle data-icon="inline-start" aria-hidden="true" />
                     Envoyer par WhatsApp
                   </a>
                 </Button>
               </div>
-              <p className="text-label text-ink-3">Le lien expire dans 7 jours.</p>
-            </div>
-            <DialogFooter className="mt-6">
-              <Button variant="quiet" onClick={reset}>
+              <FieldDescription>Le lien expire dans 7 jours.</FieldDescription>
+            </FieldGroup>
+            <ResponsiveDialogFooter>
+              <Button variant="ghost" onClick={reset}>
                 Inviter quelqu'un d'autre
               </Button>
               <Button onClick={close}>Terminé</Button>
-            </DialogFooter>
-          </>
+            </ResponsiveDialogFooter>
+          </div>
         ) : (
-          <form onSubmit={submit} noValidate>
-            <DialogHeader>
-              <DialogTitle>Inviter un membre</DialogTitle>
-              <DialogDescription>Portée : {scopeLabel}. La personne n'aura accès qu'à cela.</DialogDescription>
-            </DialogHeader>
-            <div className="mt-4 flex flex-col gap-4">
-              <Field label="Adresse e-mail" error={emailError}>
-                <Input type="email" inputMode="email" autoComplete="off" value={email} onChange={(e) => setEmail(e.target.value)} autoFocus />
-              </Field>
-              <Field
+          <form onSubmit={submit} noValidate className="grid gap-4">
+            <ResponsiveDialogHeader>
+              <ResponsiveDialogTitle>Inviter un membre</ResponsiveDialogTitle>
+              <ResponsiveDialogDescription>Portée : {scopeLabel}. La personne n'aura accès qu'à cela.</ResponsiveDialogDescription>
+            </ResponsiveDialogHeader>
+            <FieldGroup>
+              <FormField label="Adresse e-mail" error={emailError}>
+                <Input
+                  type="email"
+                  inputMode="email"
+                  autoComplete="off"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  autoFocus
+                  placeholder="koffi@exemple.ci"
+                />
+              </FormField>
+              <FormField
                 label="Rôle"
                 description={
                   blocked.length > 0
@@ -159,41 +176,42 @@ export function InviteDialog({
                     : undefined
                 }
               >
-                <NativeSelect value={roleId} onChange={(e) => setRoleId(e.target.value)} disabled={roles === undefined}>
-                  <option value="">{roles === undefined ? "Chargement des rôles…" : "Choisir un rôle"}</option>
+                <NativeSelect className="w-full" value={roleId} onChange={(e) => setRoleId(e.target.value)} disabled={roles === undefined}>
+                  <NativeSelectOption value="">{roles === undefined ? "Chargement des rôles…" : "Choisir un rôle"}</NativeSelectOption>
                   {grantable.map((r) => (
-                    <option key={r._id} value={r._id}>
+                    <NativeSelectOption key={r._id} value={r._id}>
                       {r.label}
-                    </option>
+                    </NativeSelectOption>
                   ))}
                   {blocked.length > 0 ? (
-                    <optgroup label="Non attribuables par vous">
+                    <NativeSelectOptGroup label="Non attribuables par vous">
                       {blocked.map((r) => (
-                        <option key={r._id} value={r._id} disabled>
+                        <NativeSelectOption key={r._id} value={r._id} disabled>
                           {r.label}
-                        </option>
+                        </NativeSelectOption>
                       ))}
-                    </optgroup>
+                    </NativeSelectOptGroup>
                   ) : null}
                 </NativeSelect>
-              </Field>
+              </FormField>
               {formError ? (
-                <Alert variant="danger">
+                <Alert variant="destructive">
+                  <CircleAlert />
                   <AlertDescription>{formError}</AlertDescription>
                 </Alert>
               ) : null}
-            </div>
-            <DialogFooter className="mt-6">
-              <Button variant="quiet" onClick={close}>
+            </FieldGroup>
+            <ResponsiveDialogFooter>
+              <Button type="button" variant="ghost" onClick={close}>
                 Annuler
               </Button>
-              <Button type="submit" loading={sending} loadingText="Envoi…">
+              <PendingButton type="submit" pending={sending} pendingText="Envoi…">
                 Envoyer l'invitation
-              </Button>
-            </DialogFooter>
+              </PendingButton>
+            </ResponsiveDialogFooter>
           </form>
         )}
-      </DialogContent>
-    </Dialog>
+      </ResponsiveDialogContent>
+    </ResponsiveDialog>
   );
 }

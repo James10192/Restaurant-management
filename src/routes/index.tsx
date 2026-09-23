@@ -13,23 +13,29 @@ export const Route = createFileRoute("/")({
 
 function Home() {
   return (
-    <main className="mx-auto flex min-h-dvh max-w-2xl flex-col justify-center gap-6 px-4 py-12">
-      <JolibaMark />
-      <h1 className="text-title-2xl text-ink">Le service, visible de la salle à la caisse.</h1>
-      <p className="text-body text-ink-2">
-        Joliba relie la carte, la salle, la cuisine et la caisse de votre restaurant. Chaque membre de l'équipe voit ce que son
-        rôle permet, dans l'établissement où il travaille.
-      </p>
-      <div className="flex flex-wrap gap-3">
-        <Button asChild size="lg">
-          <Link to="/connexion" search={{ redirect: "/app/onboarding" }}>
-            Ouvrir mon établissement
-          </Link>
-        </Button>
-        <Button asChild size="lg" variant="secondary">
-          <Link to="/connexion">Se connecter</Link>
-        </Button>
-      </div>
+    <main className="flex min-h-dvh flex-col bg-background">
+      <header className="flex h-14 items-center px-4 md:px-6">
+        <JolibaMark />
+      </header>
+      <section className="mx-auto flex w-full max-w-2xl flex-1 flex-col justify-center gap-6 px-4 py-12">
+        <h1 className="text-4xl font-semibold tracking-tight text-balance md:text-5xl">
+          Le service, visible de la salle à la caisse.
+        </h1>
+        <p className="text-lg text-muted-foreground">
+          Joliba relie la carte, la salle, la cuisine et la caisse de votre restaurant. Chaque membre de l'équipe voit ce que son
+          rôle permet, dans l'établissement où il travaille.
+        </p>
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <Button asChild size="lg">
+            <Link to="/connexion" search={{ redirect: "/app/onboarding" }}>
+              Ouvrir mon établissement
+            </Link>
+          </Button>
+          <Button asChild size="lg" variant="outline">
+            <Link to="/connexion">Se connecter</Link>
+          </Button>
+        </div>
+      </section>
     </main>
   );
 }

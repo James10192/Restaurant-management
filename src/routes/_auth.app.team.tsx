@@ -1,19 +1,28 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
-import { MoreHorizontal, UserPlus } from "lucide-react";
+import { CircleAlert, MoreHorizontal, UserPlus } from "lucide-react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
+import { PendingButton } from "~/components/app/pending-button";
+import { EmptyState, LoadingState, PermissionDeniedState } from "~/components/app/states";
 import { useWorkspace } from "~/components/app/workspace";
 import { InviteDialog } from "~/components/team/invite-dialog";
 import { MemberRolesDialog } from "~/components/team/member-roles-dialog";
 import type { TeamScope } from "~/components/team/scope";
 import { Alert, AlertDescription } from "~/components/ui/alert";
-import { Avatar } from "~/components/ui/avatar";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "~/components/ui/alert-dialog";
+import { Avatar, AvatarFallback } from "~/components/ui/avatar";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
-import { Card } from "~/components/ui/card";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "~/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,7 +30,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "~/components/ui/dropdown-menu";
-import { EmptyState, LoadingState, PermissionDeniedState } from "~/components/ui/states";
+import { Item, ItemActions, ItemContent, ItemDescription, ItemFooter, ItemGroup, ItemMedia, ItemTitle } from "~/components/ui/item";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "~/components/ui/table";
+import { ToggleGroup, ToggleGroupItem } from "~/components/ui/toggle-group";
+import { useIsMobile } from "~/hooks/use-mobile";
 import { describeError } from "~/lib/errors";
 
 export const Route = createFileRoute("/_auth/app/team")({
@@ -58,14 +70,21 @@ function TeamPage() {
       organizationId={w.organization._id}
       scopeToggle={
         venueReadable && orgReadable ? (
-          <div role="group" aria-label="Portée affichée" className="inline-flex rounded-sm border border-line-control p-0.5">
-            <Button size="sm" variant={useOrg ? "quiet" : "secondary"} aria-pressed={!useOrg} onClick={() => setWholeOrganization(false)}>
-              {w.venue!.name}
-            </Button>
-            <Button size="sm" variant={useOrg ? "secondary" : "quiet"} aria-pressed={useOrg} onClick={() => setWholeOrganization(true)}>
-              Toute l'organisation
-            </Button>
-          </div>
+          <ToggleGroup
+            type="single"
+            variant="outline"
+            size="sm"
+            spacing={0}
+            aria-label="Portée affichée"
+            value={useOrg ? "organization" : "venue"}
+            onValueChange={(value) => {
+              // Un second clic sur la portée active ne doit pas la désélectionner.
+              if (value) setWholeOrganization(value === "organization");
+            }}
+          >
+            <ToggleGroupItem value="venue">{w.venue!.name}</ToggleGroupItem>
+            <ToggleGroupItem value="organization">Toute l'organisation</ToggleGroupItem>
+          </ToggleGroup>
         ) : null
       }
     />
@@ -83,7 +102,7 @@ function TeamView({
   scopeLabel: string;
   canManage: boolean;
   organizationId: Id<"organizations">;
-  scopeToggle: React.ReactNode;
+  scopeToggle: ReactNode;
 }) {
   const members = useMembers(scope);
   const invitations = useQuery(api.team.listInvitations, { scope });
@@ -94,6 +113,7 @@ function TeamView({
   const [removing, setRemoving] = useState<Member | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const isMobile = useIsMobile();
 
   const scopedRoleIds = (m: Member) =>
     m.roles
@@ -115,94 +135,103 @@ function TeamView({
 
   const others = members?.filter((m) => !m.isSelf) ?? [];
 
+  const actionsFor = (m: Member) =>
+    m.isSelf ? (
+      <p className="text-sm text-muted-foreground">Vous ne pouvez pas modifier vos propres droits.</p>
+    ) : canManage && !m.isOwner ? (
+      <MemberActions
+        member={m}
+        onEdit={() => setEditing(m)}
+        onStatus={(status) => void changeStatus(m, status)}
+        onRemove={() => setRemoving(m)}
+      />
+    ) : null;
+
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-title-xl text-ink">Équipe</h1>
-          <p className="text-body text-ink-2">Qui a accès à quoi, et où.</p>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-2xl font-semibold tracking-tight">Équipe</h1>
+          <p className="text-muted-foreground">Qui a accès à quoi, et où.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {scopeToggle}
           {canManage ? (
             <Button onClick={() => setInviteOpen(true)}>
-              <UserPlus aria-hidden="true" className="size-4" />
+              <UserPlus data-icon="inline-start" aria-hidden="true" />
               Inviter un membre
             </Button>
           ) : null}
         </div>
       </div>
 
-      {error ? (
-        <Alert variant="danger">
+      {error && removing === null ? (
+        <Alert variant="destructive">
+          <CircleAlert />
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       ) : null}
 
       {members === undefined ? (
         <LoadingState />
+      ) : isMobile ? (
+        <ItemGroup className="gap-3">
+          {members.map((m) => (
+            <Item key={m.memberId} variant="outline" role="listitem" className="items-start">
+              <ItemMedia>
+                <MemberAvatar name={m.name ?? m.email} />
+              </ItemMedia>
+              <ItemContent className="min-w-0">
+                <MemberIdentity member={m} />
+              </ItemContent>
+              {!m.isSelf && canManage && !m.isOwner ? <ItemActions>{actionsFor(m)}</ItemActions> : null}
+              <ItemFooter className="flex-wrap justify-start gap-1">
+                <MemberBadges member={m} />
+              </ItemFooter>
+              {m.isSelf ? <ItemFooter>{actionsFor(m)}</ItemFooter> : null}
+            </Item>
+          ))}
+        </ItemGroup>
       ) : (
-        <Card className="p-0">
-          <ul className="divide-y divide-line">
-            {members.map((m) => (
-              <li key={m.memberId} className="flex flex-wrap items-center gap-3 px-(--pad-card) py-3">
-                <Avatar name={m.name ?? m.email} />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-body text-ink">
-                    {m.name ?? m.email}
-                    {m.isSelf ? <span className="text-ink-3"> (vous)</span> : null}
-                  </p>
-                  {m.name ? <p className="truncate text-label text-ink-3">{m.email}</p> : null}
-                  <div className="mt-1 flex flex-wrap gap-1">
-                    {m.isOwner ? <Badge variant="accent">Propriétaire</Badge> : null}
-                    {m.status === "suspended" ? <Badge variant="warning">Suspendu</Badge> : null}
-                    {m.roles.map((r) => (
-                      <Badge key={r.assignmentId} glyph={false}>
-                        {r.label} · {r.scopeType === "organization" ? "toute l'organisation" : r.venueName}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-                {m.isSelf ? (
-                  <p className="text-label text-ink-3">Vous ne pouvez pas modifier vos propres droits.</p>
-                ) : canManage && !m.isOwner ? (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="quiet" size="icon" aria-label={`Actions pour ${m.name ?? m.email}`}>
-                        <MoreHorizontal aria-hidden="true" className="size-5" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onSelect={() => setEditing(m)}>Modifier les rôles</DropdownMenuItem>
-                      {m.canChangeStatus ? (
-                        <>
-                          {m.status === "suspended" ? (
-                            <DropdownMenuItem onSelect={() => void changeStatus(m, "active")}>Réactiver</DropdownMenuItem>
-                          ) : (
-                            <DropdownMenuItem onSelect={() => void changeStatus(m, "suspended")}>Suspendre l'accès</DropdownMenuItem>
-                          )}
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem className="text-danger-700" onSelect={() => setRemoving(m)}>
-                            Retirer de l'équipe
-                          </DropdownMenuItem>
-                        </>
-                      ) : (
-                        // Désactivé avec la raison plutôt que masqué : sinon on croit à un bogue.
-                        <DropdownMenuItem disabled>Suspendre ou retirer : réservé à qui gère tous ses rôles</DropdownMenuItem>
-                      )}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        </Card>
+        <div className="overflow-hidden rounded-lg border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Membre</TableHead>
+                <TableHead>Rôles et portée</TableHead>
+                <TableHead className="text-right">
+                  <span className="sr-only">Actions</span>
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {members.map((m) => (
+                <TableRow key={m.memberId}>
+                  <TableCell>
+                    <div className="flex min-w-0 items-center gap-3">
+                      <MemberAvatar name={m.name ?? m.email} />
+                      <div className="flex min-w-0 flex-col">
+                        <MemberIdentity member={m} />
+                      </div>
+                    </div>
+                  </TableCell>
+                  <TableCell className="whitespace-normal">
+                    <div className="flex flex-wrap gap-1">
+                      <MemberBadges member={m} />
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-right whitespace-normal">{actionsFor(m)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
       )}
 
       {members !== undefined && others.length === 0 ? (
         <EmptyState
-          titleAs="h2"
-          title="Vous êtes seul pour l'instant"
+          className="border"
+          title={<h2>Vous êtes seul pour l'instant</h2>}
           description={
             canManage
               ? "Commencez par un serveur : il n'aura accès qu'à cet établissement, et seulement à ce que son rôle permet."
@@ -213,22 +242,23 @@ function TeamView({
 
       {invitations && invitations.length > 0 ? (
         <section aria-labelledby="pending-title" className="flex flex-col gap-3">
-          <h2 id="pending-title" className="text-title-md text-ink">
+          <h2 id="pending-title" className="text-lg font-semibold tracking-tight">
             Invitations en attente
           </h2>
-          <Card className="p-0">
-            <ul className="divide-y divide-line">
-              {invitations.map((inv) => (
-                <li key={inv.invitationId} className="flex flex-wrap items-center gap-3 px-(--pad-card) py-3">
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-body text-ink">{inv.email}</p>
-                    <p className="text-label text-ink-3">
-                      {inv.roleLabel} · {inv.isExpired ? "expirée" : `expire le ${new Date(inv.expiresAt).toLocaleDateString("fr-FR")}`}
-                    </p>
-                  </div>
-                  {canManage ? (
+          <ItemGroup className="gap-3">
+            {invitations.map((inv) => (
+              <Item key={inv.invitationId} variant="outline" role="listitem">
+                <ItemContent className="min-w-0">
+                  <ItemTitle className="max-w-full truncate">{inv.email}</ItemTitle>
+                  <ItemDescription>
+                    {inv.roleLabel} · {inv.isExpired ? "expirée" : `expire le ${new Date(inv.expiresAt).toLocaleDateString("fr-FR")}`}
+                  </ItemDescription>
+                </ItemContent>
+                {inv.isExpired ? <Badge variant="outline">Expirée</Badge> : null}
+                {canManage ? (
+                  <ItemActions>
                     <Button
-                      variant="quiet"
+                      variant="ghost"
                       size="sm"
                       onClick={async () => {
                         setError(null);
@@ -241,11 +271,11 @@ function TeamView({
                     >
                       Révoquer
                     </Button>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          </Card>
+                  </ItemActions>
+                ) : null}
+              </Item>
+            ))}
+          </ItemGroup>
         </section>
       ) : null}
 
@@ -256,31 +286,125 @@ function TeamView({
         scopeLabel={scopeLabel}
         onClose={() => setEditing(null)}
       />
-      <Dialog open={removing !== null} onOpenChange={(open) => { if (!open) { setRemoving(null); setError(null); } }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Retirer {removing?.name ?? removing?.email} ?</DialogTitle>
-            <DialogDescription>
+      <AlertDialog
+        open={removing !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setRemoving(null);
+            setError(null);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Retirer {removing?.name ?? removing?.email} ?</AlertDialogTitle>
+            <AlertDialogDescription>
               Tous ses rôles sont supprimés et son accès coupé immédiatement. Pour revenir, il lui faudra une nouvelle invitation.
               Son historique reste dans le journal.
-            </DialogDescription>
-          </DialogHeader>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
           {/* L'erreur s'affiche DANS la modale : derrière elle, personne ne la verrait. */}
           {error ? (
-            <Alert variant="danger" className="mt-4">
+            <Alert variant="destructive">
+              <CircleAlert />
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           ) : null}
-          <DialogFooter className="mt-6">
-            <Button variant="quiet" onClick={() => setRemoving(null)}>
-              Annuler
-            </Button>
-            <Button variant="danger-solid" loading={busy} loadingText="Retrait…" onClick={() => removing && void changeStatus(removing, "removed")}>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            {/* Pas d'`AlertDialogAction` : elle fermerait la fenêtre avant de savoir si le retrait a réussi. */}
+            <PendingButton
+              variant="destructive"
+              pending={busy}
+              pendingText="Retrait…"
+              onClick={() => removing && void changeStatus(removing, "removed")}
+            >
               Retirer
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            </PendingButton>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
+  );
+}
+
+function initials(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  const letter = (word: string | undefined) => (word ? (Array.from(word)[0] ?? "") : "");
+  return (letter(words[0]) + (words.length > 1 ? letter(words[words.length - 1]) : "")).toLocaleUpperCase("fr") || "?";
+}
+
+function MemberAvatar({ name }: { name: string }) {
+  return (
+    <Avatar size="lg">
+      <AvatarFallback aria-hidden="true">{initials(name)}</AvatarFallback>
+    </Avatar>
+  );
+}
+
+function MemberIdentity({ member: m }: { member: Member }) {
+  return (
+    <>
+      <span className="truncate font-medium">
+        {m.name ?? m.email}
+        {m.isSelf ? <span className="font-normal text-muted-foreground"> (vous)</span> : null}
+      </span>
+      {m.name ? <span className="truncate text-sm text-muted-foreground">{m.email}</span> : null}
+    </>
+  );
+}
+
+function MemberBadges({ member: m }: { member: Member }) {
+  return (
+    <>
+      {m.isOwner ? <Badge>Propriétaire</Badge> : null}
+      {m.status === "suspended" ? <Badge variant="destructive">Suspendu</Badge> : null}
+      {m.roles.map((r) => (
+        <Badge key={r.assignmentId} variant="secondary">
+          {r.label} · {r.scopeType === "organization" ? "toute l'organisation" : r.venueName}
+        </Badge>
+      ))}
+    </>
+  );
+}
+
+function MemberActions({
+  member: m,
+  onEdit,
+  onStatus,
+  onRemove,
+}: {
+  member: Member;
+  onEdit: () => void;
+  onStatus: (status: "active" | "suspended") => void;
+  onRemove: () => void;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon" aria-label={`Actions pour ${m.name ?? m.email}`}>
+          <MoreHorizontal aria-hidden="true" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onSelect={onEdit}>Modifier les rôles</DropdownMenuItem>
+        {m.canChangeStatus ? (
+          <>
+            {m.status === "suspended" ? (
+              <DropdownMenuItem onSelect={() => onStatus("active")}>Réactiver</DropdownMenuItem>
+            ) : (
+              <DropdownMenuItem onSelect={() => onStatus("suspended")}>Suspendre l'accès</DropdownMenuItem>
+            )}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem variant="destructive" onSelect={onRemove}>
+              Retirer de l'équipe
+            </DropdownMenuItem>
+          </>
+        ) : (
+          // Désactivé avec la raison plutôt que masqué : sinon on croit à un bogue.
+          <DropdownMenuItem disabled>Suspendre ou retirer : réservé à qui gère tous ses rôles</DropdownMenuItem>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

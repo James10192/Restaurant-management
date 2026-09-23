@@ -1,11 +1,22 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
+import { CircleAlert, TriangleAlert } from "lucide-react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
+import { PendingButton } from "~/components/app/pending-button";
+import {
+  ResponsiveDialog,
+  ResponsiveDialogContent,
+  ResponsiveDialogDescription,
+  ResponsiveDialogFooter,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+} from "~/components/app/responsive-dialog";
 import { Alert, AlertDescription } from "~/components/ui/alert";
 import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "~/components/ui/dialog";
+import { Field, FieldContent, FieldDescription, FieldLabel, FieldLegend, FieldSet } from "~/components/ui/field";
+import { Spinner } from "~/components/ui/spinner";
 import { describeError } from "~/lib/errors";
 import type { TeamScope } from "./scope";
 
@@ -53,67 +64,79 @@ export function MemberRolesDialog({
   }
 
   return (
-    <Dialog open={member !== null} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Rôles de {member?.displayName}</DialogTitle>
-          <DialogDescription>Portée : {scopeLabel}. Les rôles détenus ailleurs ne changent pas.</DialogDescription>
-        </DialogHeader>
-        {lockedHeld.length > 0 ? (
-          <Alert variant="warning" className="mt-4">
-            <AlertDescription>
-              Cette personne détient un rôle plus large que les vôtres ({lockedHeld.map((r) => r.label).join(", ")}). Seule
-              une personne qui en détient tous les droits peut modifier ses rôles ici.
-            </AlertDescription>
-          </Alert>
-        ) : null}
-        <fieldset className="mt-4 flex flex-col gap-1" disabled={lockedHeld.length > 0}>
-          <legend className="sr-only">Rôles</legend>
-          {roles === undefined ? <p className="text-body text-ink-3">Chargement des rôles…</p> : null}
-          {roles?.map((role) => {
-            const checked = selected.has(role._id);
-            return (
-              <label key={role._id} className="flex min-h-(--tap) items-start gap-3 rounded-sm px-2 py-2 hover:bg-surface-2">
-                <Checkbox
-                  className="mt-0.5"
-                  checked={checked}
-                  disabled={!role.grantable}
-                  onCheckedChange={(value) => {
-                    const next = new Set(selected);
-                    if (value === true) next.add(role._id);
-                    else next.delete(role._id);
-                    setSelected(next);
-                  }}
-                />
-                <span className="flex flex-col">
-                  <span className={role.grantable ? "text-body text-ink" : "text-body text-ink-disabled"}>{role.label}</span>
-                  {!role.grantable ? (
-                    <span className="text-label text-ink-3">Accorde des droits que vous n'avez pas.</span>
-                  ) : role.description ? (
-                    <span className="text-label text-ink-3">{role.description}</span>
-                  ) : null}
-                </span>
-              </label>
-            );
-          })}
-        </fieldset>
-        {selected.size === 0 && roles !== undefined ? (
-          <p className="mt-3 text-label text-ink-3">Sans rôle, cette personne n'aura plus accès à {scopeLabel}.</p>
-        ) : null}
-        {error ? (
-          <Alert variant="danger" className="mt-4">
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        ) : null}
-        <DialogFooter className="mt-6">
-          <Button variant="quiet" onClick={onClose}>
-            Annuler
-          </Button>
-          <Button onClick={() => void save()} loading={saving} loadingText="Enregistrement…" disabled={lockedHeld.length > 0}>
-            Enregistrer
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <ResponsiveDialog open={member !== null} onOpenChange={(open) => !open && onClose()}>
+      <ResponsiveDialogContent>
+        <div className="grid gap-4">
+          <ResponsiveDialogHeader>
+            <ResponsiveDialogTitle>Rôles de {member?.displayName}</ResponsiveDialogTitle>
+            <ResponsiveDialogDescription>Portée : {scopeLabel}. Les rôles détenus ailleurs ne changent pas.</ResponsiveDialogDescription>
+          </ResponsiveDialogHeader>
+          {lockedHeld.length > 0 ? (
+            <Alert>
+              <TriangleAlert />
+              <AlertDescription>
+                Cette personne détient un rôle plus large que les vôtres ({lockedHeld.map((r) => r.label).join(", ")}). Seule
+                une personne qui en détient tous les droits peut modifier ses rôles ici.
+              </AlertDescription>
+            </Alert>
+          ) : null}
+          <FieldSet disabled={lockedHeld.length > 0} className="gap-3">
+            <FieldLegend className="sr-only">Rôles</FieldLegend>
+            {roles === undefined ? (
+              <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Spinner />
+                Chargement des rôles…
+              </p>
+            ) : null}
+            {roles?.map((role) => {
+              const checked = selected.has(role._id);
+              const id = `member-role-${role._id}`;
+              return (
+                <Field key={role._id} orientation="horizontal" data-disabled={!role.grantable}>
+                  <Checkbox
+                    id={id}
+                    checked={checked}
+                    disabled={!role.grantable}
+                    onCheckedChange={(value) => {
+                      const next = new Set(selected);
+                      if (value === true) next.add(role._id);
+                      else next.delete(role._id);
+                      setSelected(next);
+                    }}
+                  />
+                  <FieldContent>
+                    <FieldLabel htmlFor={id} className="font-normal">
+                      {role.label}
+                    </FieldLabel>
+                    {!role.grantable ? (
+                      <FieldDescription>Accorde des droits que vous n'avez pas.</FieldDescription>
+                    ) : role.description ? (
+                      <FieldDescription>{role.description}</FieldDescription>
+                    ) : null}
+                  </FieldContent>
+                </Field>
+              );
+            })}
+          </FieldSet>
+          {selected.size === 0 && roles !== undefined ? (
+            <p className="text-sm text-muted-foreground">Sans rôle, cette personne n'aura plus accès à {scopeLabel}.</p>
+          ) : null}
+          {error ? (
+            <Alert variant="destructive">
+              <CircleAlert />
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          ) : null}
+          <ResponsiveDialogFooter>
+            <Button variant="ghost" onClick={onClose}>
+              Annuler
+            </Button>
+            <PendingButton onClick={() => void save()} pending={saving} pendingText="Enregistrement…" disabled={lockedHeld.length > 0}>
+              Enregistrer
+            </PendingButton>
+          </ResponsiveDialogFooter>
+        </div>
+      </ResponsiveDialogContent>
+    </ResponsiveDialog>
   );
 }

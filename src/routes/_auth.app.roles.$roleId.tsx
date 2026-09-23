@@ -1,19 +1,21 @@
 import { useEffect, useMemo, useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, CircleAlert, CircleCheck, TriangleAlert } from "lucide-react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import type { Permission } from "../../convex/lib/permissions";
+import { FormField } from "~/components/app/form-field";
+import { PendingButton } from "~/components/app/pending-button";
+import { LoadingState, PermissionDeniedState } from "~/components/app/states";
 import { useWorkspace } from "~/components/app/workspace";
 import { Alert, AlertDescription, AlertTitle } from "~/components/ui/alert";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "~/components/ui/card";
 import { Checkbox } from "~/components/ui/checkbox";
-import { Field } from "~/components/ui/field";
+import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
-import { LoadingState, PermissionDeniedState } from "~/components/ui/states";
 import { Textarea } from "~/components/ui/textarea";
 import { describeError } from "~/lib/errors";
 
@@ -38,10 +40,16 @@ function RoleEditorPage() {
   const role = roleId === NEW ? null : roles.find((r) => r._id === roleId);
   if (roleId !== NEW && !role) {
     return (
-      <Alert variant="warning">
+      <Alert>
+        <TriangleAlert />
         <AlertTitle>Ce rôle est introuvable</AlertTitle>
         <AlertDescription>
-          Il a peut-être été archivé. <Link to="/app/roles" className="underline">Revenir aux rôles</Link>
+          <p>
+            Il a peut-être été archivé.{" "}
+            <Link to="/app/roles" className="underline underline-offset-4">
+              Revenir aux rôles
+            </Link>
+          </p>
         </AlertDescription>
       </Alert>
     );
@@ -149,114 +157,132 @@ function RoleEditor({
 
   return (
     <div className="flex flex-col gap-6">
-      <Link to="/app/roles" className="inline-flex items-center gap-1 self-start text-label text-accent-700">
-        <ArrowLeft aria-hidden="true" className="size-4" />
-        Rôles
-      </Link>
-      <div>
-        <h1 className="text-title-xl text-ink">{role ? role.label : "Nouveau rôle"}</h1>
-        {role && role.memberCount > 0 ? (
-          <p className="text-body text-ink-2">
-            Attribué à {role.memberCount} personne{role.memberCount > 1 ? "s" : ""} : toute modification s'applique à elles
-            immédiatement.
-          </p>
-        ) : null}
+      <div className="flex flex-col gap-3">
+        <Button variant="ghost" size="sm" asChild className="self-start">
+          <Link to="/app/roles">
+            <ArrowLeft data-icon="inline-start" aria-hidden="true" />
+            Rôles
+          </Link>
+        </Button>
+        <div className="flex flex-col gap-1">
+          <h1 className="text-2xl font-semibold tracking-tight">{role ? role.label : "Nouveau rôle"}</h1>
+          {role && role.memberCount > 0 ? (
+            <p className="text-muted-foreground">
+              Attribué à {role.memberCount} personne{role.memberCount > 1 ? "s" : ""} : toute modification s'applique à elles
+              immédiatement.
+            </p>
+          ) : null}
+        </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
-        <div className="flex flex-col gap-6">
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="flex min-w-0 flex-col gap-6">
           <Card>
-            <CardContent className="flex flex-col gap-4 py-5">
-              <Field label="Nom du rôle">
-                <Input value={label} onChange={(e) => setLabel(e.target.value)} maxLength={60} />
-              </Field>
-              <Field label="Description" optional>
-                <Textarea value={description} onChange={(e) => setDescription(e.target.value)} maxLength={300} rows={2} />
-              </Field>
+            <CardContent>
+              <FieldGroup>
+                <FormField label="Nom du rôle">
+                  <Input value={label} onChange={(e) => setLabel(e.target.value)} maxLength={60} />
+                </FormField>
+                <FormField label="Description" optional>
+                  <Textarea value={description} onChange={(e) => setDescription(e.target.value)} maxLength={300} rows={2} />
+                </FormField>
+              </FieldGroup>
             </CardContent>
           </Card>
 
           {groups.map(([group, entries]) => (
             <Card key={group}>
-              <CardHeader>
+              <CardHeader className="border-b">
                 <CardTitle>{group}</CardTitle>
               </CardHeader>
-              <CardContent className="flex flex-col gap-1 pb-4">
-                {entries.map((entry) => {
-                  const held = holds(entry.key);
-                  return (
-                    <label key={entry.key} className="flex min-h-(--tap) items-start gap-3 rounded-sm px-2 py-2 hover:bg-surface-2">
-                      <Checkbox
-                        className="mt-0.5"
-                        checked={selected.has(entry.key)}
-                        disabled={!held}
-                        onCheckedChange={(value) => {
-                          const next = new Set(selected);
-                          if (value === true) next.add(entry.key);
-                          else next.delete(entry.key);
-                          setSelected(next);
-                        }}
-                      />
-                      <span className="flex flex-1 flex-col">
-                        <span className={held ? "text-body text-ink" : "text-body text-ink-disabled"}>{entry.label}</span>
-                        {!held ? <span className="text-label text-ink-3">Vous ne détenez pas ce droit.</span> : null}
-                      </span>
-                      {entry.sensitive ? <Badge variant="warning">Sensible</Badge> : null}
-                    </label>
-                  );
-                })}
+              <CardContent>
+                <FieldGroup className="gap-4">
+                  {entries.map((entry) => {
+                    const held = holds(entry.key);
+                    const id = `permission-${entry.key}`;
+                    return (
+                      <Field key={entry.key} orientation="horizontal" data-disabled={!held}>
+                        <Checkbox
+                          id={id}
+                          checked={selected.has(entry.key)}
+                          disabled={!held}
+                          onCheckedChange={(value) => {
+                            const next = new Set(selected);
+                            if (value === true) next.add(entry.key);
+                            else next.delete(entry.key);
+                            setSelected(next);
+                          }}
+                        />
+                        <FieldContent>
+                          <FieldLabel htmlFor={id} className="font-normal">
+                            {entry.label}
+                          </FieldLabel>
+                          {!held ? <FieldDescription>Vous ne détenez pas ce droit.</FieldDescription> : null}
+                        </FieldContent>
+                        {entry.sensitive ? <Badge variant="outline">Sensible</Badge> : null}
+                      </Field>
+                    );
+                  })}
+                </FieldGroup>
               </CardContent>
             </Card>
           ))}
         </div>
 
-        <aside className="flex flex-col gap-4 lg:sticky lg:top-32 lg:self-start">
+        <aside className="flex flex-col gap-4 lg:sticky lg:top-20 lg:self-start">
           <Card>
-            <CardContent className="flex flex-col gap-3 py-5">
-              <p className="text-title-md text-ink">
+            <CardHeader>
+              <CardTitle className="text-lg tabular-nums">
                 {selected.size} droit{selected.size > 1 ? "s" : ""}
-              </p>
-              {forgotten.length > 0 ? (
-                <div className="text-label text-ink-2">
-                  <p className="text-ink">Ce rôle ne pourra pas :</p>
-                  <ul className="mt-1 list-disc pl-5">
+              </CardTitle>
+              {forgotten.length > 0 ? <CardDescription>Ce rôle ne pourra pas :</CardDescription> : null}
+            </CardHeader>
+            <CardContent>
+              <FieldGroup className="gap-4">
+                {forgotten.length > 0 ? (
+                  <ul className="list-disc pl-5 text-sm text-muted-foreground">
                     {forgotten.map((p) => (
                       <li key={p.key}>{p.label.charAt(0).toLowerCase() + p.label.slice(1)}</li>
                     ))}
                   </ul>
-                </div>
-              ) : null}
-              {lockedIn.length > 0 ? (
-                <Alert variant="warning">
-                  <AlertDescription>
-                    Ce rôle contient des droits que vous n'avez pas : seule une personne qui les détient peut le modifier.
-                  </AlertDescription>
-                </Alert>
-              ) : null}
-              {role ? (
-                <Field label="Motif de la modification" description="Conservé dans le journal d'audit.">
-                  <Textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} maxLength={500} />
-                </Field>
-              ) : null}
-              {error ? (
-                <Alert variant="danger">
-                  <AlertDescription>{error}</AlertDescription>
-                </Alert>
-              ) : null}
-              {saved ? (
-                <Alert variant="success">
-                  <AlertDescription>Rôle enregistré.</AlertDescription>
-                </Alert>
-              ) : null}
-              <Button onClick={() => void save()} loading={saving} loadingText="Enregistrement…" disabled={lockedIn.length > 0}>
+                ) : null}
+                {lockedIn.length > 0 ? (
+                  <Alert>
+                    <TriangleAlert />
+                    <AlertDescription>
+                      Ce rôle contient des droits que vous n'avez pas : seule une personne qui les détient peut le modifier.
+                    </AlertDescription>
+                  </Alert>
+                ) : null}
+                {role ? (
+                  <FormField label="Motif de la modification" description="Conservé dans le journal d'audit.">
+                    <Textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} maxLength={500} />
+                  </FormField>
+                ) : null}
+                {error ? (
+                  <Alert variant="destructive">
+                    <CircleAlert />
+                    <AlertDescription>{error}</AlertDescription>
+                  </Alert>
+                ) : null}
+                {saved ? (
+                  <Alert>
+                    <CircleCheck />
+                    <AlertDescription>Rôle enregistré.</AlertDescription>
+                  </Alert>
+                ) : null}
+              </FieldGroup>
+            </CardContent>
+            <CardFooter className="flex-col items-stretch gap-2">
+              <PendingButton onClick={() => void save()} pending={saving} pendingText="Enregistrement…" disabled={lockedIn.length > 0}>
                 Enregistrer le rôle
-              </Button>
+              </PendingButton>
               {role && role.memberCount === 0 ? (
-                <Button variant="danger" onClick={() => void doArchive()}>
+                <Button variant="destructive" onClick={() => void doArchive()}>
                   Archiver ce rôle
                 </Button>
               ) : null}
-            </CardContent>
+            </CardFooter>
           </Card>
         </aside>
       </div>

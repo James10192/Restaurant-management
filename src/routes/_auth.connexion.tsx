@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { CircleAlert } from "lucide-react";
 import { AuthLayout } from "~/components/app/auth-layout";
 import { useAuthStatus } from "~/components/app/convex-providers";
+import { FormField } from "~/components/app/form-field";
+import { PendingButton } from "~/components/app/pending-button";
 import { Alert, AlertDescription } from "~/components/ui/alert";
-import { Button } from "~/components/ui/button";
-import { Field } from "~/components/ui/field";
+import { FieldDescription, FieldGroup, FieldSeparator } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
-import { Separator } from "~/components/ui/separator";
 import { authClient } from "~/lib/auth-client";
 import { pendingEmail, safeRedirect } from "~/lib/redirect";
 
@@ -82,54 +83,59 @@ function ConnexionPage() {
 
   return (
     <AuthLayout title="Connexion" description="Entrez votre e-mail, nous vous envoyons un code.">
-      <form onSubmit={submit} noValidate className="flex flex-col gap-4">
-        <Field label="Adresse e-mail" error={fieldError}>
-          <Input
-            type="email"
-            inputMode="email"
-            autoComplete="email"
-            autoCapitalize="none"
-            spellCheck={false}
-            autoFocus
-            ref={emailRef}
-            name="email"
-            onBlur={(e) => {
-              const typed = e.currentTarget.value.trim();
-              if (typed && !EMAIL_PATTERN.test(typed)) {
-                setFieldError("Saisissez une adresse e-mail complète, par exemple awa@exemple.ci.");
-              }
-            }}
-          />
-        </Field>
-        {formError ? (
-          <Alert variant="danger">
-            <AlertDescription>{formError}</AlertDescription>
-          </Alert>
+      <FieldGroup>
+        <form onSubmit={submit} noValidate className="flex flex-col gap-4">
+          <FormField label="Adresse e-mail" error={fieldError}>
+            <Input
+              type="email"
+              inputMode="email"
+              autoComplete="email"
+              autoCapitalize="none"
+              spellCheck={false}
+              autoFocus
+              ref={emailRef}
+              name="email"
+              placeholder="awa@exemple.ci"
+              onBlur={(e) => {
+                const typed = e.currentTarget.value.trim();
+                if (typed && !EMAIL_PATTERN.test(typed)) {
+                  setFieldError("Saisissez une adresse e-mail complète, par exemple awa@exemple.ci.");
+                }
+              }}
+            />
+          </FormField>
+          {formError ? (
+            <Alert variant="destructive">
+              <CircleAlert />
+              <AlertDescription>{formError}</AlertDescription>
+            </Alert>
+          ) : null}
+          <PendingButton type="submit" size="lg" pending={sending} pendingText="Envoi du code…" className="w-full">
+            Recevoir mon code
+          </PendingButton>
+        </form>
+
+        {GOOGLE_ENABLED ? (
+          <>
+            <FieldSeparator>ou</FieldSeparator>
+            <PendingButton
+              variant="outline"
+              size="lg"
+              className="w-full"
+              pending={googleLoading}
+              pendingText="Redirection…"
+              onClick={signInWithGoogle}
+            >
+              Continuer avec Google
+            </PendingButton>
+          </>
         ) : null}
-        <Button type="submit" size="lg" loading={sending} loadingText="Envoi du code…" className="w-full">
-          Recevoir mon code
-        </Button>
-      </form>
 
-      {GOOGLE_ENABLED ? (
-        <>
-          <div className="my-6 flex items-center gap-3 text-label text-ink-3">
-            <Separator className="flex-1" />
-            ou
-            <Separator className="flex-1" />
-          </div>
-          <Button variant="secondary" size="lg" className="w-full" loading={googleLoading} loadingText="Redirection…" onClick={signInWithGoogle}>
-            Continuer avec Google
-          </Button>
-        </>
-      ) : null}
-
-      <p className="mt-6 text-label text-ink-3">
-        Vous avez reçu une invitation ? Ouvrez le lien qu'elle contient : il vous ramènera ici.{" "}
-        <Link to="/" className="text-accent-700 underline underline-offset-4">
-          Découvrir Joliba
-        </Link>
-      </p>
+        <FieldDescription className="text-center">
+          Vous avez reçu une invitation ? Ouvrez le lien qu'elle contient : il vous ramènera ici.{" "}
+          <Link to="/">Découvrir Joliba</Link>
+        </FieldDescription>
+      </FieldGroup>
     </AuthLayout>
   );
 }

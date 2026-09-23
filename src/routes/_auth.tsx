@@ -16,8 +16,10 @@ import { createConvexClient } from "~/lib/convex-client";
 export const Route = createFileRoute("/_auth")({
   component: AuthLayout,
   errorComponent: ({ error, reset }) => (
-    <main className="mx-auto flex min-h-dvh max-w-md items-center px-4">
-      <RouteError error={error} reset={reset} />
+    <main className="flex min-h-dvh items-center justify-center bg-muted p-6 md:p-10">
+      <div className="w-full max-w-md">
+        <RouteError error={error} reset={reset} />
+      </div>
     </main>
   ),
 });

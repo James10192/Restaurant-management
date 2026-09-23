@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
-import { Laptop, Smartphone } from "lucide-react";
+import { CircleAlert, CircleCheck, Laptop, Smartphone } from "lucide-react";
 import { api } from "../../convex/_generated/api";
+import { FormField } from "~/components/app/form-field";
+import { PendingButton } from "~/components/app/pending-button";
+import { LoadingState } from "~/components/app/states";
 import { Alert, AlertDescription } from "~/components/ui/alert";
 import { Badge } from "~/components/ui/badge";
-import { Button } from "~/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/ui/card";
-import { Field } from "~/components/ui/field";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "~/components/ui/card";
+import { FieldGroup } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
-import { LoadingState } from "~/components/ui/states";
+import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemSeparator, ItemTitle } from "~/components/ui/item";
 import { authClient } from "~/lib/auth-client";
 import { describeError } from "~/lib/errors";
 
@@ -20,8 +22,11 @@ export const Route = createFileRoute("/_auth/app/account")({
 
 function AccountPage() {
   return (
-    <div className="mx-auto flex max-w-2xl flex-col gap-6">
-      <h1 className="text-title-xl text-ink">Mon compte</h1>
+    <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
+      <div className="flex flex-col gap-1">
+        <h1 className="text-2xl font-semibold tracking-tight">Mon compte</h1>
+        <p className="text-muted-foreground">Votre profil et les appareils connectés à votre compte.</p>
+      </div>
       <ProfileCard />
       <SessionsCard />
     </div>
@@ -57,26 +62,30 @@ function ProfileCard() {
   if (me === undefined) return <LoadingState />;
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Profil</CardTitle>
-        <CardDescription>Votre nom apparaît dans l'équipe et dans le journal des actions.</CardDescription>
-      </CardHeader>
-      <CardContent className="pb-5">
-        <form onSubmit={submit} className="flex flex-col gap-4">
-          <Field label="Nom affiché" error={error}>
-            <Input value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" maxLength={80} />
-          </Field>
-          <p className="text-label text-ink-3">Adresse de connexion : {me?.email}</p>
-          {saved ? (
-            <Alert variant="success">
-              <AlertDescription>Profil enregistré.</AlertDescription>
-            </Alert>
-          ) : null}
-          <Button type="submit" loading={saving} loadingText="Enregistrement…" className="self-start">
+      <form onSubmit={submit} className="flex flex-col gap-(--card-spacing)">
+        <CardHeader>
+          <CardTitle>Profil</CardTitle>
+          <CardDescription>Votre nom apparaît dans l'équipe et dans le journal des actions.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <FieldGroup>
+            <FormField label="Nom affiché" error={error} description={<>Adresse de connexion : {me?.email}</>}>
+              <Input value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" maxLength={80} />
+            </FormField>
+            {saved ? (
+              <Alert>
+                <CircleCheck />
+                <AlertDescription>Profil enregistré.</AlertDescription>
+              </Alert>
+            ) : null}
+          </FieldGroup>
+        </CardContent>
+        <CardFooter>
+          <PendingButton type="submit" pending={saving} pendingText="Enregistrement…" className="w-full sm:w-auto">
             Enregistrer
-          </Button>
-        </form>
-      </CardContent>
+          </PendingButton>
+        </CardFooter>
+      </form>
     </Card>
   );
 }
@@ -157,50 +166,65 @@ function SessionsCard() {
           que son jeton en cours expire.
         </CardDescription>
       </CardHeader>
-      <CardContent className="flex flex-col gap-4 pb-5">
+      <CardContent className="flex flex-col gap-4">
         {error ? (
-          <Alert variant="danger">
+          <Alert variant="destructive">
+            <CircleAlert />
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         ) : null}
         {sessions === null ? (
           <LoadingState />
         ) : (
-          <ul className="divide-y divide-line rounded-sm border border-line">
-            {sessions.map((s) => {
+          <ItemGroup className="gap-0 rounded-lg border">
+            {sessions.map((s, index) => {
               const device = describeDevice(s.userAgent);
               const isCurrent = s.token === currentToken;
               const Icon = device.mobile ? Smartphone : Laptop;
               return (
-                <li key={s.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
-                  <Icon aria-hidden="true" className="size-5 text-ink-3" />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-body text-ink">
-                      {device.label} {isCurrent ? <Badge variant="success">Cet appareil</Badge> : null}
-                    </p>
-                    <p className="text-label text-ink-3">
-                      Dernière activité le {new Date(s.updatedAt).toLocaleString("fr-FR", { dateStyle: "medium", timeStyle: "short" })}
-                    </p>
-                  </div>
-                  {!isCurrent ? (
-                    <Button variant="quiet" size="sm" loading={busy === s.token} loadingText="…" onClick={() => void revoke(s.token)}>
-                      Déconnecter
-                    </Button>
-                  ) : null}
-                </li>
+                <div key={s.id} role="listitem">
+                  {index > 0 ? <ItemSeparator className="my-0" /> : null}
+                  <Item>
+                    <ItemMedia variant="icon">
+                      <Icon aria-hidden="true" />
+                    </ItemMedia>
+                    <ItemContent className="min-w-0">
+                      <ItemTitle className="flex-wrap">
+                        {device.label} {isCurrent ? <Badge variant="secondary">Cet appareil</Badge> : null}
+                      </ItemTitle>
+                      <ItemDescription>
+                        Dernière activité le{" "}
+                        {new Date(s.updatedAt).toLocaleString("fr-FR", { dateStyle: "medium", timeStyle: "short" })}
+                      </ItemDescription>
+                    </ItemContent>
+                    {!isCurrent ? (
+                      <ItemActions>
+                        <PendingButton
+                          variant="ghost"
+                          size="sm"
+                          pending={busy === s.token}
+                          pendingText="Déconnexion…"
+                          onClick={() => void revoke(s.token)}
+                        >
+                          Déconnecter
+                        </PendingButton>
+                      </ItemActions>
+                    ) : null}
+                  </Item>
+                </div>
               );
             })}
-          </ul>
+          </ItemGroup>
         )}
-        <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" loading={busy === "others"} loadingText="Déconnexion…" onClick={() => void revokeOthers()}>
-            Déconnecter les autres appareils
-          </Button>
-          <Button variant="danger" loading={busy === "all"} loadingText="Déconnexion…" onClick={() => void signOutEverywhere()}>
-            Me déconnecter partout
-          </Button>
-        </div>
       </CardContent>
+      <CardFooter className="flex-col items-stretch gap-2 sm:flex-row sm:justify-end">
+        <PendingButton variant="outline" pending={busy === "others"} pendingText="Déconnexion…" onClick={() => void revokeOthers()}>
+          Déconnecter les autres appareils
+        </PendingButton>
+        <PendingButton variant="destructive" pending={busy === "all"} pendingText="Déconnexion…" onClick={() => void signOutEverywhere()}>
+          Me déconnecter partout
+        </PendingButton>
+      </CardFooter>
     </Card>
   );
 }

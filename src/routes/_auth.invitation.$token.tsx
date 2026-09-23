@@ -1,14 +1,17 @@
 import { useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
+import { CircleAlert, TriangleAlert } from "lucide-react";
 import { api } from "../../convex/_generated/api";
 import { AuthLayout } from "~/components/app/auth-layout";
 import { useAuthStatus } from "~/components/app/convex-providers";
+import { FormField } from "~/components/app/form-field";
+import { PendingButton } from "~/components/app/pending-button";
+import { LoadingState } from "~/components/app/states";
 import { Alert, AlertDescription } from "~/components/ui/alert";
 import { Button } from "~/components/ui/button";
-import { Field } from "~/components/ui/field";
+import { FieldDescription, FieldGroup } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
-import { LoadingState } from "~/components/ui/states";
 import { authClient } from "~/lib/auth-client";
 import { describeError } from "~/lib/errors";
 
@@ -48,7 +51,7 @@ function InvitationPage() {
         title="Cette invitation n'est plus valable"
         description="Elle a expiré, a été révoquée ou a déjà été utilisée. Demandez-en une nouvelle à la personne qui vous a invité."
       >
-        <Button asChild variant="secondary" className="w-full">
+        <Button asChild variant="outline" size="lg" className="w-full">
           <Link to="/connexion">Aller à la connexion</Link>
         </Button>
       </AuthLayout>
@@ -58,22 +61,24 @@ function InvitationPage() {
   const intro = (
     <>
       {preview.inviterName ? `${preview.inviterName} vous invite` : "Vous êtes invité"} à rejoindre{" "}
-      <strong className="text-ink">{preview.organizationName}</strong> en tant que « {preview.roleLabel} ».
+      <strong className="font-medium text-foreground">{preview.organizationName}</strong> en tant que « {preview.roleLabel} ».
     </>
   );
 
   if (!auth.isAuthenticated) {
     return (
       <AuthLayout title="Rejoindre l'équipe" description={intro}>
-        <p className="text-body text-ink-2">
-          Connectez-vous avec l'adresse qui a reçu l'invitation ({preview.maskedEmail}). Pas besoin de mot de passe : un code vous
-          sera envoyé.
-        </p>
-        <Button asChild size="lg" className="mt-6 w-full">
-          <Link to="/connexion" search={{ redirect: here }}>
-            Se connecter pour accepter
-          </Link>
-        </Button>
+        <FieldGroup>
+          <FieldDescription>
+            Connectez-vous avec l'adresse qui a reçu l'invitation ({preview.maskedEmail}). Pas besoin de mot de passe : un code
+            vous sera envoyé.
+          </FieldDescription>
+          <Button asChild size="lg" className="w-full">
+            <Link to="/connexion" search={{ redirect: here }}>
+              Se connecter pour accepter
+            </Link>
+          </Button>
+        </FieldGroup>
       </AuthLayout>
     );
   }
@@ -81,7 +86,8 @@ function InvitationPage() {
   if (preview.viewerEmailMatches && preview.viewerEmailVerified === false) {
     return (
       <AuthLayout title="Confirmez votre adresse" description={intro}>
-        <Alert variant="warning">
+        <Alert>
+          <TriangleAlert />
           <AlertDescription>
             Votre compte n'a pas encore prouvé qu'il détient cette adresse. Reconnectez-vous avec un code reçu par e-mail :
             l'invitation sera alors acceptable.
@@ -89,7 +95,7 @@ function InvitationPage() {
         </Alert>
         <Button
           size="lg"
-          className="mt-6 w-full"
+          className="mt-4 w-full"
           onClick={async () => {
             await authClient.signOut();
             await navigate({ to: "/connexion", search: { redirect: here } });
@@ -104,15 +110,16 @@ function InvitationPage() {
   if (preview.viewerEmailMatches === false) {
     return (
       <AuthLayout title="Mauvaise adresse" description={intro}>
-        <Alert variant="warning">
+        <Alert>
+          <TriangleAlert />
           <AlertDescription>
             Cette invitation a été envoyée à {preview.maskedEmail}, pas à l'adresse avec laquelle vous êtes connecté.
           </AlertDescription>
         </Alert>
         <Button
-          variant="secondary"
+          variant="outline"
           size="lg"
-          className="mt-6 w-full"
+          className="mt-4 w-full"
           onClick={async () => {
             await authClient.signOut();
             await navigate({ to: "/connexion", search: { redirect: here } });
@@ -126,45 +133,48 @@ function InvitationPage() {
 
   return (
     <AuthLayout title="Rejoindre l'équipe" description={intro}>
-      {error ? (
-        <Alert variant="danger" className="mb-4">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      ) : null}
-      {askName ? (
-        <Field label="Votre nom" description="Votre équipe le verra à la place de votre adresse e-mail." className="mb-4">
-          <Input value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" maxLength={80} />
-        </Field>
-      ) : null}
-      <Button
-        size="lg"
-        className="w-full"
-        loading={accepting}
-        loadingText="Acceptation…"
-        onClick={async () => {
-          if (askName && name.trim().length < 2) {
-            setError("Indiquez votre nom avant d'accepter.");
-            return;
-          }
-          setAccepting(true);
-          setError(null);
-          try {
-            if (askName) await updateProfile({ name });
-            const { organizationId } = await accept({ token });
-            try {
-              localStorage.setItem("joliba.organisation", organizationId);
-            } catch {
-              /* le choix d'organisation sera simplement refait */
+      <FieldGroup>
+        {error ? (
+          <Alert variant="destructive">
+            <CircleAlert />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        ) : null}
+        {askName ? (
+          <FormField label="Votre nom" description="Votre équipe le verra à la place de votre adresse e-mail.">
+            <Input value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" maxLength={80} />
+          </FormField>
+        ) : null}
+        <PendingButton
+          size="lg"
+          className="w-full"
+          pending={accepting}
+          pendingText="Acceptation…"
+          onClick={async () => {
+            if (askName && name.trim().length < 2) {
+              setError("Indiquez votre nom avant d'accepter.");
+              return;
             }
-            await navigate({ to: "/app", replace: true });
-          } catch (e) {
-            setError(describeError(e).message);
-            setAccepting(false);
-          }
-        }}
-      >
-        Accepter l'invitation
-      </Button>
+            setAccepting(true);
+            setError(null);
+            try {
+              if (askName) await updateProfile({ name });
+              const { organizationId } = await accept({ token });
+              try {
+                localStorage.setItem("joliba.organisation", organizationId);
+              } catch {
+                /* le choix d'organisation sera simplement refait */
+              }
+              await navigate({ to: "/app", replace: true });
+            } catch (e) {
+              setError(describeError(e).message);
+              setAccepting(false);
+            }
+          }}
+        >
+          Accepter l'invitation
+        </PendingButton>
+      </FieldGroup>
     </AuthLayout>
   );
 }

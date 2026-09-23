@@ -1,11 +1,15 @@
 import { useEffect, useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { REGEXP_ONLY_DIGITS } from "input-otp";
+import { CircleCheck } from "lucide-react";
 import { AuthLayout } from "~/components/app/auth-layout";
 import { useAuthStatus } from "~/components/app/convex-providers";
+import { FormField } from "~/components/app/form-field";
+import { PendingButton } from "~/components/app/pending-button";
 import { Alert, AlertDescription } from "~/components/ui/alert";
 import { Button } from "~/components/ui/button";
-import { Field } from "~/components/ui/field";
-import { OtpInput } from "~/components/ui/otp-input";
+import { FieldDescription, FieldGroup } from "~/components/ui/field";
+import { InputOTP, InputOTPGroup, InputOTPSeparator, InputOTPSlot } from "~/components/ui/input-otp";
 import { authClient } from "~/lib/auth-client";
 import { pendingEmail, safeRedirect } from "~/lib/redirect";
 
@@ -99,44 +103,84 @@ function OtpPage() {
       description={
         email ? (
           <>
-            Nous avons envoyé un code à six chiffres à <strong className="text-ink">{email}</strong>. Il est valable 10 minutes.
+            Nous avons envoyé un code à six chiffres à <strong className="font-medium text-foreground">{email}</strong>. Il est
+            valable 10 minutes.
           </>
         ) : null
       }
     >
-      <form
-        className="flex flex-col gap-4"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void verify(code);
-        }}
-      >
-        <Field label="Code de connexion" error={error}>
-          <OtpInput value={code} onChange={setCode} onComplete={(v) => void verify(v)} autoFocus disabled={verifying || signedIn} invalid={Boolean(error)} />
-        </Field>
-        {resent ? (
-          <Alert variant="success">
-            <AlertDescription>Un nouveau code vient de partir. Le précédent ne fonctionne plus.</AlertDescription>
-          </Alert>
-        ) : null}
-        <Button type="submit" size="lg" className="w-full" loading={verifying || signedIn} loadingText="Vérification…" disabled={code.length !== 6}>
-          Valider
-        </Button>
-      </form>
-      <div className="mt-6 flex flex-col gap-3 text-label">
-        {resendIn > 0 ? (
-          <p className="text-ink-3" aria-live="polite">
-            Pas reçu ? Vérifiez vos courriers indésirables. Nouveau code possible dans {resendIn} s.
-          </p>
-        ) : (
-          <Button variant="link" className="self-start" onClick={() => void resend()}>
-            Renvoyer un code
+      <FieldGroup>
+        <form
+          className="flex flex-col gap-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void verify(code);
+          }}
+        >
+          <FormField label="Code de connexion" error={error}>
+            <InputOTP
+              maxLength={6}
+              pattern={REGEXP_ONLY_DIGITS}
+              // Le code doit pouvoir se coller (WCAG 3.3.8) : espaces et tirets d'un collage
+              // sont retirés avant d'atteindre le champ.
+              pasteTransformer={(pasted) => pasted.replace(/\D/g, "")}
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              value={code}
+              onChange={setCode}
+              onComplete={(v: string) => void verify(v)}
+              autoFocus
+              disabled={verifying || signedIn}
+              containerClassName="justify-center"
+            >
+              <InputOTPGroup>
+                <InputOTPSlot index={0} aria-invalid={Boolean(error) || undefined} />
+                <InputOTPSlot index={1} aria-invalid={Boolean(error) || undefined} />
+                <InputOTPSlot index={2} aria-invalid={Boolean(error) || undefined} />
+              </InputOTPGroup>
+              <InputOTPSeparator />
+              <InputOTPGroup>
+                <InputOTPSlot index={3} aria-invalid={Boolean(error) || undefined} />
+                <InputOTPSlot index={4} aria-invalid={Boolean(error) || undefined} />
+                <InputOTPSlot index={5} aria-invalid={Boolean(error) || undefined} />
+              </InputOTPGroup>
+            </InputOTP>
+          </FormField>
+          {resent ? (
+            <Alert>
+              <CircleCheck />
+              <AlertDescription>Un nouveau code vient de partir. Le précédent ne fonctionne plus.</AlertDescription>
+            </Alert>
+          ) : null}
+          <PendingButton
+            type="submit"
+            size="lg"
+            className="w-full"
+            pending={verifying || signedIn}
+            pendingText="Vérification…"
+            disabled={code.length !== 6}
+          >
+            Valider
+          </PendingButton>
+        </form>
+        <div className="flex flex-col items-center gap-2 text-center">
+          {resendIn > 0 ? (
+            <FieldDescription aria-live="polite">
+              Pas reçu ? Vérifiez vos courriers indésirables. Nouveau code possible dans{" "}
+              <span className="tabular-nums">{resendIn}</span> s.
+            </FieldDescription>
+          ) : (
+            <Button variant="link" onClick={() => void resend()}>
+              Renvoyer un code
+            </Button>
+          )}
+          <Button variant="link" asChild>
+            <Link to="/connexion" search={redirect ? { redirect: destination } : {}}>
+              Changer d'adresse e-mail
+            </Link>
           </Button>
-        )}
-        <Link to="/connexion" search={redirect ? { redirect: destination } : {}} className="self-start text-accent-700 underline underline-offset-4">
-          Changer d'adresse e-mail
-        </Link>
-      </div>
+        </div>
+      </FieldGroup>
     </AuthLayout>
   );
 }
