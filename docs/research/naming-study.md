@@ -1,5 +1,14 @@
 # Étude de naming — Joliba
 
+> ⚠️ **Mise à jour du 2026-09-23 — deux affirmations de cette étude sont corrigées.**
+> Voir `docs/brand/verifications-marque.md`.
+> 1. **Antériorité** : Orange SA détient **« DJOLIBA »** à l'OAPI (Côte d'Ivoire comprise), en
+>    classes 9 et 42, jusqu'en 2030. Le « risque de confusion faible » du tableau §4 est **faux**
+>    pour les logiciels : le risque est **élevé**. La marque n'avait pas été vérifiée (§2.2).
+> 2. **Sens** : le dictionnaire de référence (Bamadaba) donne *Jòliba* comme nom propre du Niger,
+>    sans le traduire ; « le grand fleuve » est une lecture répandue, pas sa glose. Dire « le nom
+>    mandingue du fleuve Niger ».
+
 > Livrable **R6** (§106). Date des vérifications : **2026-09-17**.
 > Objet : remplacer « QR Menu Pro », nom qui enferme le produit dans le QR et dans le menu,
 > alors que le positionnement visé est **Restaurant Operating System** — coordination temps réel

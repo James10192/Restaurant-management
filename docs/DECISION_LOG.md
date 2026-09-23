@@ -231,6 +231,11 @@ Elles n'empêchent pas d'avancer : j'ai pris une valeur par défaut, indiquée e
 Elles sont regroupées ici pour être répondues d'un coup.
 
 1. **Nom du produit** — **tranché le 2026-09-22 : Joliba.**
+   ⚠️ **Rouvert le 2026-09-23** : Orange SA détient « DJOLIBA » à l'OAPI (classes 9 et 42, logiciels
+   et services informatiques, jusqu'en 2030). Garder Joliba avec avis d'un conseil en PI et accord de
+   coexistence, ou changer de nom avant le lancement (Balani, Sabar passés au même crible). Détail :
+   `docs/brand/verifications-marque.md`. *[défaut : aucun dépôt ni dépense de marque tant que ce
+   n'est pas tranché ; le développement continue sous le nom Joliba, facile à remplacer]*
 2. **PIN de service pour le personnel** (A1) — on le conçoit dès maintenant ? *[défaut : prévu au
    schéma, non implémenté]*
 3. **Mode de service par défaut** (A2) — « QR + commande serveur » ou « commande directe » ?

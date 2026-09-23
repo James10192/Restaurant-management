@@ -8,9 +8,9 @@
 > parce que ces outils suivent mieux l'anglais ; chaque prompt est expliqué en français.
 >
 > Faits sur lesquels ils s'appuient, et leurs limites : voir `docs/research/naming-study.md`.
-> « Joliba » désigne le fleuve Niger en mandingue (« le grand fleuve »). Ce sens vient de sources
-> publiques ; il **n'a pas encore été validé par des locuteurs natifs** — étape à faire avant tout
-> dépôt de marque ou campagne.
+> « Joliba » est le nom mandingue du fleuve Niger. La lecture « le grand fleuve » est répandue mais
+> n'est pas la glose du dictionnaire de référence, et **Orange détient « DJOLIBA » à l'OAPI en
+> classes 9 et 42** : voir `docs/brand/verifications-marque.md` avant tout usage public.
 
 ## Ce que le logo doit raconter
 
@@ -136,9 +136,10 @@ Classe-les du plus clair au plus audacieux. Signale ceux qui pourraient être ma
 
 ## Avant d'adopter un logo
 
-1. Vérifier qu'il reste lisible en 16 px (favicon), 48 px (icône) et en noir et blanc (ticket
-   de caisse imprimé).
-2. Faire une recherche d'antériorité de marque (OAPI, EUIPO, USPTO) : le nom n'a été vérifié
-   que pour les domaines (voir `naming-study.md` §8).
-3. Faire valider le sens de « Joliba » par des locuteurs mandingues.
+1. ~~Lisibilité en 16 px, 48 px et en noir et blanc~~ — fait : tient au-dessus de 32 mm imprimé
+   (logo) et 12 mm (vagues). Voir `verifications-marque.md` §1.
+2. ~~Recherche d'antériorité (OAPI, EUIPO, USPTO)~~ — faite : **risque élevé**, « DJOLIBA »
+   d'Orange à l'OAPI en classes 9 et 42. Voir `verifications-marque.md` §2 ; décision à prendre.
+3. Validation du sens par des locuteurs mandingues — **reste à faire par des personnes** ;
+   questionnaire prêt dans `verifications-marque.md` §3.3.
 4. ~~Remplacer la marque provisoire `JolibaMark` et le `favicon.svg`~~ — fait (D-059).

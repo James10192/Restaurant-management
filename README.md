@@ -5,9 +5,11 @@
 Le QR code n'est que la porte d'entrée. Ce qui est construit derrière, c'est la coordination en
 temps réel entre le client à table, le serveur, la cuisine, le bar, la caisse et le gérant.
 
-> Le nom **Joliba** (« le grand fleuve », le Niger en mandingue) est retenu depuis le 2026-09-22 —
-> voir [`docs/research/naming-study.md`](docs/research/naming-study.md) §9. La vérification de marque
-> (OAPI) reste à faire avant tout dépôt ou dépense de communication.
+> Le nom **Joliba** (le nom mandingue du fleuve Niger) est retenu depuis le 2026-09-22 —
+> voir [`docs/research/naming-study.md`](docs/research/naming-study.md) §9. ⚠️ Recherche d'antériorité
+> faite le 2026-09-23 : **Orange détient « DJOLIBA » à l'OAPI en classes 9 et 42** (logiciels).
+> Risque élevé, décision à prendre avant tout dépôt ou dépense de communication :
+> [`docs/brand/verifications-marque.md`](docs/brand/verifications-marque.md).
 
 ---
 
