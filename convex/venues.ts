@@ -13,6 +13,7 @@ import { invalid } from "./lib/errors";
 import { accessibleVenues, requireOrganizationMember, requirePermission } from "./lib/guards";
 import { createVenueRecords } from "./organizations";
 import { venueType } from "./lib/validators";
+import { publishedFacts } from "./lib/guestMenu";
 
 /** Plafond technique en attendant les limites par plan (T8). */
 const MAX_VENUES_PER_ORGANIZATION = 50;
@@ -62,6 +63,8 @@ export const get = query({
       phone: venue.phone ?? null,
       publicEmail: venue.publicEmail ?? null,
       description: venue.description ?? null,
+      openingHours: venue.openingHours ?? [],
+      publicMenuEnabled: venue.publicMenuEnabled,
     };
   },
 });
@@ -132,6 +135,12 @@ export const update = mutation({
         landmark: v.optional(v.string()),
       }),
     ),
+    /** Horaires, en minutes locales. Une plage qui passe minuit a une fermeture < ouverture. */
+    openingHours: v.optional(
+      v.array(v.object({ dayOfWeek: v.number(), opensAtMinute: v.number(), closesAtMinute: v.number() })),
+    ),
+    /** Consentement explicite à publier la carte sur le web. Jamais activé par défaut. */
+    publicMenuEnabled: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const actor = await requirePermission(ctx, "venue.manage", { venueId: args.venueId });
@@ -161,6 +170,22 @@ export const update = mutation({
       // La venue garde son pays : un changement de pays changerait devise et fuseau.
       patch.address = address;
     }
+    if (args.openingHours !== undefined) {
+      if (args.openingHours.length > 21) throw invalid("Pas plus de trois plages d'ouverture par jour.");
+      for (const h of args.openingHours) {
+        const ok =
+          Number.isInteger(h.dayOfWeek) &&
+          h.dayOfWeek >= 0 &&
+          h.dayOfWeek <= 6 &&
+          [h.opensAtMinute, h.closesAtMinute].every((m) => Number.isInteger(m) && m >= 0 && m <= 1440) &&
+          h.opensAtMinute !== h.closesAtMinute;
+        if (!ok) throw invalid("Horaires d'ouverture invalides.");
+      }
+      patch.openingHours = [...args.openingHours].sort((a, b) => a.dayOfWeek - b.dayOfWeek || a.opensAtMinute - b.opensAtMinute);
+    }
+    if (args.publicMenuEnabled !== undefined && args.publicMenuEnabled !== venue.publicMenuEnabled) {
+      patch.publicMenuEnabled = args.publicMenuEnabled;
+    }
     if (Object.keys(patch).length === 0) return;
     const before: Record<string, unknown> = {};
     for (const key of Object.keys(patch)) before[key] = (venue as Record<string, unknown>)[key];
@@ -175,5 +200,23 @@ export const update = mutation({
       before,
       after: patch,
     });
+  },
+});
+
+/**
+ * Où en est la carte publique ? Les FAITS dont dépend la porte de qualité
+ * (`lib/indexability.ts`), que l'écran évalue avec l'heure courante et présente comme une
+ * liste de choses à faire.
+ */
+export const publicMenuReadiness = query({
+  args: { venueId: v.id("venues") },
+  handler: async (ctx, args) => {
+    const actor = await requirePermission(ctx, "venue.read", { venueId: args.venueId });
+    const { venue } = actor;
+    return {
+      slug: venue.slug,
+      facts: await publishedFacts(ctx, venue),
+      canManage: actor.permissions.has("venue.manage"),
+    };
   },
 });

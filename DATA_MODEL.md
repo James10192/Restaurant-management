@@ -201,14 +201,14 @@ la configuration volumineuse va dans `venueSettings`.
 | Champ | Type | Note |
 |---|---|---|
 | `organizationId` | Id | |
-| `name`, `slug` | string | `slug` unique dans l'organisation ; sert l'URL publique |
+| `name`, `slug` | string | `slug` unique sur toute la plateforme : il sert l'URL publique (`/menu/<slug>`, `/r/<slug>/…`) |
 | `countryCode`, `currency`, `timezone`, `locales` | string / string[] | **la devise se fige dès la première opération financière** *(R20)* |
 | `venueType` | `"restaurant" \| "maquis" \| "bar" \| "lounge" \| "cafe" \| "fast_food" \| "hotel" \| "food_court"` | |
 | `status` | `"setup" \| "active" \| "paused" \| "archived"` | |
 | `publicMenuEnabled` | boolean | décide de l'indexation du menu public (§64) |
 | `onboardingCompletedSteps` | string[] | tableau de bord d'onboarding (§37) |
 
-**Index** : `by_org ["organizationId"]` · `by_slug ["slug"]` · `by_org_status ["organizationId","status"]`
+**Index** : `by_org ["organizationId"]` · `by_slug ["slug"]` · `by_org_status ["organizationId","status"]` · `by_public_menu ["publicMenuEnabled"]` (plan du site : seuls les établissements consentants)
 **Permissions** : `venue.read` / `venue.manage` / `venue.create`.
 **Cycle** : `setup` → `active` → `paused` → `archived`.
 

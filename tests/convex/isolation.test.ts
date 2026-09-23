@@ -57,7 +57,23 @@ async function twoTenants() {
     startMinute: 420,
     endMinute: 660,
   });
-  return { t, a, b, venueA2, waiterA, waiterB, pendingB, invitationB, catalogA, catalogB, ruleB };
+  const floorA = await floorFor(a.owner, a.venueId);
+  const floorB = await floorFor(b.owner, b.venueId);
+  return { t, a, b, venueA2, waiterA, waiterB, pendingB, invitationB, catalogA, catalogB, ruleB, floorA, floorB };
+}
+
+/** Une zone et une table, avec son QR. */
+async function floorFor(owner: Session, venueId: Id<"venues">) {
+  const [areaId] = await owner.as.mutation(api.floor.createAreas, { venueId, names: ["Salle"] });
+  const tableId = await owner.as.mutation(api.floor.createTable, {
+    venueId,
+    serviceAreaId: areaId!,
+    number: "1",
+    seats: 4,
+    shape: "square",
+  });
+  const sheet = await owner.as.query(api.qr.sheet, { venueId });
+  return { areaId: areaId!, tableId, token: sheet.areas[0]!.cards[0]!.token };
 }
 
 /** Une carte complète et publiée : section, produit, variante, groupe d'options. */
@@ -587,6 +603,120 @@ const CASES: Record<string, (w: Awaited<ReturnType<typeof twoTenants>>) => Promi
       a.owner.as.mutation(api.availability.deleteRule, { venueId: a.venueId, ruleId: ruleB }),
     );
   },
+  /* ─── Salle et QR ─── */
+  "floor.overview": async ({ a, b }) => {
+    await expectCode(a.owner.as.query(api.floor.overview, { venueId: b.venueId }), "NOT_FOUND");
+  },
+  "floor.createAreas": async ({ a, b }) => {
+    await expectCode(a.owner.as.mutation(api.floor.createAreas, { venueId: b.venueId, names: ["X"] }), "NOT_FOUND");
+  },
+  "floor.updateArea": async ({ a, b, floorB }) => {
+    await bothRefused(
+      a.owner.as.mutation(api.floor.updateArea, { venueId: b.venueId, serviceAreaId: floorB.areaId, name: "X" }),
+      a.owner.as.mutation(api.floor.updateArea, { venueId: a.venueId, serviceAreaId: floorB.areaId, name: "X" }),
+    );
+  },
+  "floor.reorderAreas": async ({ a, b, floorA, floorB }) => {
+    await bothRefused(
+      a.owner.as.mutation(api.floor.reorderAreas, { venueId: b.venueId, serviceAreaIds: [floorB.areaId] }),
+      a.owner.as.mutation(api.floor.reorderAreas, { venueId: a.venueId, serviceAreaIds: [floorA.areaId, floorB.areaId] }),
+    );
+  },
+  "floor.deleteArea": async ({ a, b, floorB }) => {
+    await bothRefused(
+      a.owner.as.mutation(api.floor.deleteArea, { venueId: b.venueId, serviceAreaId: floorB.areaId }),
+      a.owner.as.mutation(api.floor.deleteArea, { venueId: a.venueId, serviceAreaId: floorB.areaId }),
+    );
+  },
+  "floor.createTable": async ({ a, b, floorB }) => {
+    const table = { number: "99", seats: 2, shape: "round" as const };
+    await bothRefused(
+      a.owner.as.mutation(api.floor.createTable, { venueId: b.venueId, serviceAreaId: floorB.areaId, ...table }),
+      a.owner.as.mutation(api.floor.createTable, { venueId: a.venueId, serviceAreaId: floorB.areaId, ...table }),
+    );
+  },
+  "floor.createTableRange": async ({ a, b, floorB }) => {
+    const range = { from: 10, to: 12, seats: 2, shape: "round" as const };
+    await bothRefused(
+      a.owner.as.mutation(api.floor.createTableRange, { venueId: b.venueId, serviceAreaId: floorB.areaId, ...range }),
+      a.owner.as.mutation(api.floor.createTableRange, { venueId: a.venueId, serviceAreaId: floorB.areaId, ...range }),
+    );
+  },
+  "floor.updateTable": async ({ a, b, floorA, floorB }) => {
+    await bothRefused(
+      a.owner.as.mutation(api.floor.updateTable, { venueId: b.venueId, tableId: floorB.tableId, inService: false }),
+      a.owner.as.mutation(api.floor.updateTable, { venueId: a.venueId, tableId: floorB.tableId, inService: false }),
+    );
+    // Sa table, déplacée dans la zone de B.
+    await expectCode(
+      a.owner.as.mutation(api.floor.updateTable, { venueId: a.venueId, tableId: floorA.tableId, serviceAreaId: floorB.areaId }),
+      "NOT_FOUND",
+    );
+  },
+  "floor.saveLayout": async ({ a, b, floorA, floorB }) => {
+    const at = { x: 10, y: 10, width: 80, height: 80, rotation: 0 };
+    await bothRefused(
+      a.owner.as.mutation(api.floor.saveLayout, { venueId: b.venueId, serviceAreaId: floorB.areaId, tables: [] }),
+      a.owner.as.mutation(api.floor.saveLayout, {
+        venueId: a.venueId,
+        serviceAreaId: floorA.areaId,
+        tables: [{ tableId: floorB.tableId, ...at }],
+      }),
+    );
+  },
+  "floor.removeTable": async ({ a, b, floorB }) => {
+    await bothRefused(
+      a.owner.as.mutation(api.floor.removeTable, { venueId: b.venueId, tableId: floorB.tableId }),
+      a.owner.as.mutation(api.floor.removeTable, { venueId: a.venueId, tableId: floorB.tableId }),
+    );
+  },
+  "qr.sheet": async ({ a, b, floorB }) => {
+    await expectCode(a.owner.as.query(api.qr.sheet, { venueId: b.venueId }), "NOT_FOUND");
+    // Sa portée, la zone de B : aucun jeton de B ne sort.
+    await expectCode(a.owner.as.query(api.qr.sheet, { venueId: a.venueId, serviceAreaId: floorB.areaId }), "INVALID_ARGUMENT");
+  },
+  "qr.ensure": async ({ a, b }) => {
+    await expectCode(a.owner.as.mutation(api.qr.ensure, { venueId: b.venueId }), "NOT_FOUND");
+  },
+  "qr.rotate": async ({ a, b, floorB }) => {
+    await bothRefused(
+      a.owner.as.mutation(api.qr.rotate, { venueId: b.venueId, tableId: floorB.tableId }),
+      a.owner.as.mutation(api.qr.rotate, { venueId: a.venueId, tableId: floorB.tableId }),
+    );
+  },
+
+  /* ─── Surface client ─── */
+  "guest.exchange": async ({ t, floorA }) => {
+    // Le jeton de A ouvre la table de A, et rien d'autre : le laissez-passer désigne A.
+    const result = await t.mutation(api.guest.exchange, { token: floorA.token });
+    expect(result).toMatchObject({ ok: true, venueSlug: "maquis-a-cocody" });
+  },
+  "guest.tableMenu": async ({ t, floorA }) => {
+    const result = await t.mutation(api.guest.exchange, { token: floorA.token });
+    if (!result.ok) throw new Error("scan refusé");
+    // Présenté sous l'adresse de B, le laissez-passer de A ne donne rien.
+    expect(await t.query(api.guest.tableMenu, { pass: result.pass, venueSlug: "lounge-b-plateau" })).toBeNull();
+    const menu = await t.query(api.guest.tableMenu, { pass: result.pass, venueSlug: result.venueSlug });
+    expect(menu?.menus.map((m) => m.menu.name)).toEqual(["Carte A"]);
+  },
+  "guest.publicMenu": async ({ t }) => {
+    // B n'a pas consenti : rien, exactement comme pour un établissement inexistant.
+    expect(await t.query(api.guest.publicMenu, { venueSlug: "lounge-b-plateau" })).toBeNull();
+    expect(await t.query(api.guest.publicMenu, { venueSlug: "inexistant" })).toBeNull();
+  },
+  "guest.availability": async ({ t, b }) => {
+    // Lecture publique voulue : des indicateurs, aucun nom, aucun prix.
+    const live = await t.query(api.guest.availability, { venueId: b.venueId });
+    expect(JSON.stringify(live)).not.toContain("Plat B");
+    expect(JSON.stringify(live)).not.toContain("2000");
+  },
+  "venues.publicMenuReadiness": async ({ a, b }) => {
+    await expectCode(a.owner.as.query(api.venues.publicMenuReadiness, { venueId: b.venueId }), "NOT_FOUND");
+  },
+  "guest.sitemap": async ({ t }) => {
+    // Aucun des deux n'a consenti : le plan du site est vide.
+    expect(await t.query(api.guest.sitemap, {})).toEqual([]);
+  },
 };
 
 describe("isolation multi-tenant : A ne voit ni ne touche rien de B", () => {
@@ -613,6 +743,10 @@ describe("isolation multi-tenant : A ne voit ni ne touche rien de B", () => {
       expect(historyB.map((h) => [h.version, h.isCurrent])).toEqual([[1, true]]);
       const boardB = await world.b.owner.as.query(api.availability.board, { venueId: world.b.venueId });
       expect(boardB.rules).toHaveLength(1);
+      const planB = await world.b.owner.as.query(api.floor.overview, { venueId: world.b.venueId });
+      expect(planB.areas.map((a) => [a.name, a.tables.map((x) => [x.number, x.status, x.qr?.version])])).toEqual([
+        ["Salle", [["1", "available", 1]]],
+      ]);
     });
   }
 

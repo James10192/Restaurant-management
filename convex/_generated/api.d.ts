@@ -10,6 +10,8 @@
 
 import type * as auth from "../auth.js";
 import type * as availability from "../availability.js";
+import type * as floor from "../floor.js";
+import type * as guest from "../guest.js";
 import type * as health from "../health.js";
 import type * as http from "../http.js";
 import type * as lib_allergens from "../lib/allergens.js";
@@ -23,6 +25,9 @@ import type * as lib_email from "../lib/email.js";
 import type * as lib_entitlements from "../lib/entitlements.js";
 import type * as lib_errors from "../lib/errors.js";
 import type * as lib_guards from "../lib/guards.js";
+import type * as lib_guestMenu from "../lib/guestMenu.js";
+import type * as lib_guestPass from "../lib/guestPass.js";
+import type * as lib_indexability from "../lib/indexability.js";
 import type * as lib_log from "../lib/log.js";
 import type * as lib_menuSnapshot from "../lib/menuSnapshot.js";
 import type * as lib_money from "../lib/money.js";
@@ -38,6 +43,7 @@ import type * as modifiers from "../modifiers.js";
 import type * as organizations from "../organizations.js";
 import type * as products from "../products.js";
 import type * as publications from "../publications.js";
+import type * as qr from "../qr.js";
 import type * as roles from "../roles.js";
 import type * as team from "../team.js";
 import type * as users from "../users.js";
@@ -52,6 +58,8 @@ import type {
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   availability: typeof availability;
+  floor: typeof floor;
+  guest: typeof guest;
   health: typeof health;
   http: typeof http;
   "lib/allergens": typeof lib_allergens;
@@ -65,6 +73,9 @@ declare const fullApi: ApiFromModules<{
   "lib/entitlements": typeof lib_entitlements;
   "lib/errors": typeof lib_errors;
   "lib/guards": typeof lib_guards;
+  "lib/guestMenu": typeof lib_guestMenu;
+  "lib/guestPass": typeof lib_guestPass;
+  "lib/indexability": typeof lib_indexability;
   "lib/log": typeof lib_log;
   "lib/menuSnapshot": typeof lib_menuSnapshot;
   "lib/money": typeof lib_money;
@@ -80,6 +91,7 @@ declare const fullApi: ApiFromModules<{
   organizations: typeof organizations;
   products: typeof products;
   publications: typeof publications;
+  qr: typeof qr;
   roles: typeof roles;
   team: typeof team;
   users: typeof users;

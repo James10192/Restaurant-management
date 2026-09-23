@@ -270,7 +270,9 @@ export default defineSchema({
   })
     .index("by_org", ["organizationId"])
     .index("by_slug", ["slug"])
-    .index("by_org_status", ["organizationId", "status"]),
+    .index("by_org_status", ["organizationId", "status"])
+    // Le plan du site public ne liste que les établissements qui ont CONSENTI.
+    .index("by_public_menu", ["publicMenuEnabled"]),
 
   /** Configuration volumineuse, lue une fois par session puis mise en cache. */
   venueSettings: defineTable({
