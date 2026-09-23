@@ -133,6 +133,10 @@ Deux bénéfices : le reste du code ne distingue pas « en ligne » de « compto
 est validée avant d'écrire le premier adaptateur HTTP**. Une abstraction qui n'a qu'une
 implémentation n'est pas une abstraction, c'est une promesse.
 
+> **État en T3** *(D-078)* : l'abstraction est reportée à T5, précisément pour cette raison — tant
+> qu'aucun fournisseur en ligne n'existe, elle n'aurait qu'une implémentation. Les moyens manuels
+> passent tous par `applyPayment` (`convex/payments.ts`), qui deviendra la jonction.
+
 ### Ordre d'intégration recommandé *(D-025)*
 
 | Rang | Fournisseur | Pourquoi |
@@ -254,6 +258,11 @@ la somme des paiements d'une addition ne dépasse jamais son dû *(R17)*.
 `checkId`**. Aucune structure supplémentaire, et c'est précisément ce qu'aucun concurrent étudié ne
 traite. La caisse affiche le solde restant après chaque encaissement, en direct.
 
+> **Ce qui est construit en T3** *(D-075 à D-077)* : l'addition ne stocke aucun montant, son solde
+> se recalcule. Deux formes seulement : le « reste de la table », dynamique, et les additions
+> détachées par articles (`checkItems`, part fractionnaire possible). Le partage égal et « chacun
+> paie tant » sont des aides au montant, pas des additions. `by_guest` est reporté.
+
 ---
 
 ## 6. Caisse
@@ -274,6 +283,12 @@ L'écart n'est pas une faute à cacher, c'est une donnée. Ce qui compte, c'est 
 attribué et suivi dans le temps** — un écart isolé est humain, un écart répété chez la même personne
 est un signal.
 
+> **Ce qui est construit en T3** *(D-080, D-081)* : caisse centrale à tiroirs ou pochette par
+> serveur, au choix de l'établissement ; comptage à l'aveugle, un recomptage conservé, motif exigé
+> pour clôturer sur un écart ; on ne compte pas sa propre pochette. L'attendu = fonds + espèces
+> encaissées − monnaie rendue sur un paiement non espèces − remboursements en espèces − sorties +
+> apports. La correction d'une caisse close est reportée *(D-087)*.
+
 ---
 
 ## 7. Remboursements
@@ -284,6 +299,10 @@ d'origine.
 
 Un remboursement en espèces d'un paiement en ligne est possible, mais il crée un **mouvement de
 caisse** et doit apparaître dans la réconciliation : sinon l'argent sort sans trace.
+
+> En T3, un remboursement en espèces porte la session de caisse d'où sort l'argent
+> (`refunds.cashRegisterSessionId`) et entre dans l'attendu de cette caisse, plutôt qu'un mouvement
+> séparé : la trace est la même, sans double écriture *(D-083)*.
 
 ---
 

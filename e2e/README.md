@@ -3,7 +3,9 @@
 Les parcours `t0.spec.ts` (ouvrir, inviter, cloisonner) et `t1.spec.ts` (composer la carte, la
 publier, imprimer un QR, le scanner, couper un plat en direct, régénérer le QR) et `t2.spec.ts` (le service : saisir, préparer, porter, envoyer la suite, couper le réseau ;
 le client compose et le serveur reprend son panier ; tablette partagée avec PIN, écran de cuisine,
-révocation) s'exécutent dans un vrai navigateur, contre le build de production et un
+révocation) et `t3.spec.ts` (l'argent : encaisser en deux fois, ouvrir la caisse sur place,
+imprimer le ticket, compter une caisse juste, puis provoquer un écart et le retrouver au rapport
+avec son auteur et son motif) s'exécutent dans un vrai navigateur, contre le build de production et un
 backend Convex **local** (sans compte). Aucun service extérieur n'est appelé : les e-mails, codes
 de connexion compris, sont recueillis par un faux serveur de courrier.
 
@@ -23,8 +25,8 @@ PORT=3000 node .output/server/index.mjs &
 MAIL_SINK=/tmp/joliba-mails.jsonl pnpm test:e2e
 ```
 
-`t2.spec.ts` sème lui-même un établissement de démonstration (`scripts/seed-demo.mjs`) et y
-rattache le compte de test par `devSeed:joinDemo`, qui ne fonctionne que sur un backend local
+`t2.spec.ts` et `t3.spec.ts` sèment eux-mêmes un établissement de démonstration (`scripts/seed-demo.mjs`) et y
+rattachent le compte de test par `devSeed:joinDemo`, qui ne fonctionne que sur un backend local
 (`JOLIBA_DEMO_SEED=1`, posé par `scripts/e2e-env.sh`).
 
 Variables utiles : `E2E_SCREENSHOTS=<dossier>` enregistre une capture à chaque étape ;

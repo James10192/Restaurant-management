@@ -140,6 +140,21 @@ Additions séparées des commandes · partage (par article, par personne, par mo
 écart · mouvements de caisse · tickets non certifiés (`bills`) · remboursements et annulations avec
 motif · journal d'audit branché.
 
+**Lots** :
+
+| Lot | Contenu | État |
+|---|---|---|
+| T3.a | Arbitrages adverses : qui agit, forme des additions, partage, organisation des espèces *(D-075 à D-083)* | fait (2026-09-23) |
+| T3.b | Moteur : additions sans montant stocké, partage par articles, paiements mixtes idempotents, caisses et pochettes, comptage à l'aveugle, annulations et remboursements, tickets numérotés, rapport de fin de service | fait (2026-09-23) |
+| T3.c | Écrans (composants shadcn uniquement) : onglet Addition de la table, encaissement en deux temps, caisse, ticket imprimable 80 mm, rapport, réglages d'encaissement | fait (2026-09-23) |
+| T3.d | Bout en bout (`e2e/t3.spec.ts`) : caisse juste puis écart provoqué, revue adverse, documentation | fait (2026-09-23) |
+
+- Écarts assumés à la fin de T3 : `CashProvider` reporté à T5, `applyPayment` en tient lieu
+  *(D-078)* ; pas de partage par convive *(D-077)* ; pas de grille de comptage par coupures, pas de
+  correction d'une caisse close, pas de pourboire ni de service *(D-087)* ; le ticket reste un
+  document interne tant que la conformité fiscale n'est pas branchée *(D-024)* ; la porte de sortie
+  (une vraie clôture en salle) attend un essai en restaurant réel — l'e2e en rejoue le scénario.
+
 **À la fin** : le gérant sait, à la fin du service, ce qui est entré, par quel moyen, encaissé par
 qui — et l'écart de caisse s'explique.
 
