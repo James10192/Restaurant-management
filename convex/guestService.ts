@@ -25,6 +25,8 @@ import { settingsOf, touchSession, writeOrderEvent } from "./lib/service";
 import { createOrder, priceRequest } from "./orders";
 
 export const CART_MAX_LINES = 30;
+/** Motif posé sur une commande que personne n'a validée à temps : le client la lit « expirée ». */
+const EXPIRED_REASON = "Personne n'a pu la valider à temps. Appelez un serveur.";
 
 const guestArgs = { pass: v.string(), venueSlug: v.string(), guestKey: v.string() };
 const lineArg = v.object({
@@ -89,7 +91,7 @@ export const presence = query({
     const { session, guest } = await guestPresence(ctx, resolved.table, args.guestKey);
     const cart = guest ? await activeCartOf(ctx, guest) : null;
     const items = cart ? await cartItemsOf(ctx, cart._id) : [];
-    const orders: { reference: string; status: string; label: string; rejectedReason: string | null; items: { name: string; quantity: number }[] }[] = [];
+    const orders: { reference: string; status: string; label: string; rejectedReason: string | null; expired: boolean; items: { name: string; quantity: number }[] }[] = [];
     if (guest && session) {
       const mine = await ctx.db
         .query("carts")
@@ -112,6 +114,7 @@ export const presence = query({
           status: order.status,
           label: GUEST_STATUS[order.status] ?? "Enregistrée",
           rejectedReason: order.rejectedReason ?? null,
+          expired: order.status === "rejected" && order.rejectedReason === EXPIRED_REASON,
           items: lines.filter((l) => l.status !== "cancelled").map((l) => ({ name: l.nameSnapshot, quantity: l.quantity })),
         });
       }
@@ -248,7 +251,7 @@ export const expirePending = internalMutation({
   handler: async (ctx, args) => {
     const order = await ctx.db.get(args.orderId);
     if (!order || order.status !== "pending_acceptance") return;
-    const reason = "Personne n'a pu la valider à temps. Appelez un serveur.";
+    const reason = EXPIRED_REASON;
     await ctx.db.patch(order._id, { status: "rejected", rejectedReason: reason });
     const items = await ctx.db
       .query("orderItems")

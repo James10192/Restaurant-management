@@ -256,6 +256,8 @@ export const routing = query({
           productCount: products.length,
           /** Un seul poste pour toute la section, ou `"mixed"` si ses produits diffèrent. */
           stationId: stationIds.length === 1 ? stationIds[0]! : products.length === 0 ? null : ("mixed" as const),
+          /** Le poste de chaque produit (`null` : le poste par défaut), pour les exceptions. */
+          products: products.map((p) => ({ _id: p._id, name: p.name, stationId: p.prepStationId ?? null })),
         });
       }
     }

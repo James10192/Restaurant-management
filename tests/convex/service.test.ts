@@ -239,6 +239,17 @@ describe("règles du service", () => {
     await expectCode(s.cook.as.mutation(api.orders.serveTicket, { venueId: s.cocody, ticketId: cui._id }), "FORBIDDEN");
   });
 
+  test("le routage montre le poste de chaque produit, exceptions comprises", async () => {
+    const s = await serviceReady();
+    await s.owner.as.mutation(api.stations.routeProduct, { venueId: s.cocody, productId: s.products.bissap, stationId: s.cuisine });
+    const routing = await s.owner.as.query(api.stations.routing, { venueId: s.cocody });
+    const boissons = routing.find((r) => r.sectionId === s.sections.boissons)!;
+    const others = boissons.products.filter((p) => p._id !== s.products.bissap);
+    expect(boissons.stationId).toBe(others.length > 0 ? "mixed" : s.cuisine);
+    expect(boissons.products.find((p) => p._id === s.products.bissap)!.stationId).toBe(s.cuisine);
+    expect(others.every((p) => p.stationId === s.bar)).toBe(true);
+  });
+
   test("un poste qui a des bons en cours ne se retire pas", async () => {
     const s = await serviceReady();
     await openAndOrder(s);

@@ -254,3 +254,90 @@ export const demoRestaurant = internalMutation({
     return { venueSlug: venue.slug, token: qr.token };
   },
 });
+
+/**
+ * Rattache un compte de test (déjà connecté une fois) au dernier restaurant de démonstration,
+ * comme propriétaire, et complète la salle pour un essai de service : huit tables sur deux zones.
+ * Réservé au backend local, comme le reste de ce fichier.
+ */
+export const joinDemo = internalMutation({
+  args: { email: v.string() },
+  handler: async (ctx, args) => {
+    assertEnabled();
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_email", (q) => q.eq("email", args.email.toLowerCase()))
+      .first();
+    if (!user) throw invalid("Connectez-vous d'abord une fois avec cette adresse.");
+    const organizations = (await ctx.db.query("organizations").collect()).filter((o) => o.slug.startsWith("demo-"));
+    const organization = organizations.sort((a, b) => b._creationTime - a._creationTime)[0];
+    if (!organization) throw invalid("Aucun restaurant de démonstration : lancez scripts/seed-demo.mjs.");
+    const now = Date.now();
+    const already = (
+      await ctx.db
+        .query("organizationMembers")
+        .withIndex("by_org_status", (q) => q.eq("organizationId", organization._id))
+        .collect()
+    ).find((m) => m.userId === user._id);
+    if (!already) {
+      const memberId = await ctx.db.insert("organizationMembers", { organizationId: organization._id, userId: user._id, status: "active", joinedAt: now });
+      const owner = (
+        await ctx.db
+          .query("roles")
+          .withIndex("by_org_key", (q) => q.eq("organizationId", organization._id).eq("key", "owner"))
+          .collect()
+      )[0]!;
+      await ctx.db.insert("memberRoleAssignments", {
+        organizationId: organization._id,
+        memberId,
+        roleId: owner._id,
+        scopeType: "organization",
+        grantedByUserId: user._id,
+        grantedAt: now,
+      });
+    }
+    const venue = (
+      await ctx.db
+        .query("venues")
+        .withIndex("by_org", (q) => q.eq("organizationId", organization._id))
+        .collect()
+    )[0]!;
+    const areas = await ctx.db
+      .query("serviceAreas")
+      .withIndex("by_venue_sort", (q) => q.eq("venueId", venue._id))
+      .collect();
+    const tables = await ctx.db
+      .query("restaurantTables")
+      .withIndex("by_venue_number", (q) => q.eq("venueId", venue._id))
+      .collect();
+    if (tables.length < 2) {
+      const terrace = areas[0]!._id;
+      const room = await ctx.db.insert("serviceAreas", { venueId: venue._id, name: "Salle", sortOrder: 1, canvasWidth: 1200, canvasHeight: 800, isActive: true });
+      const plan: [Id<"serviceAreas">, string, number][] = [
+        [terrace, "10", 2],
+        [terrace, "11", 4],
+        [room, "1", 2],
+        [room, "2", 4],
+        [room, "3", 4],
+        [room, "4", 6],
+        [room, "5", 8],
+      ];
+      for (const [i, [serviceAreaId, number, seats]] of plan.entries()) {
+        await ctx.db.insert("restaurantTables", {
+          venueId: venue._id,
+          serviceAreaId,
+          number,
+          seats,
+          shape: "square",
+          x: 40 + (i % 4) * 120,
+          y: 160 + Math.floor(i / 4) * 120,
+          width: 80,
+          height: 80,
+          status: "available",
+          isActive: true,
+        });
+      }
+    }
+    return { organizationId: organization._id, venueId: venue._id, venueSlug: venue.slug };
+  },
+});

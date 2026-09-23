@@ -122,6 +122,13 @@ describe("la validation par le serveur (réglage)", () => {
     expect(audit.some((a) => a.action === "venue.settings.ordering_mode")).toBe(true);
   });
 
+  test("le mode en vigueur se relit dans les réglages de l'établissement", async () => {
+    const s = await tableWithGuest();
+    expect((await s.owner.as.query(api.venues.get, { venueId: s.cocody })).orderingMode).toBe("staff_only");
+    await s.owner.as.mutation(api.venues.setOrderingMode, { venueId: s.cocody, orderingMode: "guest_with_approval" });
+    expect((await s.owner.as.query(api.venues.get, { venueId: s.cocody })).orderingMode).toBe("guest_with_approval");
+  });
+
   test("envoyée, elle attend ; rien en cuisine ; à 90 s l'alerte monte ; à 10 min elle expire", async () => {
     const s = await tableWithGuest();
     await s.owner.as.mutation(api.venues.setOrderingMode, { venueId: s.cocody, orderingMode: "guest_with_approval" });
@@ -139,7 +146,7 @@ describe("la validation par le serveur (réglage)", () => {
 
     await s.t.mutation(internal.guestService.expirePending, { orderId });
     const seen = await s.t.query(api.guestService.presence, s.as(PHONE_1));
-    expect(seen!.orders[0]).toMatchObject({ label: "Refusée", rejectedReason: "Personne n'a pu la valider à temps. Appelez un serveur." });
+    expect(seen!.orders[0]).toMatchObject({ label: "Refusée", rejectedReason: "Personne n'a pu la valider à temps. Appelez un serveur.", expired: true });
   });
 
   test("acceptée, elle part en cuisine", async () => {

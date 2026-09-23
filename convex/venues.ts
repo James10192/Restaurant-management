@@ -49,6 +49,10 @@ export const get = query({
   handler: async (ctx, args) => {
     const actor = await requirePermission(ctx, "venue.read", { venueId: args.venueId });
     const { venue } = actor;
+    const settings = await ctx.db
+      .query("venueSettings")
+      .withIndex("by_venue", (q) => q.eq("venueId", venue._id))
+      .unique();
     return {
       _id: venue._id,
       organizationId: venue.organizationId,
@@ -65,6 +69,7 @@ export const get = query({
       description: venue.description ?? null,
       openingHours: venue.openingHours ?? [],
       publicMenuEnabled: venue.publicMenuEnabled,
+      orderingMode: settings?.service.orderingMode ?? "staff_only",
     };
   },
 });
