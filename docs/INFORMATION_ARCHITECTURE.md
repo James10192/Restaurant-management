@@ -59,7 +59,7 @@ l'élément avec sa raison. L'état « permission refusée » est un état d'éc
 |---|---|---|
 | 1 — Lecture | Carte, prix, photos, plan de salle | Servi depuis le cache, bandeau discret « hors ligne — affichage du <heure> » |
 | 2 — File d'écriture | **Personnel uniquement** : ajout d'article, prêt, servi, demande prise en charge | Le geste est accepté, l'élément porte l'état **« en attente de confirmation »**, visuellement distinct de « envoyé » |
-| 3 — Refus explicite | Argent, clôture de caisse, remboursement, clôture de table, **et tout geste client** | Message qui dit quoi faire à la place : « Connexion perdue — encaissez en espèces, ce sera enregistré au retour du réseau » |
+| 3 — Refus explicite | Argent, clôture de caisse, remboursement, clôture de table, **et tout geste client** | Message qui dit quoi faire à la place : « Connexion perdue — l’encaissement attend le réseau » *(D-062 : aucune pièce différée n’est promise)* |
 
 > Conséquence souvent oubliée : **le client à table n'est jamais dans le cercle 2.** Un invité hors
 > ligne peut consulter la carte et composer son panier localement, mais l'envoi est refusé avec un

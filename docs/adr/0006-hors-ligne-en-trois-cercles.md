@@ -1,6 +1,6 @@
 # ADR 0006 — Le hors-ligne se limite à trois cercles ; le pair-à-pair est différé
 
-**Statut** : accepté pour la V1 · **la voie 2 est à trancher par le propriétaire du produit**
+**Statut** : accepté pour la V1, précisé par D-062 (voie « V1+ ») · la voie 2 ne s'ouvre que sur mesure terrain
 **Date** : 2026-09-17
 
 ## Contexte
@@ -22,8 +22,17 @@ Mais Convex est un backend **en nuage**, sans mode local ni réplica réseau *(A
 2. **File d'écriture** pour les gestes de service uniquement (ajouter un article, marquer prêt,
    marquer servi, demander un service), chaque mutation portant une clé d'idempotence, et un état
    d'interface **« en attente de confirmation »** distinct de « envoyé ».
-3. **Refus explicite** sur l'argent et les clôtures : « Connexion perdue — encaissez en espèces, ce
-   sera enregistré au retour du réseau. »
+3. **Refus explicite** sur l'argent et les clôtures. ~~« encaissez en espèces, ce sera enregistré
+   au retour du réseau »~~ — retiré (D-062) : la phrase laissait croire à une pièce conforme, alors
+   qu'aucune certification différée n'est connue (A7). L'écran dit seulement que l'encaissement
+   attend le réseau.
+
+**Précisions de D-062** : au-delà de 3 minutes sans réseau, l'application passe en « Service
+dégradé » (bandeau persistant, « bon à montrer » plein écran par commande) ; au retour, **rien de
+ce qui a été saisi plus de 3 minutes auparavant ne repart seul en cuisine** : chaque commande passe
+par une liste « À régulariser » (déjà préparée · envoyer maintenant · annuler). Un geste de plus de
+6 heures est refusé au rejeu. La file vit en IndexedDB, part une opération à la fois, et l'état du
+serveur gagne toujours. Chaque appareil mesure ses coupures.
 
 **Le pair-à-pair sur réseau local est différé**, et présenté comme un arbitrage d'investissement.
 
@@ -35,9 +44,16 @@ Mais Convex est un backend **en nuage**, sans mode local ni réplica réseau *(A
 concurrentielle appelle « le mode hors-ligne en trompe-l'œil » et classe parmi les pratiques à ne
 pas copier. Le promettre reviendrait à reproduire le défaut qu'on reproche à Toast.
 
-**Ce qui rend la voie 2 encore possible sans réécriture** : trois choix déjà actés y mènent —
-identifiants générés côté client, clé d'idempotence sur toute mutation, journal d'événements métier
-plutôt que seul état courant. Ce sont exactement les fondations d'une synchronisation différée.
+**Ce qui rend la voie 2 encore possible sans réécriture** : trois fondations y mènent — une
+référence générée côté client (`clientRef`, UUIDv7, index unique par établissement), une clé
+d'idempotence sur toute mutation de création, un journal d'événements métier plutôt que seul état
+courant. ⚠️ Correction du 2026-09-23 : ce document disait les identifiants côté client « déjà
+actés » ; ils ne l'étaient pas (Convex ne laisse pas le client choisir un `_id`). Le `clientRef` est
+à poser en T2.c (D-062).
+
+**Déclencheur de la voie 2** : dans les établissements pilotes, au moins une coupure par semaine,
+de plus de 20 minutes, touchant **tous** les appareils (4G comprise) pendant le service, quatre
+semaines de suite.
 
 ## Alternatives
 

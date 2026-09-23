@@ -544,7 +544,7 @@ flowchart TD
     N -->|"non"| C1["Cercle 1 — LECTURE<br/>carte, prix, plan de salle<br/>servis depuis le cache"]
     C1 --> C2{"Le geste écrit-il ?"}
     C2 -->|"geste de service"| Q["Cercle 2 — FILE<br/>ajout d'article, prêt, servi, demande<br/>chaque mutation porte une clé d'idempotence<br/>état affiché : « en attente de confirmation »"]
-    C2 -->|"argent ou clôture"| BLK["Cercle 3 — REFUS EXPLICITE<br/>« Connexion perdue — encaissez en espèces,<br/>ce sera enregistré au retour du réseau »"]
+    C2 -->|"argent ou clôture"| BLK["Cercle 3 — REFUS EXPLICITE<br/>« Connexion perdue — l’encaissement attend le réseau »"]
     Q --> SYNC["Au retour du réseau : rejeu ordonné<br/>conflit → l'état serveur gagne, l'utilisateur est prévenu"]
 ```
 

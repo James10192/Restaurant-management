@@ -103,9 +103,21 @@ d'entrée de gamme en 4G bridée — **mesuré, pas estimé**.
 ### T2 — Le service passe par le logiciel *(le cœur)*
 
 Sessions de table et invités · panier · commandes avec machine à états et journal d'événements ·
-mode `staff_only` et `guest_with_approval` · découpe en bons par station · **KDS** · écran serveur
-(mes tables, prêt à servir, attentes) · demandes de service · services (`courses`) avec `hold` et
-`fire` · file d'écriture hors ligne pour les gestes de service *(A4, cercle 2)*.
+mode `staff_only` avec **panier à montrer**, `guest_with_approval` en réglage sous garde-fous
+*(D-061)* · découpe en bons par station · **KDS** · écran serveur (mes tables, prêt à servir,
+attentes) · demandes de service · services (`courses`) avec `hold` et `fire` · **PIN de service
+sur appareil enrôlé** *(D-060)* · file d'écriture hors ligne persistante et « À régulariser »
+*(D-062)*.
+
+**Lots** :
+
+| Lot | Contenu | État |
+|---|---|---|
+| T2.a | Moteur : postes et routage, sessions de table, commandes chiffrées côté serveur, bons par poste et par service, écran de production, « à servir », clôture | fait (2026-09-23) |
+| T2.c | Modèle d'acteur (membre, appareil, session d'opérateur), enrôlement d'appareil, PIN, `clientRef`, file hors ligne | à faire — **avant** les écrans |
+| T2.b | Côté client : panier à montrer, demandes de service, validation sous garde-fous | à faire |
+| T2.d | Écrans (composants shadcn uniquement) : prise de commande, KDS, mes tables, demandes, postes | à faire |
+| T2.e | Bout en bout d'un service complet, revue adverse, documentation | à faire |
 
 **À la fin** : un serveur prend une commande sur son téléphone, la cuisine la reçoit et la marque
 prête, le serveur est prévenu et sert. **Le restaurant coordonne sa salle et sa cuisine sans crier.**
@@ -217,8 +229,9 @@ webhooks sortants signés avec réessais · intégrations tierces.
 1. **Le hors-ligne pair-à-pair** *(A8)*. Si l'utilisateur choisit la voie 2, une tranche entière
    s'insère après T2 — et le produit gagne son meilleur différenciateur au prix d'un second
    exécutable et d'un support matériel.
-2. **Le PIN de service** *(A1)*. S'il est retenu, il entre en T0 : greffé après T2, il oblige à
-   reprendre toutes les surfaces d'authentification.
+2. ~~**Le PIN de service** *(A1)*. S'il est retenu, il entre en T0.~~ **Retenu (D-060).** T0 est
+   livrée sans lui : il passe en tête de T2, **avant** le premier écran de service, pour que les
+   tables de service rattachent leurs gestes à un membre et un appareil dès le départ.
 3. **Le terrain** *(R7, guide d'entretiens)*. Il peut inverser T3 et T4, ou avancer la conformité
    fiscale. Les entretiens ne sont **pas encore faits** : cet ordre repose donc sur des hypothèses
    documentées, pas sur des faits.
