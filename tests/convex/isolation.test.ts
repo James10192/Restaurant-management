@@ -717,6 +717,32 @@ const CASES: Record<string, (w: Awaited<ReturnType<typeof twoTenants>>) => Promi
     // Aucun des deux n'a consenti : le plan du site est vide.
     expect(await t.query(api.guest.sitemap, {})).toEqual([]);
   },
+  /* ─── Import et duplication ─── */
+  "menuImport.apply": async ({ a, b, catalogB }) => {
+    const rows = [{ line: 2, section: "Intrus", name: "Intrus", price: 1, allergens: [], tags: [] }];
+    await bothRefused(
+      a.owner.as.mutation(api.menuImport.apply, { venueId: b.venueId, menuId: catalogB.menuId, rows }),
+      a.owner.as.mutation(api.menuImport.apply, { venueId: a.venueId, menuId: catalogB.menuId, rows }),
+    );
+  },
+  "menuImport.sources": async ({ a, b }) => {
+    await expectCode(a.owner.as.query(api.menuImport.sources, { venueId: b.venueId }), "NOT_FOUND");
+    // Depuis son second établissement, A ne voit que ses propres cartes.
+    const sources = await a.owner.as.query(api.menuImport.sources, { venueId: a.venueId });
+    expect(sources.map((s) => s.venueName)).toEqual([]);
+  },
+  "menuImport.duplicateFromVenue": async ({ a, b, venueA2, catalogB }) => {
+    // Recopier la carte de B chez A : B est hors de portée, la carte est introuvable.
+    await expectCode(
+      a.owner.as.mutation(api.menuImport.duplicateFromVenue, { venueId: venueA2, sourceVenueId: b.venueId, sourceMenuId: catalogB.menuId }),
+      "NOT_FOUND",
+    );
+    // Son établissement comme source, la carte de B comme menu : introuvable aussi.
+    await expectCode(
+      a.owner.as.mutation(api.menuImport.duplicateFromVenue, { venueId: venueA2, sourceVenueId: a.venueId, sourceMenuId: catalogB.menuId }),
+      "NOT_FOUND",
+    );
+  },
 };
 
 describe("isolation multi-tenant : A ne voit ni ne touche rien de B", () => {
