@@ -65,8 +65,12 @@ test("T0 — ouvrir, inviter, cloisonner", async ({ browser }) => {
 
   // Le serveur n'a ni l'équipe, ni les rôles, ni les réglages : ni dans la navigation
   // (qui lui montre la carte et la salle, rien d'autre)…
+  // Sur téléphone, la navigation vit dans le tiroir de la barre latérale : on l'ouvre.
+  await waiter.getByRole("button", { name: "Afficher ou masquer le menu" }).click();
   const waiterNav = waiter.getByRole("navigation", { name: "Navigation principale" });
   await expect(waiterNav.getByRole("link")).toHaveText(["Accueil", "Carte", "Salle"]);
+  await shot(waiter, "menu-serveur-mobile");
+  await waiter.keyboard.press("Escape");
   await expect(waiter.getByRole("link", { name: "Établissement" })).toHaveCount(0);
   await expect(waiter.getByRole("link", { name: "Rôles" })).toHaveCount(0);
   await expect(waiter.getByRole("link", { name: "Équipe" })).toHaveCount(0);

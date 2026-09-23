@@ -77,6 +77,13 @@ d'entrée de gamme en 4G bridée — **mesuré, pas estimé**.
   en ajoutant un aller-retour, la borne pessimiste reste sous 2,5 s (≈ 1,72 s et ≈ 2,35 s).
   Octets : JavaScript avant interaction **104 Ko** brotli (budget 120), CSS 9 Ko, police 35 Ko,
   deux photos prioritaires ≈ 84 Ko (budget 180). Résultat brut : `docs/perf/2026-09-23-carte-client.json`.
+- **Après le passage aux composants officiels shadcn/ui (D-058)**, même protocole : première
+  peinture **1,73 s**, plus grand élément **2,08 s** au 75ᵉ centile — la porte de 2,5 s tient, avec
+  moins de marge (≈ 2,38 s en ajoutant l'aller-retour manquant). JavaScript avant interaction
+  **≈ 131 Ko** brotli : **au-dessus du budget de 120 Ko**. L'essentiel vient du moteur de fusion de
+  classes `cn` qu'importe chaque composant officiel (≈ 9 Ko) et du code des composants ; la fiche
+  d'un plat (vaul) est chargée en différé et n'y entre pas. Résultat brut :
+  `docs/perf/2026-09-23-carte-client-shadcn.json`.
 - **Non fait** : la mesure sur un vrai Android d'entrée de gamme (DESIGN §12, point 6). Un
   processeur ralenti par logiciel n'a ni la dalle ni le processeur graphique d'un téléphone à
   100 $ : c'est l'appareil réel qui tranche, avant la première mise en service.

@@ -38,7 +38,7 @@ export function FormField({
         {children}
       </Slot.Root>
       {description ? <FieldDescription id={`${id}-description`}>{description}</FieldDescription> : null}
-      <div aria-live="polite">{hasError ? <FieldError id={`${id}-error`}>{error}</FieldError> : null}</div>
+      <div aria-live="polite" className="empty:absolute">{hasError ? <FieldError id={`${id}-error`}>{error}</FieldError> : null}</div>
     </Field>
   );
 }

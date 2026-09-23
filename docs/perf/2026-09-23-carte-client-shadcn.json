@@ -1,0 +1,46 @@
+{
+  "runs": 20,
+  "profile": {
+    "offline": false,
+    "latency": 300,
+    "downloadThroughput": 200000,
+    "uploadThroughput": 93750,
+    "cpuSlowdown": 6,
+    "viewport": "360x740@2x"
+  },
+  "summary": {
+    "ttfb": {
+      "median": 361,
+      "p75": 366,
+      "max": 412
+    },
+    "fcp": {
+      "median": 1710,
+      "p75": 1731,
+      "max": 1784
+    },
+    "lcp": {
+      "median": 2076,
+      "p75": 2084,
+      "max": 2112
+    },
+    "domContentLoaded": {
+      "median": 2041,
+      "p75": 2070,
+      "max": 2135
+    },
+    "load": {
+      "median": 4123,
+      "p75": 4135,
+      "max": 4153
+    },
+    "kb": {
+      "document": 112,
+      "script": 157,
+      "stylesheet": 17,
+      "image": 336,
+      "font": 29,
+      "other": 1
+    }
+  }
+}
