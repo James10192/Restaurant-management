@@ -281,8 +281,9 @@ describe("le ticket", () => {
     expect(ticket.notice).toBe("Document interne — ne vaut pas reçu fiscal");
     expect(ticket.snapshot.totals.total).toBe(13500);
     expect(ticket.snapshot.payments).toEqual([{ method: "Carte", amount: 13500 }]);
-    // Imprimer, puis réimprimer : un duplicata, avec son droit.
+    // Imprimer, puis réimprimer passé le délai de reprise : un duplicata, avec son droit.
     expect(await v.cashier.as.mutation(api.bills.recordPrint, { venueId: v.cocody, billId })).toEqual({ duplicate: false });
+    await v.t.run((ctx) => ctx.db.patch(billId, { firstPrintedAt: Date.now() - 10 * 60_000 }));
     expect(await v.cashier.as.mutation(api.bills.recordPrint, { venueId: v.cocody, billId })).toEqual({ duplicate: true });
     await expectCode(v.waiter.as.mutation(api.bills.recordPrint, { venueId: v.cocody, billId }), "FORBIDDEN");
     // Une bière après le ticket : nouvelle addition, le ticket ne change pas.
@@ -352,7 +353,9 @@ describe("la porte de sortie de T3 : l'écart provoqué remonte avec son auteur 
     const pouch = await koffi.as.mutation(api.cash.open, { venueId: v.cocody, openingFloat: 2000 });
     await expectCode(koffi.as.mutation(api.cash.open, { venueId: v.cocody, openingFloat: 0 }), "CONFLICT");
     await collect(v, sessionId, { method: "cash", amount: 13500, receivedAmount: 15000 }, koffi);
-    await koffi.as.mutation(api.cash.addMovement, { venueId: v.cocody, sessionId: pouch, type: "payout", amount: 1500, reason: "Sac de glace" });
+    // Une sortie d'argent ne se fait pas sur sa propre pochette sans le droit d'ouvrir les caisses.
+    await expectCode(koffi.as.mutation(api.cash.addMovement, { venueId: v.cocody, sessionId: pouch, type: "payout", amount: 1500, reason: "Sac de glace" }), "FORBIDDEN");
+    await v.owner.as.mutation(api.cash.addMovement, { venueId: v.cocody, sessionId: pouch, type: "payout", amount: 1500, reason: "Sac de glace" });
     await koffi.as.mutation(api.sessions.close, { venueId: v.cocody, sessionId });
 
     // Il ne compte pas sa propre pochette.
@@ -391,7 +394,8 @@ describe("la porte de sortie de T3 : l'écart provoqué remonte avec son auteur 
       closedBy: "Propriétaire Maquis Awa",
     });
     expect(report.totals).toEqual({ collected: 13500, refunded: 0, net: 13500, count: 1 });
-    expect(report.byCollector).toEqual([{ name: "rang", amount: 13500, cash: 13500, count: 1 }]);
+    expect(report.byCollector).toEqual([{ name: "rang", amount: 13500, cash: 13500, changeOnNonCash: 0, count: 1 }]);
+    expect(row.movements.map((m) => [m.type, m.amount, m.reason, m.by])).toEqual([["payout", 1500, "Sac de glace", "Propriétaire Maquis Awa"]]);
     // Un comptable lit le rapport ; un serveur, non.
     await expectCode(v.waiter.as.query(api.reports.serviceDay, { venueId: v.cocody }), "FORBIDDEN");
   });
@@ -415,5 +419,123 @@ describe("la porte de sortie de T3 : l'écart provoqué remonte avec son auteur 
     expect(report.debts.map((d) => [d.table, d.amount, d.reason])).toEqual([["1", 13500 - 1500 - 10000, "Parti sans finir de payer"]]);
     expect(report.cancellations.map((c) => [c.table, c.item, c.amount, c.reason])).toEqual([["2", "Poisson braisé", 5000, "Plus de poisson frais"]]);
     expect(report.openTables.map((t) => [t.table, t.due])).toEqual([["2", 8500]]);
+  });
+});
+
+describe("revue adverse de T3", () => {
+  test("une commande pas encore acceptée n'entre pas dans l'addition ; son refus ne creuse aucun dû", async () => {
+    const v = await venue();
+    const a = await tableWithOrder(v);
+    await serveAll(v, a.orderId);
+    // Une seconde commande, arrivée du QR et en attente d'acceptation.
+    const sent = await v.waiter.as.mutation(api.orders.submit, {
+      venueId: v.cocody,
+      sessionId: a.sessionId,
+      lines: [{ productId: v.products.bissap, optionIds: [], quantity: 2, courseNumber: 1 }],
+      heldCourses: [],
+      idempotencyKey: key(),
+    });
+    if (!sent.ok) throw new Error("refusé");
+    await v.t.run((ctx) => ctx.db.patch(sent.orderId, { status: "pending_acceptance" }));
+    expect((await bill(v, a.sessionId)).due).toBe(13500);
+    await collect(v, a.sessionId, { method: "card", amount: 13500 });
+    await v.waiter.as.mutation(api.orders.reject, { venueId: v.cocody, orderId: sent.orderId, reason: "Plus de bissap" });
+    expect((await bill(v, a.sessionId)).due).toBe(0);
+    await v.waiter.as.mutation(api.sessions.close, { venueId: v.cocody, sessionId: a.sessionId });
+  });
+
+  test("un trop-perçu se rend par remboursement, puis la table se clôt ; jamais par compensation entre additions", async () => {
+    const v = await venue();
+    const a = await tableWithOrder(v);
+    await serveAll(v, a.orderId);
+    await collect(v, a.sessionId, { method: "card", amount: 13500 });
+    // Un trop-perçu, forcé en base : le seul chemin de sortie est de rendre.
+    const [payment] = await v.t.run((ctx) => ctx.db.query("payments").withIndex("by_venue_createdAt", (q) => q.eq("venueId", v.cocody)).collect());
+    await v.t.run((ctx) => ctx.db.patch(payment!._id, { amount: 14000 }));
+    await expectCode(v.waiter.as.mutation(api.sessions.close, { venueId: v.cocody, sessionId: a.sessionId }), "CONFLICT");
+    await v.owner.as.mutation(api.payments.refund, { venueId: v.cocody, paymentId: payment!._id, amount: 500, reason: "Trop perçu rendu", method: "original", idempotencyKey: key() });
+    await v.waiter.as.mutation(api.sessions.close, { venueId: v.cocody, sessionId: a.sessionId });
+  });
+
+  test("sous PIN : un geste d'Awa resté en attente ne part jamais au nom de Koffi, qui a déverrouillé après", async () => {
+    const v = await venue();
+    const { sessionId } = await tableWithOrder(v);
+    const tablet = await enrollDevice(v.t, v.owner, v.cocody, { deviceType: "shared", label: "Caisse" });
+    const awa = await pinMember(v.owner, v.organizationId, v.roleId("cashier"), [v.cocody], "Awa");
+    const koffi = await pinMember(v.owner, v.organizationId, v.roleId("cashier"), [v.cocody], "Koffi");
+    await activateAndUnlock(v.t, tablet.deviceToken, awa.code, "3719");
+    const asKoffi = await activateAndUnlock(v.t, tablet.deviceToken, koffi.code, "4826");
+    await expectCode(
+      asKoffi.as.mutation(api.payments.collect, { venueId: v.cocody, actingMemberId: awa.memberId, sessionId, checkId: null, method: "card", amount: 1000, idempotencyKey: key() }),
+      "CONFLICT",
+    );
+    await expectCode(asKoffi.as.mutation(api.cash.open, { venueId: v.cocody, actingMemberId: awa.memberId, openingFloat: 0 }), "CONFLICT");
+    const paid = await asKoffi.as.mutation(api.payments.collect, { venueId: v.cocody, actingMemberId: koffi.memberId, sessionId, checkId: null, method: "card", amount: 1000, idempotencyKey: key() });
+    expect(paid.ok).toBe(true);
+  });
+
+  test("recompter jusqu'à tomber juste ne fait pas disparaître le premier écart", async () => {
+    const v = await venue();
+    const drawer = await v.cashier.as.mutation(api.cash.open, { venueId: v.cocody, openingFloat: 5000 });
+    await v.owner.as.mutation(api.cash.startCount, { venueId: v.cocody, sessionId: drawer });
+    await v.owner.as.mutation(api.cash.submitCount, { venueId: v.cocody, sessionId: drawer, countedAmount: 4000 });
+    expect((await v.owner.as.mutation(api.cash.submitCount, { venueId: v.cocody, sessionId: drawer, countedAmount: 5000 })).discrepancy).toBe(0);
+    await expectCode(v.owner.as.mutation(api.cash.close, { venueId: v.cocody, sessionId: drawer }), "INVALID_ARGUMENT");
+    await v.owner.as.mutation(api.cash.close, { venueId: v.cocody, sessionId: drawer, reason: "Billet de 1 000 retrouvé sous le tiroir" });
+    const row = (await v.owner.as.query(api.reports.serviceDay, { venueId: v.cocody })).cashSessions.find((s) => s._id === drawer)!;
+    expect([row.discrepancy, row.initialDiscrepancy, row.closeReason]).toEqual([0, -1000, "Billet de 1 000 retrouvé sous le tiroir"]);
+  });
+
+  test("un comptage commencé par erreur s'annule tant que rien n'est saisi", async () => {
+    const v = await venue();
+    const drawer = await v.cashier.as.mutation(api.cash.open, { venueId: v.cocody, openingFloat: 0 });
+    await v.owner.as.mutation(api.cash.startCount, { venueId: v.cocody, sessionId: drawer });
+    await v.owner.as.mutation(api.cash.cancelCount, { venueId: v.cocody, sessionId: drawer });
+    expect((await v.t.run((ctx) => ctx.db.get(drawer)))!.status).toBe("open");
+    await v.owner.as.mutation(api.cash.startCount, { venueId: v.cocody, sessionId: drawer });
+    await v.owner.as.mutation(api.cash.submitCount, { venueId: v.cocody, sessionId: drawer, countedAmount: 0 });
+    await expectCode(v.owner.as.mutation(api.cash.cancelCount, { venueId: v.cocody, sessionId: drawer }), "CONFLICT");
+  });
+
+  test("la monnaie rendue sur un Mobile Money est bornée, et le rapport dit ce que le téléphone doit afficher", async () => {
+    const v = await venue();
+    const { sessionId } = await tableWithOrder(v);
+    await v.cashier.as.mutation(api.cash.open, { venueId: v.cocody, openingFloat: 5000 });
+    await expectCode(
+      v.cashier.as.mutation(api.payments.collect, { venueId: v.cocody, sessionId, checkId: null, method: "mobile_money", wallet: "Wave", amount: 500, changeAmount: 25000, idempotencyKey: key() }),
+      "INVALID_ARGUMENT",
+    );
+    await collect(v, sessionId, { method: "mobile_money", wallet: "Wave", amount: 9500, changeAmount: 500 });
+    const report = await v.owner.as.query(api.reports.serviceDay, { venueId: v.cocody });
+    expect(report.byMethod.map((m) => [m.label, m.amount, m.received])).toEqual([["Wave", 9500, 10000]]);
+    expect(report.byCollector.map((c) => [c.name, c.changeOnNonCash])).toEqual([["caisse", 500]]);
+  });
+
+  test("pendant un comptage, le rapport tait les sommes : elles trahiraient l'attendu", async () => {
+    const v = await venue();
+    const { sessionId } = await tableWithOrder(v);
+    const drawer = await v.cashier.as.mutation(api.cash.open, { venueId: v.cocody, openingFloat: 5000 });
+    await collect(v, sessionId, { method: "cash", amount: 3000 });
+    await v.owner.as.mutation(api.cash.startCount, { venueId: v.cocody, sessionId: drawer });
+    const blind = await v.owner.as.query(api.reports.serviceDay, { venueId: v.cocody });
+    expect([blind.totals, blind.byMethod, blind.byCollector, blind.blindCounting]).toEqual([null, [], [], ["Caisse principale"]]);
+    await v.owner.as.mutation(api.cash.submitCount, { venueId: v.cocody, sessionId: drawer, countedAmount: 8000 });
+    expect((await v.owner.as.query(api.reports.serviceDay, { venueId: v.cocody })).totals?.collected).toBe(3000);
+  });
+
+  test("le ticket raté se relance par la même personne quelques minutes, sans droit de duplicata", async () => {
+    const v = await venue();
+    const { sessionId, orderId } = await tableWithOrder(v);
+    await serveAll(v, orderId);
+    await collect(v, sessionId, { method: "card", amount: 13500 });
+    const checkId = (await bill(v, sessionId)).checks[0]!._id!;
+    const tablet = await enrollDevice(v.t, v.owner, v.cocody, { deviceType: "shared", label: "Caisse" });
+    const aya = await pinMember(v.owner, v.organizationId, v.roleId("waiter"), [v.cocody], "Aya");
+    const op = await activateAndUnlock(v.t, tablet.deviceToken, aya.code, "3719");
+    const billId = await op.as.mutation(api.bills.issue, { venueId: v.cocody, checkId });
+    expect(await op.as.mutation(api.bills.recordPrint, { venueId: v.cocody, billId })).toEqual({ duplicate: false });
+    expect(await op.as.mutation(api.bills.recordPrint, { venueId: v.cocody, billId })).toEqual({ duplicate: false });
+    // Une autre personne : c'est un duplicata, et le serveur n'en a pas le droit.
+    await expectCode(v.waiter.as.mutation(api.bills.recordPrint, { venueId: v.cocody, billId }), "FORBIDDEN");
   });
 });

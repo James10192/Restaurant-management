@@ -2,12 +2,13 @@ import { useState, type ReactNode } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, EyeOff } from "lucide-react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { formatMoney, type CurrencyCode } from "../../convex/lib/money";
 import { LoadingState, PermissionDeniedState } from "~/components/app/states";
 import { useWorkspace } from "~/components/app/workspace";
+import { Alert, AlertDescription, AlertTitle } from "~/components/ui/alert";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { ButtonGroup } from "~/components/ui/button-group";
@@ -25,7 +26,7 @@ type Report = FunctionReturnType<typeof api.reports.serviceDay>;
 function ReportPage() {
   const w = useWorkspace();
   const venueId = w.venue?._id;
-  if (!venueId || !w.canInVenue("analytics.financial.read")) {
+  if (!venueId || !w.canInVenue("report.service_day.read")) {
     return <PermissionDeniedState venue={w.venue?.name} permission="lire les chiffres de l'établissement" />;
   }
   return <ReportView key={venueId} venueId={venueId} />;
@@ -71,23 +72,49 @@ function ReportView({ venueId }: { venueId: Id<"venues"> }) {
         </ButtonGroup>
       </div>
 
+      {report.totals === null ? (
+        <Alert>
+          <EyeOff />
+          <AlertTitle>Comptage en cours : {report.blindCounting.join(", ")}</AlertTitle>
+          <AlertDescription>Les sommes encaissées reviennent dès que le compté est saisi. Les montrer maintenant trahirait l'attendu à la personne qui compte.</AlertDescription>
+        </Alert>
+      ) : null}
+
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <Figure label="Encaissé" value={money(report.totals.net)} hint={`${report.totals.count} encaissement${report.totals.count > 1 ? "s" : ""}`} />
-        <Figure label="Remboursé" value={money(report.totals.refunded)} />
+        {report.totals ? (
+          <>
+            <Figure label="Encaissé" value={money(report.totals.net)} hint={`${report.totals.count} encaissement${report.totals.count > 1 ? "s" : ""}`} />
+            <Figure label="Remboursé" value={money(report.totals.refunded)} />
+          </>
+        ) : null}
         <Figure label="Encore à encaisser" value={money(report.openTables.reduce((s, t) => s + t.due, 0))} hint={`${report.openTables.length} table${report.openTables.length > 1 ? "s" : ""} ouverte${report.openTables.length > 1 ? "s" : ""}`} />
       </div>
 
-      <Section title="Par moyen" empty={report.byMethod.length === 0} emptyText="Aucun encaissement ce jour-là.">
-        {report.byMethod.map((m) => (
-          <Row key={m.label} title={m.label} description={`${m.count} encaissement${m.count > 1 ? "s" : ""}`} value={money(m.amount)} />
-        ))}
-      </Section>
+      {report.totals ? (
+        <>
+          <Section title="Par moyen" description="« Reçu » : ce que le téléphone ou le terminal doit afficher, monnaie rendue comprise." empty={report.byMethod.length === 0} emptyText="Aucun encaissement ce jour-là.">
+            {report.byMethod.map((m) => (
+              <Row
+                key={m.label}
+                title={m.label}
+                description={`${m.count} encaissement${m.count > 1 ? "s" : ""}${m.received !== m.amount ? ` · reçu ${money(m.received)}` : ""}`}
+                value={money(m.amount)}
+              />
+            ))}
+          </Section>
 
-      <Section title="Par personne" description="Qui a encaissé, et combien en espèces." empty={report.byCollector.length === 0} emptyText="Aucun encaissement ce jour-là.">
-        {report.byCollector.map((c) => (
-          <Row key={c.name} title={c.name} description={`${c.count} encaissement${c.count > 1 ? "s" : ""} · dont espèces ${money(c.cash)}`} value={money(c.amount)} />
-        ))}
-      </Section>
+          <Section title="Par personne" description="Qui a encaissé, et combien en espèces." empty={report.byCollector.length === 0} emptyText="Aucun encaissement ce jour-là.">
+            {report.byCollector.map((c) => (
+              <Row
+                key={c.name}
+                title={c.name}
+                description={`${c.count} encaissement${c.count > 1 ? "s" : ""} · dont espèces ${money(c.cash)}${c.changeOnNonCash > 0 ? ` · monnaie rendue sur Mobile Money ou carte ${money(c.changeOnNonCash)}` : ""}`}
+                value={money(c.amount)}
+              />
+            ))}
+          </Section>
+        </>
+      ) : null}
 
       <Section title="Caisses" description="Par session : l'attendu est calculé, jamais saisi." empty={report.cashSessions.length === 0} emptyText="Aucune caisse ouverte ce jour-là.">
         {report.cashSessions.map((s) => (
@@ -187,6 +214,7 @@ function CashRow({ session: s, money, clock }: { session: Report["cashSessions"]
   const facts = [
     `Ouverte à ${clock.format(s.openedAt)} par ${s.openedBy ?? "?"}, fonds ${money(s.openingFloat)}.`,
     s.counts.length > 0 ? `Compté ${s.counts.map((c) => `${money(c.amount)} par ${c.by}`).join(", puis ")}${s.selfCounted ? " — par la personne qui l'a ouverte" : ""}.` : null,
+    s.initialDiscrepancy ? `Écart au premier comptage : ${money(s.initialDiscrepancy)}.` : null,
     s.closedAt ? `Close à ${clock.format(s.closedAt)} par ${s.closedBy ?? "?"}.` : null,
   ].filter(Boolean);
   return (
@@ -221,6 +249,21 @@ function CashRow({ session: s, money, clock }: { session: Report["cashSessions"]
         </dl>
       ) : null}
       <ItemDescription className="line-clamp-none">{facts.join(" ")}</ItemDescription>
+      {s.movements.length > 0 ? (
+        <ul className="flex flex-col gap-0.5 text-sm">
+          {s.movements.map((m) => (
+            <li key={m._id} className="flex justify-between gap-2">
+              <span className="min-w-0">
+                {m.type === "payout" ? "Sortie" : "Entrée"} · {m.reason} · {m.by} à {clock.format(m.at)}
+              </span>
+              <span className="shrink-0 tabular-nums">
+                {m.type === "payout" ? "−" : "+"}
+                {money(m.amount)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
       {s.closeReason ? <p className="text-sm">motif : {s.closeReason}</p> : null}
     </Item>
   );

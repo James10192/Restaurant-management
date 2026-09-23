@@ -97,6 +97,16 @@ function expectedVisible(session: Doc<"cashRegisterSessions">): boolean {
   return session.status === "balanced" || session.status === "discrepancy" || session.status === "closed";
 }
 
+/**
+ * L'écart du premier comptage quand il y en a eu deux. Recompter une fois l'attendu connu, c'est
+ * pouvoir taper l'attendu : le premier écart reste donc la donnée, et il exige un motif.
+ */
+export function initialDiscrepancyOf(session: Doc<"cashRegisterSessions">): number | null {
+  const first = session.counts[0];
+  if (session.counts.length < 2 || !first || session.expectedAmount === undefined) return null;
+  return first.amount - session.expectedAmount;
+}
+
 async function summarize(ctx: ReadCtx, session: Doc<"cashRegisterSessions">) {
   const movements = await ctx.db
     .query("cashMovements")
@@ -133,6 +143,8 @@ async function summarize(ctx: ReadCtx, session: Doc<"cashRegisterSessions">) {
     expectedAmount: expectedVisible(session) ? (session.expectedAmount ?? null) : null,
     countedAmount: session.countedAmount ?? null,
     discrepancy: expectedVisible(session) ? (session.discrepancy ?? null) : null,
+    /** Recomptée : l'écart du PREMIER comptage, qui ne s'efface pas avec le second. */
+    initialDiscrepancy: expectedVisible(session) ? initialDiscrepancyOf(session) : null,
     closeReason: session.closeReason ?? null,
     closedAt: session.closedAt ?? null,
     closedBy: await memberName(ctx, session.closedByMemberId),
@@ -174,6 +186,11 @@ export const overview = query({
         _id: r._id,
         name: r.name,
         busy: live.some((s) => s.cashRegisterId === r._id),
+        /** Ce qui restait dans ce tiroir au dernier comptage : le fonds proposé à l'ouverture. */
+        lastCounted:
+          recentClosed
+            .filter((s) => s.cashRegisterId === r._id)
+            .sort((a, b) => (b.closedAt ?? 0) - (a.closedAt ?? 0))[0]?.countedAmount ?? null,
       })),
       sessions,
       closed,
@@ -182,6 +199,8 @@ export const overview = query({
         openOwnPouch: mode === "per_waiter" && me !== null && (actor.permissions.has("payment.collect") || actor.permissions.has("cash_register.open")),
         count: canCount,
         manageRegisters: actor.via === "account" && actor.permissions.has("venue.settings.service"),
+        /** Sortir de l'argent : depuis un compte, ou sur la pochette d'un AUTRE (D-082). */
+        payoutFromAccount: actor.via === "account",
       },
     };
   },
@@ -203,9 +222,9 @@ export const createRegister = mutation({
  * sous `payment.collect` — celui qui encaisse doit pouvoir ouvrir de quoi ranger l'argent.
  */
 export const open = mutation({
-  args: { venueId: v.id("venues"), registerId: v.optional(v.id("cashRegisters")), openingFloat: v.number() },
+  args: { venueId: v.id("venues"), actingMemberId: v.optional(v.id("organizationMembers")), registerId: v.optional(v.id("cashRegisters")), openingFloat: v.number() },
   handler: async (ctx, args) => {
-    const actor = await requireServiceMutation(ctx, "payment.read", { venueId: args.venueId });
+    const actor = await requireServiceMutation(ctx, "payment.read", { venueId: args.venueId, actingMemberId: args.actingMemberId });
     const member = memberOf(actor);
     const settings = await settingsOf(ctx, actor.venue._id);
     const mode = cashModeOf(settings);
@@ -237,7 +256,8 @@ export const open = mutation({
       if (!actor.permissions.has("cash_register.open")) throw forbidden();
       let registerId = args.registerId;
       if (registerId) {
-        await getInVenue(ctx, registerId, actor.venue._id, "Cette caisse");
+        const register = await getInVenue(ctx, registerId, actor.venue._id, "Cette caisse");
+        if (!register.isActive) throw conflict("Ce tiroir n'est plus utilisé.");
       } else {
         const registers = await ctx.db
           .query("cashRegisters")
@@ -283,9 +303,9 @@ function assertNotHolder(session: Doc<"cashRegisterSessions">, member: Doc<"orga
 
 /** Début du comptage : plus aucun encaissement ne va dans cette caisse. */
 export const startCount = mutation({
-  args: { venueId: v.id("venues"), sessionId: v.id("cashRegisterSessions") },
+  args: { venueId: v.id("venues"), actingMemberId: v.optional(v.id("organizationMembers")), sessionId: v.id("cashRegisterSessions") },
   handler: async (ctx, args) => {
-    const actor = await requireServiceMutation(ctx, "cash_register.close", { venueId: args.venueId });
+    const actor = await requireServiceMutation(ctx, "cash_register.close", { venueId: args.venueId, actingMemberId: args.actingMemberId });
     const member = memberOf(actor);
     const session = await loadCashSession(ctx, actor, args.sessionId);
     assertNotHolder(session, member);
@@ -296,13 +316,39 @@ export const startCount = mutation({
 });
 
 /**
+ * Revenir sur un comptage commencé par erreur, tant que rien n'a été saisi : sinon, un appui de
+ * trop en plein service bloque toute espèce dans cette caisse — et une pochette en comptage ne se
+ * rouvre pas.
+ */
+export const cancelCount = mutation({
+  args: { venueId: v.id("venues"), actingMemberId: v.optional(v.id("organizationMembers")), sessionId: v.id("cashRegisterSessions") },
+  handler: async (ctx, args) => {
+    const actor = await requireServiceMutation(ctx, "cash_register.close", { venueId: args.venueId, actingMemberId: args.actingMemberId });
+    const member = memberOf(actor);
+    const session = await loadCashSession(ctx, actor, args.sessionId);
+    assertNotHolder(session, member);
+    if (session.status === "open") return;
+    if (session.status !== "counting" || session.counts.length > 0) throw conflict("Un compté a déjà été saisi : clôturez la caisse.");
+    await ctx.db.patch(session._id, { status: "open", countingStartedAt: undefined });
+    await writeAudit(ctx, {
+      organizationId: actor.organization._id,
+      venueId: actor.venue._id,
+      ...actor.audit,
+      action: "cash_register.count_cancel",
+      resourceType: "cashRegisterSession",
+      resourceId: session._id,
+    });
+  },
+});
+
+/**
  * Saisir le compté. L'attendu se calcule ICI, se fige, et n'est rendu qu'après. Un second appel
  * sur une caisse en écart est le recomptage — permis une fois, et le premier comptage reste.
  */
 export const submitCount = mutation({
-  args: { venueId: v.id("venues"), sessionId: v.id("cashRegisterSessions"), countedAmount: v.number() },
+  args: { venueId: v.id("venues"), actingMemberId: v.optional(v.id("organizationMembers")), sessionId: v.id("cashRegisterSessions"), countedAmount: v.number() },
   handler: async (ctx, args) => {
-    const actor = await requireServiceMutation(ctx, "cash_register.close", { venueId: args.venueId });
+    const actor = await requireServiceMutation(ctx, "cash_register.close", { venueId: args.venueId, actingMemberId: args.actingMemberId });
     const member = memberOf(actor);
     const session = await loadCashSession(ctx, actor, args.sessionId);
     assertNotHolder(session, member);
@@ -336,16 +382,20 @@ export const submitCount = mutation({
 
 /** Clôturer. Avec un écart, le motif est obligatoire — et l'écart reste, visible, attribué. */
 export const close = mutation({
-  args: { venueId: v.id("venues"), sessionId: v.id("cashRegisterSessions"), reason: v.optional(v.string()) },
+  args: { venueId: v.id("venues"), actingMemberId: v.optional(v.id("organizationMembers")), sessionId: v.id("cashRegisterSessions"), reason: v.optional(v.string()) },
   handler: async (ctx, args) => {
-    const actor = await requireServiceMutation(ctx, "cash_register.close", { venueId: args.venueId });
+    const actor = await requireServiceMutation(ctx, "cash_register.close", { venueId: args.venueId, actingMemberId: args.actingMemberId });
     const member = memberOf(actor);
     const session = await loadCashSession(ctx, actor, args.sessionId);
     assertNotHolder(session, member);
     if (session.status === "closed") return;
     if (session.status !== "balanced" && session.status !== "discrepancy") throw conflict("Comptez la caisse avant de la clôturer.");
     const discrepancy = session.discrepancy ?? 0;
-    const reason = discrepancy !== 0 ? requireReason(args.reason, "Le motif de l'écart") : args.reason?.trim() || undefined;
+    const initial = initialDiscrepancyOf(session) ?? 0;
+    const reason =
+      discrepancy !== 0 || initial !== 0
+        ? requireReason(args.reason, discrepancy !== 0 ? "Le motif de l'écart" : "Le motif du recomptage")
+        : args.reason?.trim() || undefined;
     await ctx.db.patch(session._id, {
       status: "closed",
       closedAt: Date.now(),
@@ -374,18 +424,25 @@ export const close = mutation({
 /** Une sortie (achat de glace, de charbon) ou une entrée (apport de monnaie), avec son motif. */
 export const addMovement = mutation({
   args: {
-    venueId: v.id("venues"),
+    venueId: v.id("venues"), actingMemberId: v.optional(v.id("organizationMembers")),
     sessionId: v.id("cashRegisterSessions"),
     type: v.union(v.literal("payout"), v.literal("deposit")),
     amount: v.number(),
     reason: v.string(),
   },
   handler: async (ctx, args) => {
-    const actor = await requireServiceMutation(ctx, "payment.read", { venueId: args.venueId });
+    const actor = await requireServiceMutation(ctx, "payment.read", { venueId: args.venueId, actingMemberId: args.actingMemberId });
     const member = memberOf(actor);
     const session = await loadCashSession(ctx, actor, args.sessionId);
-    const allowed = session.holderMemberId === member._id ? actor.permissions.has("payment.collect") : actor.permissions.has("cash_register.open");
-    if (!allowed) throw forbidden();
+    // Une entrée de monnaie : le porteur de la pochette, ou qui ouvre les caisses. Une SORTIE fait
+    // partir de l'argent : il faut ouvrir les caisses, et le faire depuis un compte — ou sur la
+    // pochette d'un autre. Jamais sous PIN sur son propre argent (D-082).
+    const isHolder = session.holderMemberId === member._id;
+    const allowed =
+      args.type === "deposit"
+        ? isHolder ? actor.permissions.has("payment.collect") : actor.permissions.has("cash_register.open")
+        : actor.permissions.has("cash_register.open") && (actor.via === "account" || (session.holderMemberId !== undefined && !isHolder));
+    if (!allowed) throw forbidden(args.type === "payout" ? "Une sortie d'argent se fait depuis un compte, ou par un responsable sur la pochette d'un autre." : undefined);
     if (session.status !== "open") throw conflict("Cette caisse est en cours de comptage ou close.");
     const amount = requireAmount(args.amount, "Le montant");
     const reason = requireReason(args.reason);

@@ -258,7 +258,7 @@ function TableActions({ detail }: { detail: Detail }) {
           variant="outline"
           onAction={async () => {
             try {
-              await assign({ venueId: scope.venueId, sessionId: detail._id });
+              await assign({ ...scope.acting, sessionId: detail._id });
               toast.success("La table est à votre nom.");
             } catch (error) {
               toast.error(describeError(error).message);
@@ -302,7 +302,7 @@ function TableActions({ detail }: { detail: Detail }) {
               onClick={async (e) => {
                 e.preventDefault();
                 try {
-                  await close({ venueId: scope.venueId, sessionId: detail._id });
+                  await close({ ...scope.acting, sessionId: detail._id });
                   setClosing(false);
                   toast.success(`Table ${detail.tableNumber} clôturée.`);
                   scope.nav.board();
@@ -324,7 +324,7 @@ function TableActions({ detail }: { detail: Detail }) {
         confirmLabel="Clôturer avec l'impayé"
         destructive
         onConfirm={async ({ reason }) => {
-          await closeWithDebt({ venueId: scope.venueId, sessionId: detail._id, reason });
+          await closeWithDebt({ ...scope.acting, sessionId: detail._id, reason });
           setDebt(false);
           toast.success(`Table ${detail.tableNumber} clôturée avec un impayé.`);
           scope.nav.board();

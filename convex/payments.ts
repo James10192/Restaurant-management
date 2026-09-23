@@ -68,7 +68,16 @@ export async function applyPayment(ctx: MutationCtx, actor: ServiceActor, sessio
     .withIndex("by_venue_idempotency", (q) => q.eq("venueId", session.venueId).eq("idempotencyKey", input.idempotencyKey))
     .unique();
   if (replay) {
-    const same = replay.tableSessionId === session._id && replay.method === input.method && replay.amount === input.amount && (input.checkId === null || replay.checkId === input.checkId);
+    // Tout ce que la personne a saisi doit coïncider : un autre montant remis, une autre monnaie
+    // ou un autre portefeuille sous la même clé, c'est un autre geste.
+    const same =
+      replay.tableSessionId === session._id &&
+      replay.method === input.method &&
+      replay.amount === input.amount &&
+      (input.checkId === null || replay.checkId === input.checkId) &&
+      (input.wallet === undefined || replay.wallet === input.wallet.trim()) &&
+      (input.receivedAmount === undefined || replay.receivedAmount === input.receivedAmount) &&
+      (input.changeAmount === undefined || (replay.changeAmount ?? 0) === input.changeAmount);
     if (!same) throw conflict("Cette clé a déjà servi à un autre paiement.");
     const after = await loadSessionBilling(ctx, session);
     return { ok: true, paymentId: replay._id, due: after.checks.find((c) => c.check?._id === replay.checkId)?.balance.due ?? 0, changeAmount: replay.changeAmount ?? 0 };
@@ -95,6 +104,9 @@ export async function applyPayment(ctx: MutationCtx, actor: ServiceActor, sessio
   } else if (input.changeAmount !== undefined && input.changeAmount > 0) {
     // 10 000 par Wave pour 9 500 : 500 rendus en billets. L'argent sort du tiroir.
     changeAmount = requireAmount(input.changeAmount, "La monnaie rendue");
+    // Borné : « Wave 500, 25 000 rendus » ferait sortir du tiroir un argent que seul le relevé du
+    // téléphone permettrait de retrouver. Au-delà, deux saisies : un paiement, puis une sortie.
+    if (changeAmount >= amount) throw invalid("La monnaie rendue sur un paiement qui n'est pas en espèces doit rester inférieure au montant encaissé.");
     receivedAmount = amount + changeAmount;
   }
 
@@ -157,7 +169,7 @@ export async function applyPayment(ctx: MutationCtx, actor: ServiceActor, sessio
 /** Encaisser. `checkId: null` = le reste de la table. */
 export const collect = mutation({
   args: {
-    venueId: v.id("venues"),
+    venueId: v.id("venues"), actingMemberId: v.optional(v.id("organizationMembers")),
     sessionId: v.id("tableSessions"),
     checkId: v.union(v.id("checks"), v.null()),
     method: paymentMethod,
@@ -170,13 +182,13 @@ export const collect = mutation({
     idempotencyKey: v.string(),
   },
   handler: async (ctx, args): Promise<PaymentResult> => {
-    const actor = await requireServiceMutation(ctx, "payment.collect", { venueId: args.venueId });
+    const actor = await requireServiceMutation(ctx, "payment.collect", { venueId: args.venueId, actingMemberId: args.actingMemberId });
     const session = await getInVenue(ctx, args.sessionId, actor.venue._id, "Cette table");
     if (args.checkId !== null) {
       const check = await getInVenue(ctx, args.checkId, actor.venue._id, "Cette addition");
       if (check.tableSessionId !== session._id) throw notFound("Cette addition");
     }
-    const { venueId: _v, sessionId: _s, ...input } = args;
+    const { venueId: _v, sessionId: _s, actingMemberId: _a, ...input } = args;
     return applyPayment(ctx, actor, session, input);
   },
 });
@@ -196,9 +208,9 @@ async function saleBillFor(ctx: MutationCtx, checkId: Id<"checks">) {
  * obligatoire. L'auteur d'un encaissement ne l'annule pas lui-même.
  */
 export const voidPayment = mutation({
-  args: { venueId: v.id("venues"), paymentId: v.id("payments"), reason: v.string() },
+  args: { venueId: v.id("venues"), actingMemberId: v.optional(v.id("organizationMembers")), paymentId: v.id("payments"), reason: v.string() },
   handler: async (ctx, args) => {
-    const actor = await requireServiceMutation(ctx, "payment.void", { venueId: args.venueId });
+    const actor = await requireServiceMutation(ctx, "payment.void", { venueId: args.venueId, actingMemberId: args.actingMemberId });
     const member = memberOf(actor);
     const reason = requireReason(args.reason, "Le motif de l'annulation");
     const payment = await getInVenue(ctx, args.paymentId, actor.venue._id, "Ce paiement");
@@ -237,7 +249,7 @@ export const voidPayment = mutation({
  */
 export const refund = mutation({
   args: {
-    venueId: v.id("venues"),
+    venueId: v.id("venues"), actingMemberId: v.optional(v.id("organizationMembers")),
     paymentId: v.id("payments"),
     amount: v.number(),
     reason: v.string(),
@@ -246,7 +258,7 @@ export const refund = mutation({
     idempotencyKey: v.string(),
   },
   handler: async (ctx, args) => {
-    const actor = await requireServiceMutation(ctx, "payment.refund", { venueId: args.venueId });
+    const actor = await requireServiceMutation(ctx, "payment.refund", { venueId: args.venueId, actingMemberId: args.actingMemberId });
     const member = memberOf(actor);
     validKey(args.idempotencyKey);
     const replay = await ctx.db
@@ -267,6 +279,7 @@ export const refund = mutation({
       .collect()).filter((r) => r.status === "succeeded");
     const already = previous.reduce((s, r) => s + r.amount, 0);
     if (amount > payment.amount - already) throw conflict("On ne rembourse pas plus que ce qui a été encaissé.");
+    // Un paiement en espèces se rend en espèces, « par le même moyen » compris : il faut la caisse.
     const method = args.method === "cash" ? "cash" : payment.method;
     let cashRegisterSessionId: Id<"cashRegisterSessions"> | undefined;
     if (method === "cash") {

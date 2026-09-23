@@ -16,7 +16,7 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { writeAudit } from "./lib/audit";
-import { loadSessionBilling, type BillingCheck } from "./lib/billing";
+import { lineGross, loadSessionBilling, type BillingCheck } from "./lib/billing";
 import { getInVenue } from "./lib/catalogAccess";
 import { conflict, forbidden } from "./lib/errors";
 import type { MutationCtx, ReadCtx } from "./lib/guards";
@@ -25,6 +25,8 @@ import { memberName, nextCounter, settingsOf } from "./lib/service";
 import { methodLabel } from "./checks";
 
 export const BILL_NOTICE = "Document interne — ne vaut pas reçu fiscal";
+/** Le délai pendant lequel celui qui a imprimé l'original peut le relancer (impression ratée). */
+const ORIGINAL_RETRY_MS = 5 * 60_000;
 
 function fiscalYearOf(now: number, timeZone: string): number {
   return Number(new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric" }).format(new Date(now)));
@@ -69,7 +71,9 @@ function snapshotLines(c: BillingCheck, items: Map<Id<"orderItems">, Doc<"orderI
     return {
       name: [l.name, l.variantName].filter(Boolean).join(" — "),
       quantity: l.quantity,
-      unitPrice: l.unitPrice,
+      // Même base que le total de la ligne : TTC. Hors taxe, `l.unitPrice` est le prix HT, et un
+      // ticket qui montrerait un prix unitaire HT à côté d'un total TTC ne s'additionnerait pas.
+      unitPrice: item && item.quantity > 0 ? Math.round(lineGross(item) / item.quantity) : l.unitPrice,
       lineTotal: gross,
       taxes,
     };
@@ -82,9 +86,9 @@ function snapshotLines(c: BillingCheck, items: Map<Id<"orderItems">, Doc<"orderI
  * se glisse pas dans une pièce déjà remise.
  */
 export const issue = mutation({
-  args: { venueId: v.id("venues"), checkId: v.id("checks") },
+  args: { venueId: v.id("venues"), actingMemberId: v.optional(v.id("organizationMembers")), checkId: v.id("checks") },
   handler: async (ctx, args) => {
-    const actor = await requireServiceMutation(ctx, "check.manage", { venueId: args.venueId });
+    const actor = await requireServiceMutation(ctx, "check.manage", { venueId: args.venueId, actingMemberId: args.actingMemberId });
     const check = await getInVenue(ctx, args.checkId, actor.venue._id, "Cette addition");
     const existing = (await ctx.db
       .query("bills")
@@ -211,13 +215,36 @@ export const get = query({
  * un encaissement.
  */
 export const recordPrint = mutation({
-  args: { venueId: v.id("venues"), billId: v.id("bills") },
+  args: { venueId: v.id("venues"), actingMemberId: v.optional(v.id("organizationMembers")), billId: v.id("bills") },
   handler: async (ctx, args): Promise<{ duplicate: boolean }> => {
-    const actor = await requireServiceMutation(ctx, "payment.read", { venueId: args.venueId });
+    const actor = await requireServiceMutation(ctx, "payment.read", { venueId: args.venueId, actingMemberId: args.actingMemberId });
     const bill = await getInVenue(ctx, args.billId, actor.venue._id, "Ce ticket");
     if (!bill.deliveredVia.includes("print")) {
       if (!actor.permissions.has("check.manage")) throw forbidden();
-      await ctx.db.patch(bill._id, { deliveredVia: [...bill.deliveredVia, "print"] });
+      await ctx.db.patch(bill._id, {
+        deliveredVia: [...bill.deliveredVia, "print"],
+        firstPrintedAt: Date.now(),
+        ...(actor.member ? { firstPrintedByMemberId: actor.member._id } : {}),
+      });
+      return { duplicate: false };
+    }
+    // La boîte d'impression annulée, le papier coincé : la même personne réessaie l'original dans
+    // les minutes qui suivent, sans droit de duplicata (qu'un PIN n'a pas). Journalisé quand même.
+    const retry =
+      bill.firstPrintedAt !== undefined &&
+      Date.now() - bill.firstPrintedAt < ORIGINAL_RETRY_MS &&
+      actor.member !== null &&
+      bill.firstPrintedByMemberId === actor.member._id;
+    if (retry) {
+      await writeAudit(ctx, {
+        organizationId: actor.organization._id,
+        venueId: actor.venue._id,
+        ...actor.audit,
+        action: "bill.print_retry",
+        resourceType: "bill",
+        resourceId: bill._id,
+        after: { reference: bill.reference },
+      });
       return { duplicate: false };
     }
     if (!actor.permissions.has("bill.reissue")) throw forbidden("Réimprimer un ticket demande un droit que vous n'avez pas.");

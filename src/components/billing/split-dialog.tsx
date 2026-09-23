@@ -68,7 +68,7 @@ function SplitForm({ bill, rest, onDone }: { bill: Bill; rest: BillCheck; onDone
     setError(null);
     try {
       await split({
-        venueId: scope.venueId,
+        ...scope.acting,
         sessionId: bill.sessionId,
         ...(label.trim() ? { label: label.trim() } : {}),
         lines: chosen.map(([orderItemId, quantity]) => ({ orderItemId: orderItemId as Id<"orderItems">, quantity })),

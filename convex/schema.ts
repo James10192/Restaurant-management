@@ -1298,6 +1298,8 @@ export default defineSchema({
     .index("by_check", ["checkId"])
     .index("by_venue_createdAt", ["venueId", "createdAt"])
     .index("by_register_session", ["cashRegisterSessionId"])
+    // Le rapport date une annulation au moment où elle a été faite, pas à celui de l'encaissement.
+    .index("by_venue_voidedAt", ["venueId", "voidedAt"])
     .index("by_venue_method_createdAt", ["venueId", "method", "createdAt"])
     .index("by_provider_ref", ["provider", "providerRef"])
     // Par établissement, jamais globale (D-064).
@@ -1493,6 +1495,9 @@ export default defineSchema({
     buyerTaxId: v.optional(v.string()),
     issuedAt: v.number(),
     deliveredVia: v.array(v.string()),
+    /** Première impression : sa personne peut la relancer quelques minutes (impression ratée). */
+    firstPrintedAt: v.optional(v.number()),
+    firstPrintedByMemberId: v.optional(v.id("organizationMembers")),
     storageId: v.optional(v.id("_storage")),
   })
     .index("by_check", ["checkId"])

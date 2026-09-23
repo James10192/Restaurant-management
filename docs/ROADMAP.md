@@ -148,6 +148,7 @@ motif · journal d'audit branché.
 | T3.b | Moteur : additions sans montant stocké, partage par articles, paiements mixtes idempotents, caisses et pochettes, comptage à l'aveugle, annulations et remboursements, tickets numérotés, rapport de fin de service | fait (2026-09-23) |
 | T3.c | Écrans (composants shadcn uniquement) : onglet Addition de la table, encaissement en deux temps, caisse, ticket imprimable 80 mm, rapport, réglages d'encaissement | fait (2026-09-23) |
 | T3.d | Bout en bout (`e2e/t3.spec.ts`) : caisse juste puis écart provoqué, revue adverse, documentation | fait (2026-09-23) |
+| T3.e | Corrections de la revue adverse : commandes non acceptées hors addition, clôture par addition, gestes d'argent attribués à leur auteur sous PIN, recomptage motivé, sorties d'argent réservées, rapport sans fuite pendant un comptage *(D-088 à D-092)* | fait (2026-09-23) |
 
 - Écarts assumés à la fin de T3 : `CashProvider` reporté à T5, `applyPayment` en tient lieu
   *(D-078)* ; pas de partage par convive *(D-077)* ; pas de grille de comptage par coupures, pas de

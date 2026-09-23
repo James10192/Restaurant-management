@@ -790,7 +790,8 @@ pas de l'argent**.
 | `createdAt` | number | |
 
 **Index** : `by_check` · `by_venue_createdAt` (journal, rapport) · `by_register_session` (attendu de
-clôture) · `by_venue_method_createdAt` · `by_provider_ref` · `by_venue_idempotency` (**par
+clôture) · `by_venue_voidedAt` (le rapport date une annulation à son jour, D-089) ·
+`by_venue_method_createdAt` · `by_provider_ref` · `by_venue_idempotency` (**par
 établissement**, D-064 — l'index était global)
 **Permissions** : `payment.read` / `collect` (PIN) / `void` (compte).
 **Cycle** : créé **succeeded** → éventuellement `voided` (saisie erronée, tant que caisse ouverte,
@@ -866,7 +867,8 @@ en B2B, lignes avec leurs taxes, totaux, paiements par moyen, devise, serveur), 
 (`none`/`rne`/`fne`), `fiscalStatus` (`none`/`not_required`/`pending`/`submitted`/`accepted`/`rejected`),
 `fiscalReference?`, `fiscalQrPayload?`, `fiscalSubmittedAt?`, `fiscalAttempts?`, `certifiedAt?`,
 `fiscalResponseStorageId?` (réponse brute de l'administration), `fiscalError?`, `buyerTaxId?`, `issuedAt`,
-`deliveredVia` (`screen`/`email`/`print`/`whatsapp`), `storageId?`.
+`deliveredVia` (`screen`/`email`/`print`/`whatsapp`), `firstPrintedAt?` et `firstPrintedByMemberId?`
+(la même personne relance l'original 5 minutes, D-091), `storageId?`.
 **Index** : `by_check ["checkId"]` · `by_venue_issuedAt ["venueId","issuedAt"]` ·
 `by_venue_reference ["venueId","reference"]` — **jamais un index global** : aucune page publique de
 vérification de nos tickets, qui pourrait passer pour le contrôle officiel de la DGI (D-063) ·

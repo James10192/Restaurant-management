@@ -16,7 +16,7 @@ import { internalMutation, mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { writeAudit } from "./lib/audit";
-import { formatAmount, loadSessionBilling } from "./lib/billing";
+import { closingState, formatAmount, loadSessionBilling } from "./lib/billing";
 import { getInVenue } from "./lib/catalogAccess";
 import { conflict, invalid, notFound } from "./lib/errors";
 import { memberCoversVenue, type MutationCtx, type ReadCtx } from "./lib/guards";
@@ -124,9 +124,9 @@ export const open = mutation({
 
 /** Prendre une table à son nom, ou (avec `table.session.transfer`) la confier à un collègue. */
 export const assignWaiter = mutation({
-  args: { venueId: v.id("venues"), sessionId: v.id("tableSessions"), memberId: v.optional(v.id("organizationMembers")) },
+  args: { venueId: v.id("venues"), actingMemberId: v.optional(v.id("organizationMembers")), sessionId: v.id("tableSessions"), memberId: v.optional(v.id("organizationMembers")) },
   handler: async (ctx, args) => {
-    const actor = await requireServiceMutation(ctx, "table.session.open", { venueId: args.venueId });
+    const actor = await requireServiceMutation(ctx, "table.session.open", { venueId: args.venueId, actingMemberId: args.actingMemberId });
     const session = await getInVenue(ctx, args.sessionId, actor.venue._id, "Cette table");
     if (!isOpenSession(session)) throw conflict("Cette table est clôturée.");
     const target = args.memberId ?? actor.member?._id;
@@ -162,21 +162,16 @@ function assertNothingPending(orders: Doc<"orders">[]) {
  * reste un dû : « le serveur a encaissé sans enregistrer » s'arrête ici.
  */
 export const close = mutation({
-  args: { venueId: v.id("venues"), sessionId: v.id("tableSessions") },
+  args: { venueId: v.id("venues"), actingMemberId: v.optional(v.id("organizationMembers")), sessionId: v.id("tableSessions") },
   handler: async (ctx, args) => {
-    const actor = await requireServiceMutation(ctx, "table.session.close", { venueId: args.venueId });
+    const actor = await requireServiceMutation(ctx, "table.session.close", { venueId: args.venueId, actingMemberId: args.actingMemberId });
     const session = await getInVenue(ctx, args.sessionId, actor.venue._id, "Cette table");
     if (!isOpenSession(session)) return; // déjà clôturée : rejouer ne fait rien
     const orders = await ordersOf(ctx, session._id);
     assertNothingPending(orders);
-    const billing = await loadSessionBilling(ctx, session);
-    if (billing.due !== 0) {
-      throw conflict(
-        billing.due > 0
-          ? `Il reste ${formatAmount(billing.due, session.currency)} à encaisser sur cette table. Encaissez, ou clôturez avec un impayé.`
-          : "Le client a payé plus que l'addition : remboursez la différence avant de clôturer.",
-      );
-    }
+    const { owed, overpaid } = await closingState(ctx, await loadSessionBilling(ctx, session));
+    if (owed > 0) throw conflict(`Il reste ${formatAmount(owed, session.currency)} à encaisser sur cette table. Encaissez, ou clôturez avec un impayé.`);
+    if (overpaid > 0) throw conflict(`Le client a payé ${formatAmount(overpaid, session.currency)} de plus que l'addition : remboursez la différence avant de clôturer.`);
     const now = Date.now();
     await ctx.db.patch(session._id, {
       status: orders.length === 0 ? "abandoned" : "closed",
@@ -203,23 +198,24 @@ export const close = mutation({
  * montant perdu FIGÉ — sinon le rapport dirait qu'une table est partie, pas combien.
  */
 export const closeWithDebt = mutation({
-  args: { venueId: v.id("venues"), sessionId: v.id("tableSessions"), reason: v.string() },
+  args: { venueId: v.id("venues"), actingMemberId: v.optional(v.id("organizationMembers")), sessionId: v.id("tableSessions"), reason: v.string() },
   handler: async (ctx, args) => {
-    const actor = await requireServiceMutation(ctx, "table.session.close_with_debt", { venueId: args.venueId });
+    const actor = await requireServiceMutation(ctx, "table.session.close_with_debt", { venueId: args.venueId, actingMemberId: args.actingMemberId });
     const session = await getInVenue(ctx, args.sessionId, actor.venue._id, "Cette table");
     if (!isOpenSession(session)) return;
     const reason = args.reason.trim();
     if (reason.length < 5 || reason.length > 300) throw invalid("Le motif est obligatoire (5 caractères au moins).");
     const orders = await ordersOf(ctx, session._id);
     assertNothingPending(orders);
-    const billing = await loadSessionBilling(ctx, session);
-    if (billing.due <= 0) throw conflict("Il n'y a pas d'impayé sur cette table : clôturez-la normalement.");
+    const { owed, overpaid } = await closingState(ctx, await loadSessionBilling(ctx, session));
+    if (overpaid > 0) throw conflict(`Une addition a été trop payée de ${formatAmount(overpaid, session.currency)} : remboursez la différence d'abord.`);
+    if (owed <= 0) throw conflict("Il n'y a pas d'impayé sur cette table : clôturez-la normalement.");
     const now = Date.now();
     await ctx.db.patch(session._id, {
       status: "closed_with_debt",
       closedAt: now,
       closeReason: reason,
-      debtAmount: billing.due,
+      debtAmount: owed,
       ...(actor.member ? { closedByMemberId: actor.member._id } : {}),
       lastActivityAt: now,
     });
@@ -231,7 +227,7 @@ export const closeWithDebt = mutation({
       action: "table.session.close_with_debt",
       resourceType: "tableSession",
       resourceId: session._id,
-      after: { reference: session.reference, debtAmount: billing.due },
+      after: { reference: session.reference, debtAmount: owed },
       reason,
     });
   },

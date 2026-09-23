@@ -138,6 +138,7 @@ test("encaisser en deux fois, ticket, clôture de caisse juste ; puis un écart 
   await page.goto("/app/service/caisse");
   await expect(page.getByText("Caisse principale")).toBeVisible();
   await page.getByRole("button", { name: "Commencer le comptage" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Commencer" }).click();
   await expect(page.getByText("Comptage en cours")).toBeVisible();
   await expect(page.getByText("Attendu", { exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Saisir le compté" }).click();
@@ -151,6 +152,8 @@ test("encaisser en deux fois, ticket, clôture de caisse juste ; puis un écart 
 
   // L'écart provoqué : nouvelle caisse, un Soda payé 700 en espèces, compté 500.
   await page.getByRole("button", { name: "Ouvrir Caisse principale" }).click();
+  // Le fonds proposé : ce qui restait au dernier comptage. On repart de zéro.
+  await expect(page.getByLabel("Fonds de départ")).toHaveValue(/6\s?000/);
   await page.getByLabel("Fonds de départ").fill("0");
   await page.getByRole("button", { name: "Ouvrir", exact: true }).click();
   await expect(page.getByText("Caisse principale : ouverte.")).toBeVisible();
@@ -167,6 +170,7 @@ test("encaisser en deux fois, ticket, clôture de caisse juste ; puis un écart 
 
   await page.goto("/app/service/caisse");
   await page.getByRole("button", { name: "Commencer le comptage" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Commencer" }).click();
   await page.getByRole("button", { name: "Saisir le compté" }).click();
   await page.getByLabel("Total compté").fill("500");
   await page.getByRole("button", { name: "Valider le compté" }).click();

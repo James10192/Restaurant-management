@@ -91,6 +91,14 @@ export function methodLabel(p: Pick<Doc<"payments">, "method" | "wallet">): stri
  * L'addition d'une table, pour l'écran du serveur ou de la caisse : chaque addition, ses lignes,
  * ses ajustements, ses paiements, son solde — et ce que la personne peut y faire.
  */
+async function refundedOf(ctx: ReadCtx, paymentId: Id<"payments">): Promise<number> {
+  const rows = await ctx.db
+    .query("refunds")
+    .withIndex("by_payment", (q) => q.eq("paymentId", paymentId))
+    .collect();
+  return rows.filter((r) => r.status === "succeeded").reduce((s, r) => s + r.amount, 0);
+}
+
 export const forSession = query({
   args: { venueId: v.id("venues"), sessionId: v.id("tableSessions") },
   handler: async (ctx, args) => {
@@ -118,6 +126,10 @@ export const forSession = query({
           collectedBy: await memberName(ctx, p.collectedByMemberId),
           voidedReason: p.voidedReason ?? null,
           cashSessionOpen: p.cashRegisterSessionId ? (await ctx.db.get(p.cashRegisterSessionId))?.status === "open" : null,
+          /** L'auteur n'annule pas son propre encaissement : le bouton ne s'offre pas. */
+          mine: actor.member !== null && p.collectedByMemberId === actor.member._id,
+          /** Ce qui reste remboursable : le montant proposé, et « rembourser » disparaît à zéro. */
+          refundable: p.status === "voided" ? 0 : p.amount - (await refundedOf(ctx, p._id)),
         });
       }
       const adjustments = [];
@@ -176,9 +188,9 @@ export const forSession = query({
 
 /** « L'addition ! » : la table passe en addition ; le reste de la table se matérialise. */
 export const requestBill = mutation({
-  args: { venueId: v.id("venues"), sessionId: v.id("tableSessions") },
+  args: { venueId: v.id("venues"), actingMemberId: v.optional(v.id("organizationMembers")), sessionId: v.id("tableSessions") },
   handler: async (ctx, args) => {
-    const actor = await requireServiceMutation(ctx, "check.manage", { venueId: args.venueId });
+    const actor = await requireServiceMutation(ctx, "check.manage", { venueId: args.venueId, actingMemberId: args.actingMemberId });
     const member = memberOf(actor);
     const session = await getInVenue(ctx, args.sessionId, actor.venue._id, "Cette table");
     assertBillable(session);
@@ -197,13 +209,13 @@ export const requestBill = mutation({
  */
 export const split = mutation({
   args: {
-    venueId: v.id("venues"),
+    venueId: v.id("venues"), actingMemberId: v.optional(v.id("organizationMembers")),
     sessionId: v.id("tableSessions"),
     label: v.optional(v.string()),
     lines: v.array(v.object({ orderItemId: v.id("orderItems"), quantity: v.number() })),
   },
   handler: async (ctx, args) => {
-    const actor = await requireServiceMutation(ctx, "check.manage", { venueId: args.venueId });
+    const actor = await requireServiceMutation(ctx, "check.manage", { venueId: args.venueId, actingMemberId: args.actingMemberId });
     const member = memberOf(actor);
     const session = await getInVenue(ctx, args.sessionId, actor.venue._id, "Cette table");
     assertBillable(session);
@@ -260,9 +272,9 @@ export const split = mutation({
 
 /** Défaire un partage : tant que rien n'y est payé ni offert, ses lignes retournent au reste. */
 export const unsplit = mutation({
-  args: { venueId: v.id("venues"), checkId: v.id("checks") },
+  args: { venueId: v.id("venues"), actingMemberId: v.optional(v.id("organizationMembers")), checkId: v.id("checks") },
   handler: async (ctx, args) => {
-    const actor = await requireServiceMutation(ctx, "check.manage", { venueId: args.venueId });
+    const actor = await requireServiceMutation(ctx, "check.manage", { venueId: args.venueId, actingMemberId: args.actingMemberId });
     const check = await getInVenue(ctx, args.checkId, actor.venue._id, "Cette addition");
     if (check.status === "voided") return;
     if (check.kind !== "allocated" || check.frozenAt !== undefined) throw conflict("Cette addition ne se défait pas.");
@@ -278,6 +290,26 @@ export const unsplit = mutation({
       .withIndex("by_check", (q) => q.eq("checkId", check._id))
       .collect();
     if (adjustments.length > 0) throw conflict("Un offert ou une remise porte sur cette addition.");
+    // Une part de la même ligne offerte sur le reste de la table : défaire le partage mêlerait une
+    // part offerte et une part due sur une seule ligne, affichée « Offert » alors qu'elle reste due.
+    const allocations = await ctx.db
+      .query("checkItems")
+      .withIndex("by_check", (q) => q.eq("checkId", check._id))
+      .collect();
+    const lines = new Set(allocations.map((a) => a.orderItemId));
+    for (const other of await ctx.db
+      .query("checks")
+      .withIndex("by_session", (q) => q.eq("tableSessionId", session._id))
+      .collect()) {
+      if (other._id === check._id || other.status === "voided") continue;
+      const comps = await ctx.db
+        .query("orderAdjustments")
+        .withIndex("by_check", (q) => q.eq("checkId", other._id))
+        .collect();
+      if (comps.some((a) => a.type === "comp" && a.orderItemId !== undefined && lines.has(a.orderItemId))) {
+        throw conflict("Une part de ces lignes est offerte sur une autre addition : ce partage ne se défait plus.");
+      }
+    }
     await ctx.db.patch(check._id, { status: "voided" });
   },
 });
@@ -303,14 +335,14 @@ async function adjustmentTarget(ctx: MutationCtx, actor: ServiceActor, sessionId
  */
 export const comp = mutation({
   args: {
-    venueId: v.id("venues"),
+    venueId: v.id("venues"), actingMemberId: v.optional(v.id("organizationMembers")),
     sessionId: v.id("tableSessions"),
     checkId: v.union(v.id("checks"), v.null()),
     orderItemId: v.id("orderItems"),
     reason: v.string(),
   },
   handler: async (ctx, args) => {
-    const actor = await requireServiceMutation(ctx, "order.discount.apply", { venueId: args.venueId });
+    const actor = await requireServiceMutation(ctx, "order.discount.apply", { venueId: args.venueId, actingMemberId: args.actingMemberId });
     const reason = requireReason(args.reason, "Le motif de l'offert");
     const { member, session, target, check } = await adjustmentTarget(ctx, actor, args.sessionId, args.checkId);
     const line = target.lines.find((l) => l.orderItemId === args.orderItemId);
@@ -349,14 +381,14 @@ export const comp = mutation({
 /** Une remise en montant sur une addition. Jamais au-delà du dû. */
 export const discount = mutation({
   args: {
-    venueId: v.id("venues"),
+    venueId: v.id("venues"), actingMemberId: v.optional(v.id("organizationMembers")),
     sessionId: v.id("tableSessions"),
     checkId: v.union(v.id("checks"), v.null()),
     amount: v.number(),
     reason: v.string(),
   },
   handler: async (ctx, args) => {
-    const actor = await requireServiceMutation(ctx, "order.discount.apply", { venueId: args.venueId });
+    const actor = await requireServiceMutation(ctx, "order.discount.apply", { venueId: args.venueId, actingMemberId: args.actingMemberId });
     const reason = requireReason(args.reason, "Le motif de la remise");
     const amount = requireAmount(args.amount, "La remise");
     const { member, session, target, check } = await adjustmentTarget(ctx, actor, args.sessionId, args.checkId);

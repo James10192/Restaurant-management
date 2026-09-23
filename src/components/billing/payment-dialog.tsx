@@ -73,7 +73,7 @@ function PaymentForm({ bill, check, onDone }: { bill: Bill; check: BillCheck; on
   const [reference, setReference] = useState("");
   const [cashBack, setCashBack] = useState(false);
   const [registerSessionId, setRegisterSessionId] = useState<Id<"cashRegisterSessions"> | null>(null);
-  const [floatText, setFloatText] = useState("0");
+  const [floatText, setFloatText] = useState("");
   const [step, setStep] = useState<"form" | "confirm">("form");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -90,7 +90,12 @@ function PaymentForm({ bill, check, onDone }: { bill: Bill; check: BillCheck; on
 
   const amountError = amount === null ? "Montant invalide." : amount <= 0 ? "Le montant doit être positif." : amount > due ? `Au plus ${money(due)}.` : null;
   const receivedError = method === "cash" && received !== null && amount !== null && received < amount ? "Le client a remis moins que le montant." : null;
-  const changeError = method === "cash" && change > computedChange ? `Au plus ${money(computedChange)}.` : null;
+  const changeError =
+    method === "cash" && change > computedChange
+      ? `Au plus ${money(computedChange)}.`
+      : method !== "cash" && amount !== null && nonCashChange >= amount
+        ? "La monnaie rendue doit rester inférieure au montant encaissé."
+        : null;
   const walletError = method === "mobile_money" && !wallet ? "Choisissez le portefeuille qui a reçu l'argent." : null;
   const ready = !amountError && !receivedError && !changeError && !walletError && (!chooseRegister || registerSessionId !== null) && !noCash;
 
@@ -103,7 +108,7 @@ function PaymentForm({ bill, check, onDone }: { bill: Bill; check: BillCheck; on
     setError(null);
     try {
       const result = await collect({
-        venueId: scope.venueId,
+        ...scope.acting,
         sessionId: bill.sessionId,
         checkId: check._id,
         method,
@@ -138,7 +143,7 @@ function PaymentForm({ bill, check, onDone }: { bill: Bill; check: BillCheck; on
     if (float === null) return;
     setBusy(true);
     try {
-      const id = await openCash({ venueId: scope.venueId, openingFloat: float });
+      const id = await openCash({ ...scope.acting, openingFloat: float });
       setRegisterSessionId(id);
       setNeedsCash(false);
       setError(null);
@@ -308,7 +313,7 @@ function PaymentForm({ bill, check, onDone }: { bill: Bill; check: BillCheck; on
             </FieldLabel>
           </Field>
           {cashBack ? (
-            <FormField label="Monnaie rendue en espèces">
+            <FormField label="Monnaie rendue en espèces" error={changeError}>
               <Input inputMode="decimal" autoComplete="off" value={changeText ?? ""} onChange={(e) => setChangeText(e.target.value)} />
             </FormField>
           ) : null}

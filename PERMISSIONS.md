@@ -131,10 +131,10 @@ fichier ; les deux doivent rester alignés (un test le vérifie — voir §9).
 | `payment.void` | Annuler un paiement enregistré par erreur | venue |
 | `check.manage` | Créer, scinder, fusionner des additions | venue |
 | `bill.reissue` | Ré-émettre ou renvoyer un ticket au client | venue |
-| `bill.reissue` | Ré-émettre ou renvoyer un ticket au client | venue |
 | `cash_register.open` | Ouvrir une session de caisse | venue |
 | `cash_register.close` | Clôturer, déclarer le compté — **y compris avec un écart** | venue |
 | `cash_register.adjust` | Corriger un écart — **toujours audité** | venue |
+| `report.service_day.read` | Lire le rapport de fin de service — indépendante du module d'analyses financières, qu'un plan peut retirer | venue |
 
 ### Clients et fidélité
 
@@ -230,6 +230,7 @@ modifier : ce ne sont pas des constantes du logiciel.
 | `payment.refund` | ❌ | ❌ | ❌ | ✅ |
 | `cash_register.adjust` | ❌ | ❌ | ❌ | ✅ |
 | `analytics.financial.read` | ❌ | ❌ | ❌ | ✅ |
+| `report.service_day.read` | ❌ | ❌ | ❌ | ✅ |
 
 ¹ Dans beaucoup d'établissements le serveur encaisse. C'est précisément pourquoi c'est une
 permission et non un rôle : le restaurant coche la case, sans que le logiciel change.

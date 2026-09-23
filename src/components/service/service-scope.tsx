@@ -24,6 +24,12 @@ export type ServiceScope = {
   name: string | null;
   stationId: Id<"prepStations"> | null;
   can: (permission: Permission) => boolean;
+  /**
+   * Les arguments de toute mutation du service : l'établissement, et la personne qui fait le
+   * geste. Sur une tablette partagée, un geste resté en attente ne repart jamais sous le nom de
+   * celui qui a déverrouillé après (D-062) : le serveur compare.
+   */
+  acting: { venueId: Id<"venues">; actingMemberId?: Id<"organizationMembers"> };
   /** Aller d'un écran de service à l'autre, quelle que soit la route qui les héberge. */
   nav: ServiceNav;
   /** Sur un appareil partagé : rendre la main (écran de verrouillage). */
@@ -67,6 +73,7 @@ export function ServiceScopeProvider({
       name: me.name,
       stationId: me.stationId,
       can: (p) => permissions.has(p),
+      acting: { venueId, ...(me.memberId ? { actingMemberId: me.memberId } : {}) },
       nav,
       ...(lock ? { lock } : {}),
     };

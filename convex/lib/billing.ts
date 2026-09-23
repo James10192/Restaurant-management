@@ -168,12 +168,24 @@ export type SessionBilling = {
   paid: number;
 };
 
+/**
+ * Les commandes qui ne sont pas (ou plus) dues : pas encore acceptées, refusées, annulées. Une
+ * commande passée au QR et en attente d'acceptation n'entre pas dans l'addition — sinon on
+ * l'encaisserait, puis son refus creuserait un dû négatif que rien ne referme.
+ */
+const NOT_BILLED: ReadonlySet<Doc<"orders">["status"]> = new Set(["draft", "pending_payment", "pending_acceptance", "rejected", "cancelled"]);
+
 async function liveItemsOf(ctx: ReadCtx, sessionId: Id<"tableSessions">) {
+  const orders = await ctx.db
+    .query("orders")
+    .withIndex("by_session", (q) => q.eq("tableSessionId", sessionId))
+    .collect();
+  const excluded = new Set(orders.filter((o) => NOT_BILLED.has(o.status)).map((o) => o._id));
   const items = await ctx.db
     .query("orderItems")
     .withIndex("by_session_status", (q) => q.eq("tableSessionId", sessionId))
     .collect();
-  return items.filter((i) => i.status !== "cancelled");
+  return items.filter((i) => i.status !== "cancelled" && !excluded.has(i.orderId));
 }
 
 /**
@@ -272,6 +284,34 @@ export async function loadSessionBilling(
     total: result.reduce((s, c) => s + c.balance.total, 0),
     paid: result.reduce((s, c) => s + c.balance.paid, 0),
   };
+}
+
+/**
+ * Ce qui empêche de clôturer, addition par addition — jamais la somme : une addition à −500 et
+ * une autre à +500 ne font pas une table soldée.
+ *  - `owed` : ce qui reste à encaisser (la somme des dûs positifs) ;
+ *  - `overpaid` : le trop-perçu qu'aucun remboursement n'a encore rendu. Un remboursement ne
+ *    rouvre pas le dû (D-076) : c'est ici, et seulement ici, qu'il compte pour sortir d'un dû
+ *    négatif.
+ */
+export async function closingState(ctx: ReadCtx, billing: SessionBilling): Promise<{ owed: number; overpaid: number }> {
+  let owed = 0;
+  let overpaid = 0;
+  for (const c of billing.checks) {
+    if (c.balance.due > 0) owed += c.balance.due;
+    if (c.balance.due >= 0) continue;
+    let refunded = 0;
+    for (const p of c.payments) {
+      if (p.status === "voided") continue;
+      const rows = await ctx.db
+        .query("refunds")
+        .withIndex("by_payment", (q) => q.eq("paymentId", p._id))
+        .collect();
+      refunded += rows.filter((r) => r.status === "succeeded").reduce((s, r) => s + r.amount, 0);
+    }
+    overpaid += Math.max(0, -c.balance.due - refunded);
+  }
+  return { owed, overpaid };
 }
 
 /** La première addition dont le dû deviendrait négatif, ou `null`. */

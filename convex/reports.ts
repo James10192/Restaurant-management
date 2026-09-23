@@ -12,12 +12,13 @@
 import { v } from "convex/values";
 import { query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
-import { DEFAULT_SERVICE_DAY_START_HOUR, loadSessionBilling, serviceDayWindow } from "./lib/billing";
+import { closingState, DEFAULT_SERVICE_DAY_START_HOUR, loadSessionBilling, serviceDayWindow } from "./lib/billing";
 import { invalid } from "./lib/errors";
 import { requirePermission, type ReadCtx } from "./lib/guards";
 import { serviceDayKey } from "./lib/ordering";
 import { memberName, OPEN_SESSION, settingsOf } from "./lib/service";
 import { methodLabel } from "./checks";
+import { initialDiscrepancyOf } from "./cash";
 
 function names(ctx: ReadCtx) {
   const cache = new Map<string, string | null>();
@@ -43,7 +44,7 @@ function tables(ctx: ReadCtx) {
 export const serviceDay = query({
   args: { venueId: v.id("venues"), day: v.optional(v.string()) },
   handler: async (ctx, args) => {
-    const actor = await requirePermission(ctx, "analytics.financial.read", { venueId: args.venueId });
+    const actor = await requirePermission(ctx, "report.service_day.read", { venueId: args.venueId });
     const venue = actor.venue;
     const settings = await settingsOf(ctx, venue._id);
     const startHour = settings.service.serviceDayStartHour ?? DEFAULT_SERVICE_DAY_START_HOUR;
@@ -63,23 +64,31 @@ export const serviceDay = query({
       .withIndex("by_venue_createdAt", (q) => q.eq("venueId", venue._id).gte("createdAt", from).lt("createdAt", to))
       .collect()).filter((p) => !hide(p.isSimulation));
     const valid = payments.filter((p) => p.status !== "voided");
-    const byMethod = new Map<string, { label: string; method: Doc<"payments">["method"]; amount: number; count: number }>();
-    const byCollector = new Map<string, { name: string; amount: number; cash: number; count: number }>();
+    // `received` : ce que le téléphone ou le terminal doit afficher (montant + monnaie rendue en
+    // espèces). C'est lui qu'on rapproche du relevé Wave, pas le seul montant de l'addition.
+    const byMethod = new Map<string, { label: string; method: Doc<"payments">["method"]; amount: number; received: number; count: number }>();
+    const byCollector = new Map<string, { name: string; amount: number; cash: number; changeOnNonCash: number; count: number }>();
     for (const p of valid) {
       const label = methodLabel(p);
-      const m = byMethod.get(label) ?? { label, method: p.method, amount: 0, count: 0 };
+      const m = byMethod.get(label) ?? { label, method: p.method, amount: 0, received: 0, count: 0 };
       m.amount += p.amount;
+      m.received += p.method === "cash" ? p.amount : (p.receivedAmount ?? p.amount);
       m.count += 1;
       byMethod.set(label, m);
       const key = p.collectedByMemberId ?? "en_ligne";
-      const c = byCollector.get(key) ?? { name: (await nameOf(p.collectedByMemberId)) ?? "En ligne", amount: 0, cash: 0, count: 0 };
+      const c = byCollector.get(key) ?? { name: (await nameOf(p.collectedByMemberId)) ?? "En ligne", amount: 0, cash: 0, changeOnNonCash: 0, count: 0 };
       c.amount += p.amount;
       if (p.method === "cash") c.cash += p.amount;
+      else c.changeOnNonCash += p.changeAmount ?? 0;
       c.count += 1;
       byCollector.set(key, c);
     }
+    const voidedRows = (await ctx.db
+      .query("payments")
+      .withIndex("by_venue_voidedAt", (q) => q.eq("venueId", venue._id).gte("voidedAt", from).lt("voidedAt", to))
+      .collect()).filter((p) => p.status === "voided" && !hide(p.isSimulation));
     const voids = [];
-    for (const p of payments.filter((x) => x.status === "voided")) {
+    for (const p of voidedRows) {
       voids.push({
         _id: p._id,
         table: await tableOf(p.tableSessionId),
@@ -155,6 +164,13 @@ export const serviceDay = query({
       const counts = [];
       for (const c of s.counts) counts.push({ amount: c.amount, by: (await nameOf(c.countedByMemberId)) ?? "?", at: c.at });
       const lastCounter = s.counts.at(-1)?.countedByMemberId;
+      const movements = [];
+      for (const m of await ctx.db
+        .query("cashMovements")
+        .withIndex("by_session", (q) => q.eq("registerSessionId", s._id))
+        .collect()) {
+        movements.push({ _id: m._id, type: m.type, amount: m.amount, reason: m.reason, by: (await nameOf(m.createdByMemberId)) ?? "?", at: m.createdAt });
+      }
       cashSessions.push({
         _id: s._id,
         name: holder ? `Pochette de ${holder}` : (register?.name ?? "Caisse"),
@@ -166,7 +182,9 @@ export const serviceDay = query({
         expected: s.expectedAmount ?? null,
         counted: s.countedAmount ?? null,
         discrepancy: s.discrepancy ?? null,
+        initialDiscrepancy: initialDiscrepancyOf(s),
         counts,
+        movements,
         /** Un tiroir compté par celui qui l'a ouvert : permis, mais dit. */
         selfCounted: lastCounter !== undefined && lastCounter === s.openedByMemberId,
         closeReason: s.closeReason ?? null,
@@ -193,7 +211,7 @@ export const serviceDay = query({
       for (const s of rows) {
         if (hide(s.isSimulation)) continue;
         const billing = await loadSessionBilling(ctx, s);
-        openTables.push({ _id: s._id, table: await tableOf(s._id), reference: s.reference, due: billing.due, waiter: await nameOf(s.assignedWaiterMemberId), openedAt: s.openedAt });
+        openTables.push({ _id: s._id, table: await tableOf(s._id), reference: s.reference, due: (await closingState(ctx, billing)).owed, waiter: await nameOf(s.assignedWaiterMemberId), openedAt: s.openedAt });
       }
     }
 
@@ -222,6 +240,9 @@ export const serviceDay = query({
       });
     }
 
+    // Comptage à l'aveugle (D-081) : tant qu'une caisse est en comptage sans compté saisi, les
+    // sommes d'encaissement la trahiraient (fonds + espèces du serveur ≈ attendu). Elles attendent.
+    const blind = cashSessions.filter((s) => s.status === "counting" && s.counts.length === 0).map((s) => s.name);
     const collected = valid.reduce((s, p) => s + p.amount, 0);
     const refunded = refunds.reduce((s, r) => s + r.amount, 0);
     return {
@@ -232,9 +253,10 @@ export const serviceDay = query({
       currency: venue.currency,
       timezone: venue.timezone,
       simulation: venue.isSimulation,
-      totals: { collected, refunded, net: collected - refunded, count: valid.length },
-      byMethod: [...byMethod.values()].sort((a, b) => b.amount - a.amount),
-      byCollector: [...byCollector.values()].sort((a, b) => b.amount - a.amount),
+      blindCounting: blind,
+      totals: blind.length > 0 ? null : { collected, refunded, net: collected - refunded, count: valid.length },
+      byMethod: blind.length > 0 ? [] : [...byMethod.values()].sort((a, b) => b.amount - a.amount),
+      byCollector: blind.length > 0 ? [] : [...byCollector.values()].sort((a, b) => b.amount - a.amount),
       cashSessions: cashSessions.sort((a, b) => a.openedAt - b.openedAt),
       voids,
       refunds,

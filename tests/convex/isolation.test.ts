@@ -1379,6 +1379,13 @@ const CASES: Record<string, (w: Awaited<ReturnType<typeof twoTenants>>) => Promi
       w.a.owner.as.mutation(api.cash.startCount, { venueId: w.a.venueId, sessionId: m.cashSessionId }),
     );
   },
+  "cash.cancelCount": async (w) => {
+    const m = await moneyAtB(w);
+    await bothRefused(
+      w.a.owner.as.mutation(api.cash.cancelCount, { venueId: w.b.venueId, sessionId: m.cashSessionId }),
+      w.a.owner.as.mutation(api.cash.cancelCount, { venueId: w.a.venueId, sessionId: m.cashSessionId }),
+    );
+  },
   "cash.submitCount": async (w) => {
     const m = await moneyAtB(w);
     await bothRefused(
@@ -1423,7 +1430,7 @@ const CASES: Record<string, (w: Awaited<ReturnType<typeof twoTenants>>) => Promi
     await moneyAtB(w);
     await expectCode(w.a.owner.as.query(api.reports.serviceDay, { venueId: w.b.venueId }), "NOT_FOUND");
     const mine = await w.a.owner.as.query(api.reports.serviceDay, { venueId: w.a.venueId });
-    expect([mine.totals.collected, mine.cashSessions, mine.openTables]).toEqual([0, [], []]);
+    expect([mine.totals!.collected, mine.cashSessions, mine.openTables]).toEqual([0, [], []]);
   },
 };
 

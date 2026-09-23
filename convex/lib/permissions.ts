@@ -120,6 +120,9 @@ export const PERMISSIONS = {
   // distinction, un caissier ne pouvait pas fermer sa caisse un soir d'écart. (Manque G4.)
   "cash_register.close": { label: "Clôturer une session de caisse, écart compris", group: "Encaissement", scope: "venue", audited: true, pin: true },
   "cash_register.adjust": { label: "Corriger un écart de caisse", group: "Encaissement", scope: "venue", sensitive: true, audited: true, requiresReason: true },
+  // Le rapport de fin de service est la promesse de T3 (« qu'est-ce qui est entré, par qui ») :
+  // il ne dépend pas du module d'analyses financières, qu'un plan peut retirer.
+  "report.service_day.read": { label: "Lire le rapport de fin de service", group: "Encaissement", scope: "venue", sensitive: true },
 
   /* ── Clients ─────────────────────────────────────────────────────────── */
   "customer.read": { label: "Voir les clients", group: "Clients", scope: "venue" },
@@ -230,7 +233,7 @@ export const ROLE_TEMPLATES = {
       "kitchen.read", "kitchen.ticket.update", "kitchen.manage",
       "service_request.read", "service_request.handle",
       "payment.read", "payment.collect", "payment.refund", "payment.void", "check.manage", "bill.reissue",
-      "cash_register.open", "cash_register.close", "cash_register.adjust",
+      "cash_register.open", "cash_register.close", "cash_register.adjust", "report.service_day.read",
       "customer.read", "customer.manage", "reservation.read", "reservation.manage",
       "team.read", "team.manage", "device.manage",
       "analytics.read", "analytics.financial.read", "audit.read", "export.data",
@@ -293,7 +296,7 @@ export const ROLE_TEMPLATES = {
   // Aucune écriture. Un comptable lit et exporte, il ne modifie rien.
   accountant: {
     label: "Comptable",
-    permissions: ["venue.read", "payment.read", "analytics.read", "analytics.financial.read", "audit.read", "export.data"],
+    permissions: ["venue.read", "payment.read", "report.service_day.read", "analytics.read", "analytics.financial.read", "audit.read", "export.data"],
   },
 
   analyst: {

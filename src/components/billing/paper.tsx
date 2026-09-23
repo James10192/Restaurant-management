@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 /**
@@ -101,23 +101,31 @@ export function PrintJob({ doc, money, onDone }: { doc: PaperDoc | null; money: 
     setRoot(el);
     return () => el.remove();
   }, []);
+  // `onDone` change à chaque rendu du parent : s'il entrait dans les dépendances, chaque mise à
+  // jour de la table rouvrirait la boîte d'impression (sur Android, l'impression ne bloque pas).
+  const onDoneRef = useRef(onDone);
+  onDoneRef.current = onDone;
+  const printed = useRef<PaperDoc | null>(null);
   useEffect(() => {
-    if (!doc || !root) return;
+    if (!doc || !root || printed.current === doc) return;
     const done = () => {
       document.body.classList.remove("joliba-printing");
       window.removeEventListener("afterprint", done);
-      onDone();
+      onDoneRef.current();
     };
     document.body.classList.add("joliba-printing");
     window.addEventListener("afterprint", done);
     // Laisse le portail se peindre avant d'ouvrir la boîte d'impression.
-    const timer = window.setTimeout(() => window.print(), 50);
+    const timer = window.setTimeout(() => {
+      printed.current = doc;
+      window.print();
+    }, 50);
     return () => {
       window.clearTimeout(timer);
       window.removeEventListener("afterprint", done);
       document.body.classList.remove("joliba-printing");
     };
-  }, [doc, root, onDone]);
+  }, [doc, root]);
   if (!root || !doc) return null;
   return createPortal(<Paper doc={doc} money={money} />, root);
 }

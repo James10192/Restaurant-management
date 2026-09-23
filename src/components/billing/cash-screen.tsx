@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { ArrowDownToLine, ArrowLeft, ArrowUpFromLine, Calculator, CircleAlert, Lock, Wallet } from "lucide-react";
@@ -20,17 +20,28 @@ import { ActionButton } from "~/components/service/action-button";
 import { useOptionalOutbox } from "~/components/service/outbox-provider";
 import { useMoney, useServiceScope } from "~/components/service/service-scope";
 import { Alert, AlertDescription } from "~/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "~/components/ui/alert-dialog";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "~/components/ui/card";
 import { Input } from "~/components/ui/input";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemTitle } from "~/components/ui/item";
 import { describeError } from "~/lib/errors";
-import { parseAmount } from "./amount";
+import { amountToText, parseAmount } from "./amount";
 import { ReasonDialog } from "./reason-dialog";
 
 type Overview = FunctionReturnType<typeof api.cash.overview>;
 type CashSession = Overview["sessions"][number];
+type OpenTarget = { registerId: Id<"cashRegisters"> | null; label: string; suggestedFloat: number | null };
 
 const STATUS: Record<CashSession["status"], { label: string; variant: "default" | "secondary" | "outline" | "destructive" }> = {
   open: { label: "Ouverte", variant: "secondary" },
@@ -50,7 +61,7 @@ export function CashScreen() {
   const scope = useServiceScope();
   const money = useMoney();
   const overview = useQuery(api.cash.overview, { venueId: scope.venueId });
-  const [opening, setOpening] = useState<{ registerId: Id<"cashRegisters"> | null; label: string } | null>(null);
+  const [opening, setOpening] = useState<OpenTarget | null>(null);
 
   if (overview === undefined) return <LoadingState />;
   const mine = overview.sessions.find((s) => s.isMine);
@@ -74,20 +85,20 @@ export function CashScreen() {
 
       <div className="flex flex-wrap gap-2">
         {overview.can.openOwnPouch && !mine ? (
-          <Button size="lg" onClick={() => setOpening({ registerId: null, label: "ma pochette" })}>
+          <Button size="lg" onClick={() => setOpening({ registerId: null, label: "ma pochette", suggestedFloat: null })}>
             <Wallet />
             Ouvrir ma pochette
           </Button>
         ) : null}
         {overview.can.openDrawer && overview.registers.length === 0 ? (
-          <Button size="lg" onClick={() => setOpening({ registerId: null, label: "la caisse principale" })}>
+          <Button size="lg" onClick={() => setOpening({ registerId: null, label: "la caisse principale", suggestedFloat: null })}>
             <Wallet />
             Ouvrir la caisse
           </Button>
         ) : null}
         {overview.can.openDrawer
           ? freeRegisters.map((r) => (
-              <Button key={r._id} size="lg" variant={freeRegisters.length > 1 ? "outline" : "default"} onClick={() => setOpening({ registerId: r._id, label: r.name })}>
+              <Button key={r._id} size="lg" variant={freeRegisters.length > 1 ? "outline" : "default"} onClick={() => setOpening({ registerId: r._id, label: r.name, suggestedFloat: r.lastCounted })}>
                 <Wallet />
                 Ouvrir {r.name}
               </Button>
@@ -137,6 +148,9 @@ function CashCard({ session: s, overview }: { session: CashSession; overview: Ov
   const scope = useServiceScope();
   const money = useMoney();
   const startCount = useMutation(api.cash.startCount);
+  const cancelCount = useMutation(api.cash.cancelCount);
+  const [confirmCount, setConfirmCount] = useState(false);
+  const online = useOptionalOutbox()?.online ?? true;
   const addMovement = useMutation(api.cash.addMovement);
   const close = useMutation(api.cash.close);
   const [movement, setMovement] = useState<"payout" | "deposit" | null>(null);
@@ -145,7 +159,11 @@ function CashCard({ session: s, overview }: { session: CashSession; overview: Ov
   const status = STATUS[s.status];
   const holderIsMe = s.isMine;
   const canCount = overview.can.count && !holderIsMe;
-  const canMove = s.status === "open" && (holderIsMe ? scope.can("payment.collect") : scope.can("cash_register.open"));
+  const canDeposit = s.status === "open" && (holderIsMe ? scope.can("payment.collect") : scope.can("cash_register.open"));
+  // Une sortie d'argent : depuis un compte, ou sur la pochette d'un autre (D-082). Le serveur tranche.
+  const canPayout = s.status === "open" && scope.can("cash_register.open") && (overview.can.payoutFromAccount || (s.kind === "pouch" && !holderIsMe));
+  // Recomptée juste après un premier écart : le premier écart reste, et il demande un motif.
+  const recountedAway = s.status === "balanced" && (s.initialDiscrepancy ?? 0) !== 0;
 
   return (
     <Card>
@@ -202,35 +220,45 @@ function CashCard({ session: s, overview }: { session: CashSession; overview: Ov
           </dl>
         ) : null}
         {s.counts.length > 1 ? (
-          <p className="text-sm text-muted-foreground">Comptages : {s.counts.map((c) => `${money(c.amount)} (${c.by})`).join(" puis ")}</p>
+          <p className="text-sm text-muted-foreground">
+            Comptages : {s.counts.map((c) => `${money(c.amount)} (${c.by})`).join(" puis ")}
+            {s.initialDiscrepancy ? ` · écart au premier comptage ${money(s.initialDiscrepancy)}` : ""}
+          </p>
         ) : null}
         {holderIsMe && s.status !== "open" ? <p className="text-sm text-muted-foreground">Votre pochette est comptée par un responsable.</p> : null}
       </CardContent>
       <CardFooter className="flex flex-wrap gap-2">
-        {canMove ? (
-          <>
-            <Button variant="outline" onClick={() => setMovement("payout")}>
-              <ArrowUpFromLine />
-              Sortie
-            </Button>
-            <Button variant="outline" onClick={() => setMovement("deposit")}>
-              <ArrowDownToLine />
-              Entrée
-            </Button>
-          </>
+        {canPayout ? (
+          <Button variant="outline" onClick={() => setMovement("payout")}>
+            <ArrowUpFromLine />
+            Sortie
+          </Button>
+        ) : null}
+        {canDeposit ? (
+          <Button variant="outline" onClick={() => setMovement("deposit")}>
+            <ArrowDownToLine />
+            Entrée
+          </Button>
         ) : null}
         {canCount && s.status === "open" ? (
+          <Button disabled={!online} onClick={() => setConfirmCount(true)}>
+            <Calculator />
+            Commencer le comptage
+          </Button>
+        ) : null}
+        {canCount && s.status === "counting" && s.counts.length === 0 ? (
           <ActionButton
+            variant="ghost"
             onAction={async () => {
               try {
-                await startCount({ venueId: scope.venueId, sessionId: s._id });
+                await cancelCount({ ...scope.acting, sessionId: s._id });
+                toast.success(`${s.name} : de nouveau ouverte.`);
               } catch (error) {
                 toast.error(describeError(error).message);
               }
             }}
           >
-            <Calculator />
-            Commencer le comptage
+            Annuler le comptage
           </ActionButton>
         ) : null}
         {canCount && (s.status === "counting" || (s.status === "discrepancy" && s.counts.length === 1)) ? (
@@ -240,11 +268,11 @@ function CashCard({ session: s, overview }: { session: CashSession; overview: Ov
           </Button>
         ) : null}
         {canCount && (s.status === "balanced" || s.status === "discrepancy") ? (
-          s.status === "balanced" ? (
+          s.status === "balanced" && !recountedAway ? (
             <ActionButton
               onAction={async () => {
                 try {
-                  await close({ venueId: scope.venueId, sessionId: s._id });
+                  await close({ ...scope.acting, sessionId: s._id });
                   toast.success(`${s.name} clôturée : la caisse tombe juste.`);
                 } catch (error) {
                   toast.error(describeError(error).message);
@@ -257,7 +285,7 @@ function CashCard({ session: s, overview }: { session: CashSession; overview: Ov
           ) : (
             <Button variant="destructive" onClick={() => setClosing(true)}>
               <Lock />
-              Clôturer avec l'écart
+              {recountedAway ? "Clôturer" : "Clôturer avec l'écart"}
             </Button>
           )
         ) : null}
@@ -271,7 +299,7 @@ function CashCard({ session: s, overview }: { session: CashSession; overview: Ov
         amount={{ label: "Montant", parse: (t) => parseAmount(t, s.currency) }}
         onConfirm={async ({ reason, amount }) => {
           if (!movement || amount === null) return;
-          await addMovement({ venueId: scope.venueId, sessionId: s._id, type: movement, amount, reason });
+          await addMovement({ ...scope.acting, sessionId: s._id, type: movement, amount, reason });
           toast.success("Enregistré.");
           setMovement(null);
         }}
@@ -279,17 +307,45 @@ function CashCard({ session: s, overview }: { session: CashSession; overview: Ov
       <ReasonDialog
         open={closing}
         onOpenChange={setClosing}
-        title={`Clôturer ${s.name} avec l'écart`}
-        description={`Écart de ${money(s.discrepancy ?? 0)}. Il reste au rapport, avec votre nom et ce motif.`}
+        title={recountedAway ? `Clôturer ${s.name}` : `Clôturer ${s.name} avec l'écart`}
+        description={
+          recountedAway
+            ? `Le premier comptage montrait un écart de ${money(s.initialDiscrepancy ?? 0)}. Il reste au rapport, avec votre nom et ce motif.`
+            : `Écart de ${money(s.discrepancy ?? 0)}. Il reste au rapport, avec votre nom et ce motif.`
+        }
         confirmLabel="Clôturer"
         destructive
         onConfirm={async ({ reason }) => {
-          await close({ venueId: scope.venueId, sessionId: s._id, reason });
+          await close({ ...scope.acting, sessionId: s._id, reason });
           toast.success(`${s.name} clôturée.`);
           setClosing(false);
         }}
       />
       <CountDialog session={s} open={counting} onOpenChange={setCounting} />
+      <AlertDialog open={confirmCount} onOpenChange={setConfirmCount}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Commencer le comptage de {s.name} ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Plus aucune espèce n'entrera dans cette caisse{s.kind === "pouch" ? ", et son porteur ne pourra plus encaisser en espèces" : ""}. Tant que rien n'est saisi, vous pourrez annuler.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Pas encore</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async () => {
+                try {
+                  await startCount({ ...scope.acting, sessionId: s._id });
+                } catch (error) {
+                  toast.error(describeError(error).message);
+                }
+              }}
+            >
+              Commencer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 }
@@ -324,7 +380,7 @@ function CountDialog({ session, open, onOpenChange }: { session: CashSession; op
             setBusy(true);
             setError(null);
             try {
-              const r = await submit({ venueId: scope.venueId, sessionId: session._id, countedAmount: counted });
+              const r = await submit({ ...scope.acting, sessionId: session._id, countedAmount: counted });
               toast[r.discrepancy === 0 ? "success" : "warning"](r.discrepancy === 0 ? "La caisse tombe juste." : `Écart de ${money(r.discrepancy)} (attendu ${money(r.expected)}).`);
               onOpenChange(false);
               setText("");
@@ -362,11 +418,16 @@ function CountDialog({ session, open, onOpenChange }: { session: CashSession; op
   );
 }
 
-function OpenDialog({ target, onClose }: { target: { registerId: Id<"cashRegisters"> | null; label: string } | null; onClose: () => void }) {
+function OpenDialog({ target, onClose }: { target: OpenTarget | null; onClose: () => void }) {
   const scope = useServiceScope();
   const online = useOptionalOutbox()?.online ?? true;
   const open = useMutation(api.cash.open);
-  const [text, setText] = useState("0");
+  const [text, setText] = useState("");
+  // Le fonds proposé : ce qui restait dans ce tiroir au dernier comptage. Jamais 0 d'office — une
+  // monnaie déjà dans le tiroir et oubliée ferait un écart positif toute la soirée.
+  useEffect(() => {
+    if (target) setText(target.suggestedFloat !== null ? amountToText(target.suggestedFloat, scope.currency) : "");
+  }, [target, scope.currency]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const float = parseAmount(text, scope.currency);
@@ -381,9 +442,8 @@ function OpenDialog({ target, onClose }: { target: { registerId: Id<"cashRegiste
             setBusy(true);
             setError(null);
             try {
-              await open({ venueId: scope.venueId, openingFloat: float, ...(target.registerId ? { registerId: target.registerId } : {}) });
+              await open({ ...scope.acting, openingFloat: float, ...(target.registerId ? { registerId: target.registerId } : {}) });
               toast.success(`${target.label[0]!.toUpperCase()}${target.label.slice(1)} : ouverte.`);
-              setText("0");
               onClose();
             } catch (err) {
               setError(describeError(err).message);

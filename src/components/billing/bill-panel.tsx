@@ -1,6 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
-import { Banknote, Gift, MoreHorizontal, Percent, Printer, ReceiptText, Split, Undo2 } from "lucide-react";
+import {
+  Banknote,
+  Gift,
+  MoreHorizontal,
+  Percent,
+  Printer,
+  ReceiptText,
+  Split,
+  Undo2,
+} from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
@@ -9,9 +18,29 @@ import { ActionButton } from "~/components/service/action-button";
 import { useMoney, useServiceScope } from "~/components/service/service-scope";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
-import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "~/components/ui/card";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "~/components/ui/dropdown-menu";
-import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemTitle } from "~/components/ui/item";
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "~/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "~/components/ui/dropdown-menu";
+import {
+  Item,
+  ItemActions,
+  ItemContent,
+  ItemDescription,
+  ItemGroup,
+  ItemTitle,
+} from "~/components/ui/item";
 import { Field, FieldLabel } from "~/components/ui/field";
 import { Separator } from "~/components/ui/separator";
 import { ToggleGroup, ToggleGroupItem } from "~/components/ui/toggle-group";
@@ -24,7 +53,10 @@ import { PaymentDialog, type Bill, type BillCheck } from "./payment-dialog";
 import { ReasonDialog } from "./reason-dialog";
 import { SplitDialog } from "./split-dialog";
 
-const time = new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", minute: "2-digit" });
+const time = new Intl.DateTimeFormat("fr-FR", {
+  hour: "2-digit",
+  minute: "2-digit",
+});
 const EPSILON = 1e-9;
 
 function quantityLabel(q: number): string {
@@ -42,11 +74,17 @@ type Line = BillCheck["lines"][number];
  */
 export function BillPanel({ sessionId }: { sessionId: Id<"tableSessions"> }) {
   const scope = useServiceScope();
-  const bill = useQuery(api.checks.forSession, { venueId: scope.venueId, sessionId });
+  const bill = useQuery(api.checks.forSession, {
+    venueId: scope.venueId,
+    sessionId,
+  });
   const [paying, setPaying] = useState<BillCheck | null>(null);
   const [splitting, setSplitting] = useState(false);
   const [discounting, setDiscounting] = useState<BillCheck | null>(null);
-  const [comping, setComping] = useState<{ check: BillCheck; line: Line } | null>(null);
+  const [comping, setComping] = useState<{
+    check: BillCheck;
+    line: Line;
+  } | null>(null);
   const [voiding, setVoiding] = useState<Payment | null>(null);
   const [refunding, setRefunding] = useState<Payment | null>(null);
   const [printDoc, setPrintDoc] = useState<PaperDoc | null>(null);
@@ -67,17 +105,31 @@ export function BillPanel({ sessionId }: { sessionId: Id<"tableSessions"> }) {
         <CardHeader>
           <CardTitle>Addition</CardTitle>
           <CardDescription>
-            {bill.unserved > 0 ? `${bill.unserved} ligne${bill.unserved > 1 ? "s" : ""} pas encore servie${bill.unserved > 1 ? "s" : ""}, incluse${bill.unserved > 1 ? "s" : ""}.` : "Tout est servi."}
+            {bill.unserved > 0
+              ? `${bill.unserved} ligne${bill.unserved > 1 ? "s" : ""} pas encore servie${bill.unserved > 1 ? "s" : ""}, incluse${bill.unserved > 1 ? "s" : ""}.`
+              : "Tout est servi."}
           </CardDescription>
           <CardAction>
-            <Badge variant={bill.due === 0 && bill.total > 0 ? "secondary" : "outline"}>{bill.due === 0 && bill.total > 0 ? "Soldée" : bill.paid > 0 ? "En partie réglée" : "À régler"}</Badge>
+            <Badge
+              variant={
+                bill.due === 0 && bill.total > 0 ? "secondary" : "outline"
+              }
+            >
+              {bill.due === 0 && bill.total > 0
+                ? "Soldée"
+                : bill.paid > 0
+                  ? "En partie réglée"
+                  : "À régler"}
+            </Badge>
           </CardAction>
         </CardHeader>
         <CardContent>
           <dl className="grid grid-cols-2 gap-x-4 gap-y-2">
             <div className="col-span-2">
               <dt className="text-xs text-muted-foreground">Reste à payer</dt>
-              <dd className="text-3xl font-semibold tracking-tight tabular-nums">{money(bill.due)}</dd>
+              <dd className="text-3xl font-semibold tracking-tight tabular-nums">
+                {money(bill.due)}
+              </dd>
             </div>
             <div>
               <dt className="text-xs text-muted-foreground">Total</dt>
@@ -97,7 +149,14 @@ export function BillPanel({ sessionId }: { sessionId: Id<"tableSessions"> }) {
             </Button>
           ) : null}
           {rest && rest.lines.length > 0 ? (
-            <Button variant="outline" onClick={() => setPrintDoc(noteDoc(bill, rest, scope.venueName, scope.timezone))}>
+            <Button
+              variant="outline"
+              onClick={() =>
+                setPrintDoc(
+                  noteDoc(bill, rest, scope.venueName, scope.timezone),
+                )
+              }
+            >
               <Printer />
               Note
             </Button>
@@ -122,20 +181,44 @@ export function BillPanel({ sessionId }: { sessionId: Id<"tableSessions"> }) {
           key={c._id ?? "reste"}
           bill={bill}
           check={c}
-          title={single ? "Détail" : c.kind === "remainder" ? "Reste de la table" : (c.label ?? `Addition ${c.reference ?? ""}`)}
+          title={
+            single
+              ? "Détail"
+              : c.kind === "remainder"
+                ? "Reste de la table"
+                : (c.label ?? `Addition ${c.reference ?? ""}`)
+          }
           onPay={() => setPaying(c)}
           onComp={(line) => setComping({ check: c, line })}
           onDiscount={() => setDiscounting(c)}
           onVoid={setVoiding}
           onRefund={setRefunding}
-          onPrintNote={() => setPrintDoc(noteDoc(bill, c, scope.venueName, scope.timezone))}
+          onPrintNote={() =>
+            setPrintDoc(noteDoc(bill, c, scope.venueName, scope.timezone))
+          }
           onPrintBill={setPrintBill}
           showPayAction={!single || c.kind !== "remainder"}
         />
       ))}
 
-      <PaymentDialog bill={bill} check={paying ? (bill.checks.find((c) => c._id === paying._id && c.kind === paying.kind) ?? paying) : null} open={paying !== null} onOpenChange={(o) => !o && setPaying(null)} />
-      <SplitDialog bill={bill} rest={rest} open={splitting} onOpenChange={setSplitting} />
+      <PaymentDialog
+        bill={bill}
+        check={
+          paying
+            ? (bill.checks.find(
+                (c) => c._id === paying._id && c.kind === paying.kind,
+              ) ?? paying)
+            : null
+        }
+        open={paying !== null}
+        onOpenChange={(o) => !o && setPaying(null)}
+      />
+      <SplitDialog
+        bill={bill}
+        rest={rest}
+        open={splitting}
+        onOpenChange={setSplitting}
+      />
       <ReasonDialog
         open={comping !== null}
         onOpenChange={(o) => !o && setComping(null)}
@@ -144,7 +227,13 @@ export function BillPanel({ sessionId }: { sessionId: Id<"tableSessions"> }) {
         confirmLabel="Offrir"
         onConfirm={async ({ reason }) => {
           if (!comping) return;
-          await comp({ venueId: scope.venueId, sessionId: bill.sessionId, checkId: comping.check._id, orderItemId: comping.line.orderItemId, reason });
+          await comp({
+            ...scope.acting,
+            sessionId: bill.sessionId,
+            checkId: comping.check._id,
+            orderItemId: comping.line.orderItemId,
+            reason,
+          });
           toast.success(`${comping.line.name} offert.`);
           setComping(null);
         }}
@@ -155,10 +244,19 @@ export function BillPanel({ sessionId }: { sessionId: Id<"tableSessions"> }) {
         title="Faire une remise"
         description={`Au plus ${money(discounting?.balance.due ?? 0)}. La remise est à votre nom, avec son motif.`}
         confirmLabel="Appliquer la remise"
-        amount={{ label: "Montant de la remise", parse: (t) => parseAmount(t, bill.currency) }}
+        amount={{
+          label: "Montant de la remise",
+          parse: (t) => parseAmount(t, bill.currency),
+        }}
         onConfirm={async ({ reason, amount }) => {
           if (!discounting || amount === null) return;
-          await discount({ venueId: scope.venueId, sessionId: bill.sessionId, checkId: discounting._id, amount, reason });
+          await discount({
+            ...scope.acting,
+            sessionId: bill.sessionId,
+            checkId: discounting._id,
+            amount,
+            reason,
+          });
           toast.success("Remise appliquée.");
           setDiscounting(null);
         }}
@@ -172,13 +270,23 @@ export function BillPanel({ sessionId }: { sessionId: Id<"tableSessions"> }) {
         destructive
         onConfirm={async ({ reason }) => {
           if (!voiding) return;
-          await voidPayment({ venueId: scope.venueId, paymentId: voiding._id, reason });
+          await voidPayment({
+            ...scope.acting,
+            paymentId: voiding._id,
+            reason,
+          });
           toast.success("Saisie annulée.");
           setVoiding(null);
         }}
       />
-      <RefundDialog payment={refunding} currency={bill.currency} onClose={() => setRefunding(null)} />
-      {printBill ? <BillPrinter billId={printBill} onDone={() => setPrintBill(null)} /> : null}
+      <RefundDialog
+        payment={refunding}
+        currency={bill.currency}
+        onClose={() => setRefunding(null)}
+      />
+      {printBill ? (
+        <BillPrinter billId={printBill} onDone={() => setPrintBill(null)} />
+      ) : null}
       <PrintJob doc={printDoc} money={money} onDone={clearPrint} />
     </div>
   );
@@ -223,7 +331,9 @@ function CheckCard({
         <CardTitle>{title}</CardTitle>
         <CardDescription>
           {money(check.balance.total)}
-          {check.balance.paid > 0 ? ` · réglé ${money(check.balance.paid)}` : ""}
+          {check.balance.paid > 0
+            ? ` · réglé ${money(check.balance.paid)}`
+            : ""}
           {check.balance.due > 0 ? ` · reste ${money(check.balance.due)}` : ""}
           {sale ? ` · ticket ${sale.reference}` : ""}
         </CardDescription>
@@ -236,19 +346,36 @@ function CheckCard({
             ) : null}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button size="icon-sm" variant="ghost" aria-label={`Actions pour ${title}`}>
+                <Button
+                  size="icon-sm"
+                  variant="ghost"
+                  aria-label={`Actions pour ${title}`}
+                >
                   <MoreHorizontal />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onSelect={onPrintNote}>Imprimer la note</DropdownMenuItem>
-                {bill.can.discount && check.balance.due > 0 ? <DropdownMenuItem onSelect={onDiscount}>Faire une remise</DropdownMenuItem> : null}
-                {bill.can.manage && check.kind === "allocated" && check._id && !hasPayments && check.adjustments.length === 0 && !sale ? (
+                <DropdownMenuItem onSelect={onPrintNote}>
+                  Imprimer la note
+                </DropdownMenuItem>
+                {bill.can.discount && check.balance.due > 0 ? (
+                  <DropdownMenuItem onSelect={onDiscount}>
+                    Faire une remise
+                  </DropdownMenuItem>
+                ) : null}
+                {bill.can.manage &&
+                check.kind === "allocated" &&
+                check._id &&
+                !hasPayments &&
+                check.adjustments.length === 0 &&
+                !sale ? (
                   <DropdownMenuItem
                     onSelect={async () => {
                       try {
-                        await unsplit({ venueId: scope.venueId, checkId: check._id! });
-                        toast.success("Partage défait : les lignes reviennent à la table.");
+                        await unsplit({ ...scope.acting, checkId: check._id! });
+                        toast.success(
+                          "Partage défait : les lignes reviennent à la table.",
+                        );
                       } catch (error) {
                         toast.error(describeError(error).message);
                       }
@@ -272,14 +399,29 @@ function CheckCard({
                   {l.variantName ? ` — ${l.variantName}` : ""}
                 </ItemTitle>
                 {l.modifiers.length > 0 || l.itemStatus !== "served" ? (
-                  <ItemDescription>{[l.modifiers.join(", "), l.itemStatus !== "served" ? "pas encore servi" : null].filter(Boolean).join(" · ")}</ItemDescription>
+                  <ItemDescription>
+                    {[
+                      l.modifiers.join(", "),
+                      l.itemStatus !== "served" ? "pas encore servi" : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </ItemDescription>
                 ) : null}
               </ItemContent>
               <ItemActions>
                 {l.comped ? <Badge variant="secondary">Offert</Badge> : null}
                 <span className="tabular-nums">{money(l.amount)}</span>
-                {bill.can.discount && !l.comped && l.amount > 0 && l.amount <= check.balance.due ? (
-                  <Button size="icon-sm" variant="ghost" aria-label={`Offrir ${l.name}`} onClick={() => onComp(l)}>
+                {bill.can.discount &&
+                !l.comped &&
+                l.amount > 0 &&
+                l.amount <= check.balance.due ? (
+                  <Button
+                    size="icon-sm"
+                    variant="ghost"
+                    aria-label={`Offrir ${l.name}`}
+                    onClick={() => onComp(l)}
+                  >
                     <Gift />
                   </Button>
                 ) : null}
@@ -317,31 +459,59 @@ function CheckCard({
                   <ItemContent>
                     <ItemTitle>
                       {p.label}
-                      {p.status === "voided" ? <Badge variant="outline">Annulé</Badge> : null}
-                      {p.status === "refunded" ? <Badge variant="outline">Remboursé</Badge> : null}
-                      {p.status === "partially_refunded" ? <Badge variant="outline">En partie remboursé</Badge> : null}
+                      {p.status === "voided" ? (
+                        <Badge variant="outline">Annulé</Badge>
+                      ) : null}
+                      {p.status === "refunded" ? (
+                        <Badge variant="outline">Remboursé</Badge>
+                      ) : null}
+                      {p.status === "partially_refunded" ? (
+                        <Badge variant="outline">En partie remboursé</Badge>
+                      ) : null}
                     </ItemTitle>
                     <ItemDescription>
                       {time.format(p.createdAt)} · {p.collectedBy ?? "?"}
-                      {p.changeAmount ? ` · monnaie ${money(p.changeAmount)}` : ""}
+                      {p.changeAmount
+                        ? ` · monnaie ${money(p.changeAmount)}`
+                        : ""}
                       {p.providerRef ? ` · réf. ${p.providerRef}` : ""}
                       {p.voidedReason ? ` · ${p.voidedReason}` : ""}
                     </ItemDescription>
                   </ItemContent>
                   <ItemActions>
-                    <span className={p.status === "voided" ? "tabular-nums line-through text-muted-foreground" : "tabular-nums"}>{money(p.amount)}</span>
-                    {p.status !== "voided" && (bill.can.void || bill.can.refund) ? (
+                    <span
+                      className={
+                        p.status === "voided"
+                          ? "tabular-nums line-through text-muted-foreground"
+                          : "tabular-nums"
+                      }
+                    >
+                      {money(p.amount)}
+                    </span>
+                    {p.status !== "voided" &&
+                    ((bill.can.void && !p.mine) ||
+                      (bill.can.refund && p.refundable > 0)) ? (
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button size="icon-sm" variant="ghost" aria-label={`Actions sur le paiement ${p.label}`}>
+                          <Button
+                            size="icon-sm"
+                            variant="ghost"
+                            aria-label={`Actions sur le paiement ${p.label}`}
+                          >
                             <MoreHorizontal />
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          {bill.can.void && p.status === "succeeded" && p.cashSessionOpen !== false && !sale ? (
-                            <DropdownMenuItem onSelect={() => onVoid(p)}>Annuler la saisie</DropdownMenuItem>
+                          {bill.can.void &&
+                          !p.mine &&
+                          p.status === "succeeded" &&
+                          p.cashSessionOpen !== false &&
+                          !sale ? (
+                            <DropdownMenuItem onSelect={() => onVoid(p)}>
+                              Annuler la saisie
+                            </DropdownMenuItem>
                           ) : null}
-                          {bill.can.refund ? (
+                          {bill.can.refund && p.refundable > 0 ? (
                             <DropdownMenuItem onSelect={() => onRefund(p)}>
                               <Undo2 />
                               Rembourser
@@ -368,7 +538,10 @@ function CheckCard({
             <ActionButton
               onAction={async () => {
                 try {
-                  const id = await issue({ venueId: scope.venueId, checkId: check._id! });
+                  const id = await issue({
+                    ...scope.acting,
+                    checkId: check._id!,
+                  });
                   onPrintBill(id);
                 } catch (error) {
                   toast.error(describeError(error).message);
@@ -386,11 +559,21 @@ function CheckCard({
 }
 
 /** La note : avant paiement, sans numéro. Ce n'est pas une pièce, c'est une addition à lire. */
-function noteDoc(bill: Bill, check: BillCheck, venueName: string, timezone: string): PaperDoc {
+function noteDoc(
+  bill: Bill,
+  check: BillCheck,
+  venueName: string,
+  timezone: string,
+): PaperDoc {
   const totals = [{ label: "Sous-total", amount: check.balance.subtotal }];
-  if (check.balance.discounts > 0) totals.push({ label: "Offerts et remises", amount: -check.balance.discounts });
+  if (check.balance.discounts > 0)
+    totals.push({
+      label: "Offerts et remises",
+      amount: -check.balance.discounts,
+    });
   totals.push({ label: "Total", amount: check.balance.total });
-  if (check.balance.paid > 0) totals.push({ label: "Déjà réglé", amount: check.balance.paid });
+  if (check.balance.paid > 0)
+    totals.push({ label: "Déjà réglé", amount: check.balance.paid });
   return {
     title: "Note — non payée",
     seller: { name: venueName },
@@ -403,14 +586,23 @@ function noteDoc(bill: Bill, check: BillCheck, venueName: string, timezone: stri
       amount: l.amount,
       note: l.comped ? "offert" : null,
     })),
-    totals: [...totals.map((t) => ({ ...t })), { label: "Reste à payer", amount: check.balance.due, strong: true }] as PaperDoc["totals"],
+    totals: [
+      ...totals.map((t) => ({ ...t })),
+      { label: "Reste à payer", amount: check.balance.due, strong: true },
+    ] as PaperDoc["totals"],
     payments: [],
     notice: BILL_NOTICE,
   };
 }
 
 /** Imprime une pièce émise : la première fois, l'original ; ensuite, un duplicata sous droit. */
-function BillPrinter({ billId, onDone }: { billId: Id<"bills">; onDone: () => void }) {
+function BillPrinter({
+  billId,
+  onDone,
+}: {
+  billId: Id<"bills">;
+  onDone: () => void;
+}) {
   const scope = useServiceScope();
   const money = useMoney();
   const bill = useQuery(api.bills.get, { venueId: scope.venueId, billId });
@@ -421,7 +613,7 @@ function BillPrinter({ billId, onDone }: { billId: Id<"bills">; onDone: () => vo
   useEffect(() => {
     if (!bill || started) return;
     setStarted(true);
-    void recordPrint({ venueId: scope.venueId, billId })
+    void recordPrint({ ...scope.acting, billId })
       .then(({ duplicate }) => {
         const s = bill.snapshot;
         setDoc({
@@ -437,13 +629,27 @@ function BillPrinter({ billId, onDone }: { billId: Id<"bills">; onDone: () => vo
           tableNumber: bill.tableNumber,
           at: bill.issuedAt,
           timezone: bill.timezone,
-          lines: s.lines.map((l) => ({ name: l.name, quantity: l.quantity, amount: l.lineTotal })),
+          lines: s.lines.map((l) => ({
+            name: l.name,
+            quantity: l.quantity,
+            amount: l.lineTotal,
+          })),
           totals: [
-            ...(s.totals.discounts > 0 ? [{ label: "Sous-total", amount: s.totals.subtotal }, { label: "Offerts et remises", amount: -s.totals.discounts }] : []),
-            ...(s.totals.tax > 0 ? [{ label: "Dont taxes", amount: s.totals.tax }] : []),
+            ...(s.totals.discounts > 0
+              ? [
+                  { label: "Sous-total", amount: s.totals.subtotal },
+                  { label: "Offerts et remises", amount: -s.totals.discounts },
+                ]
+              : []),
+            ...(s.totals.tax > 0
+              ? [{ label: "Dont taxes", amount: s.totals.tax }]
+              : []),
             { label: "Total", amount: s.totals.total, strong: true },
           ],
-          payments: s.payments.map((p) => ({ label: p.method, amount: p.amount })),
+          payments: s.payments.map((p) => ({
+            label: p.method,
+            amount: p.amount,
+          })),
           servedBy: s.servedBy ?? null,
           notice: bill.notice,
         });
@@ -458,14 +664,26 @@ function BillPrinter({ billId, onDone }: { billId: Id<"bills">; onDone: () => vo
 }
 
 /** Rembourser : en espèces depuis une caisse choisie, ou par le même moyen. Compte seulement. */
-function RefundDialog({ payment, currency, onClose }: { payment: Payment | null; currency: string; onClose: () => void }) {
+function RefundDialog({
+  payment,
+  currency,
+  onClose,
+}: {
+  payment: Payment | null;
+  currency: string;
+  onClose: () => void;
+}) {
   const scope = useServiceScope();
   const money = useMoney();
   const refund = useMutation(api.payments.refund);
-  const cash = useQuery(api.cash.overview, payment ? { venueId: scope.venueId } : "skip");
+  const cash = useQuery(
+    api.cash.overview,
+    payment ? { venueId: scope.venueId } : "skip",
+  );
   const openCash = (cash?.sessions ?? []).filter((s) => s.status === "open");
   const [method, setMethod] = useState<"cash" | "original">("original");
-  const [registerSessionId, setRegisterSessionId] = useState<Id<"cashRegisterSessions"> | null>(null);
+  const [registerSessionId, setRegisterSessionId] =
+    useState<Id<"cashRegisterSessions"> | null>(null);
   const [key, setKey] = useState(() => uuidv7());
   const online = useOptionalOutbox()?.online ?? true;
   useEffect(() => {
@@ -480,37 +698,56 @@ function RefundDialog({ payment, currency, onClose }: { payment: Payment | null;
       open={payment !== null}
       onOpenChange={(o) => !o && onClose()}
       title="Rembourser"
-      description={`${payment?.label ?? ""} ${money(payment?.amount ?? 0)}. Jamais au-delà de l'encaissé ; si un ticket a été remis, un avoir le corrige.`}
+      description={`${payment?.label ?? ""} ${money(payment?.amount ?? 0)}${payment && payment.refundable < payment.amount ? `, dont ${money(payment.refundable)} encore remboursable` : ""}. Jamais au-delà de l'encaissé ; si un ticket a été remis, un avoir le corrige.`}
       confirmLabel="Rembourser"
       destructive
-      amount={{ label: "Montant remboursé", initial: payment ? amountToText(payment.amount, currency) : "", parse: (t) => parseAmount(t, currency) }}
+      amount={{
+        label: "Montant remboursé",
+        initial: payment ? amountToText(payment.refundable, currency) : "",
+        parse: (t) => parseAmount(t, currency),
+      }}
       onConfirm={async ({ reason, amount }) => {
         if (!payment || amount === null) return;
         if (!online) return;
-        if (method === "cash" && !registerSessionId) throw new Error("Choisissez la caisse d'où sort l'argent.");
+        if (method === "cash" && !registerSessionId)
+          throw new Error("Choisissez la caisse d'où sort l'argent.");
         await refund({
-          venueId: scope.venueId,
+          ...scope.acting,
           paymentId: payment._id,
           amount,
           reason,
           method,
           idempotencyKey: key,
-          ...(method === "cash" && registerSessionId ? { registerSessionId } : {}),
+          ...(method === "cash" && registerSessionId
+            ? { registerSessionId }
+            : {}),
         });
         toast.success(`Remboursé : ${money(amount)}.`);
         onClose();
       }}
     >
-      <Field>
-        <FieldLabel>L'argent est rendu</FieldLabel>
-        <ToggleGroup type="single" variant="outline" className="flex w-full flex-wrap justify-start" value={method} onValueChange={(v) => v && setMethod(v as "cash" | "original")}>
-          <ToggleGroupItem value="original">Par le même moyen</ToggleGroupItem>
-          <ToggleGroupItem value="cash">En espèces</ToggleGroupItem>
-        </ToggleGroup>
-      </Field>
+      {payment?.method === "cash" ? null : (
+        <Field>
+          <FieldLabel>L'argent est rendu</FieldLabel>
+          <ToggleGroup
+            type="single"
+            variant="outline"
+            className="flex w-full flex-wrap justify-start"
+            value={method}
+            onValueChange={(v) => v && setMethod(v as "cash" | "original")}
+          >
+            <ToggleGroupItem value="original">
+              Par le même moyen
+            </ToggleGroupItem>
+            <ToggleGroupItem value="cash">En espèces</ToggleGroupItem>
+          </ToggleGroup>
+        </Field>
+      )}
       {method === "cash" ? (
         openCash.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Aucune caisse ouverte : ouvrez-en une pour rendre des espèces.</p>
+          <p className="text-sm text-muted-foreground">
+            Aucune caisse ouverte : ouvrez-en une pour rendre des espèces.
+          </p>
         ) : (
           <Field>
             <FieldLabel>Caisse d'où sort l'argent</FieldLabel>
@@ -519,7 +756,11 @@ function RefundDialog({ payment, currency, onClose }: { payment: Payment | null;
               variant="outline"
               className="flex w-full flex-wrap justify-start"
               value={registerSessionId ?? ""}
-              onValueChange={(v) => setRegisterSessionId(v ? (v as Id<"cashRegisterSessions">) : null)}
+              onValueChange={(v) =>
+                setRegisterSessionId(
+                  v ? (v as Id<"cashRegisterSessions">) : null,
+                )
+              }
             >
               {openCash.map((s) => (
                 <ToggleGroupItem key={s._id} value={s._id}>
