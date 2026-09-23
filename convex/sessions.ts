@@ -5,9 +5,10 @@
  * clôture (ARCHITECTURE.md §4). Une table a AU PLUS une session ouverte (R1) : c'est vérifié
  * ici, dans la transaction qui ouvre, et doublé par `restaurantTables.activeSessionId`.
  *
- * En tranche T2, il n'y a pas encore d'addition : clôturer une table exige seulement que
- * plus rien n'y soit en cours. La tranche T3 insérera l'addition entre « servi » et « clôturé »
- * (états `billing` / `settling`), et la clôture exigera alors un solde nul.
+ * Depuis T3, clôturer exige que plus rien n'y soit en cours ET que le dû soit nul — dans les deux
+ * sens : un dû négatif serait de l'argent dû au client. La clôture n'est JAMAIS automatique à solde
+ * nul : au maquis on paie par tournée, la table se fermerait au premier verre réglé. Un client
+ * parti sans payer : `closeWithDebt`, depuis un compte, avec un motif et le montant figé.
  */
 
 import { v } from "convex/values";
@@ -15,6 +16,7 @@ import { internalMutation, mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { writeAudit } from "./lib/audit";
+import { formatAmount, loadSessionBilling } from "./lib/billing";
 import { getInVenue } from "./lib/catalogAccess";
 import { conflict, invalid, notFound } from "./lib/errors";
 import { memberCoversVenue, type MutationCtx, type ReadCtx } from "./lib/guards";
@@ -145,9 +147,19 @@ export const assignWaiter = mutation({
   },
 });
 
+function assertNothingPending(orders: Doc<"orders">[]) {
+  const pending = orders.filter((o) => ACTIVE_ORDER.includes(o.status as OrderStatus));
+  if (pending.length > 0) {
+    throw conflict(
+      `Il reste ${pending.length === 1 ? "une commande" : `${pending.length} commandes`} en cours sur cette table (${pending.map((o) => o.reference).join(", ")}). Servez ou annulez d'abord.`,
+    );
+  }
+}
+
 /**
  * Clôturer. Refusé tant qu'une commande est en cours : clôturer une table dont un plat est en
- * cuisine, c'est un plat que personne ne portera. Annulez ou servez d'abord.
+ * cuisine, c'est un plat que personne ne portera. Annulez ou servez d'abord. Refusé tant qu'il
+ * reste un dû : « le serveur a encaissé sans enregistrer » s'arrête ici.
  */
 export const close = mutation({
   args: { venueId: v.id("venues"), sessionId: v.id("tableSessions") },
@@ -156,10 +168,13 @@ export const close = mutation({
     const session = await getInVenue(ctx, args.sessionId, actor.venue._id, "Cette table");
     if (!isOpenSession(session)) return; // déjà clôturée : rejouer ne fait rien
     const orders = await ordersOf(ctx, session._id);
-    const pending = orders.filter((o) => ACTIVE_ORDER.includes(o.status as OrderStatus));
-    if (pending.length > 0) {
+    assertNothingPending(orders);
+    const billing = await loadSessionBilling(ctx, session);
+    if (billing.due !== 0) {
       throw conflict(
-        `Il reste ${pending.length === 1 ? "une commande" : `${pending.length} commandes`} en cours sur cette table (${pending.map((o) => o.reference).join(", ")}). Servez ou annulez d'abord.`,
+        billing.due > 0
+          ? `Il reste ${formatAmount(billing.due, session.currency)} à encaisser sur cette table. Encaissez, ou clôturez avec un impayé.`
+          : "Le client a payé plus que l'addition : remboursez la différence avant de clôturer.",
       );
     }
     const now = Date.now();
@@ -178,6 +193,46 @@ export const close = mutation({
       resourceType: "tableSession",
       resourceId: session._id,
       after: { reference: session.reference, orders: orders.length },
+    });
+  },
+});
+
+/**
+ * Le client est parti sans payer. La réalité existe : sans cet état, la table resterait ouverte
+ * pour toujours et pourrirait la caisse. Depuis un compte (jamais sous PIN), avec un motif, et le
+ * montant perdu FIGÉ — sinon le rapport dirait qu'une table est partie, pas combien.
+ */
+export const closeWithDebt = mutation({
+  args: { venueId: v.id("venues"), sessionId: v.id("tableSessions"), reason: v.string() },
+  handler: async (ctx, args) => {
+    const actor = await requireServiceMutation(ctx, "table.session.close_with_debt", { venueId: args.venueId });
+    const session = await getInVenue(ctx, args.sessionId, actor.venue._id, "Cette table");
+    if (!isOpenSession(session)) return;
+    const reason = args.reason.trim();
+    if (reason.length < 5 || reason.length > 300) throw invalid("Le motif est obligatoire (5 caractères au moins).");
+    const orders = await ordersOf(ctx, session._id);
+    assertNothingPending(orders);
+    const billing = await loadSessionBilling(ctx, session);
+    if (billing.due <= 0) throw conflict("Il n'y a pas d'impayé sur cette table : clôturez-la normalement.");
+    const now = Date.now();
+    await ctx.db.patch(session._id, {
+      status: "closed_with_debt",
+      closedAt: now,
+      closeReason: reason,
+      debtAmount: billing.due,
+      ...(actor.member ? { closedByMemberId: actor.member._id } : {}),
+      lastActivityAt: now,
+    });
+    await releaseTable(ctx, session, now);
+    await writeAudit(ctx, {
+      organizationId: actor.organization._id,
+      venueId: actor.venue._id,
+      ...actor.audit,
+      action: "table.session.close_with_debt",
+      resourceType: "tableSession",
+      resourceId: session._id,
+      after: { reference: session.reference, debtAmount: billing.due },
+      reason,
     });
   },
 });

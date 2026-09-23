@@ -17,6 +17,7 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { writeAudit } from "./lib/audit";
+import { lineGross, loadSessionBilling, negativeCheck } from "./lib/billing";
 import { getInVenue } from "./lib/catalogAccess";
 import { conflict, forbidden, invalid } from "./lib/errors";
 import type { MutationCtx, ReadCtx } from "./lib/guards";
@@ -145,7 +146,7 @@ export async function createOrder(
     const codes = new Set(product?.taxCodes ?? []);
     lines.push({ ...line, tax: lineTax(line.lineTotal, rates.filter((r) => codes.has(r.code)), settings.tax.pricesIncludeTax), stationId: product?.prepStationId });
   }
-  const reference = orderReference(await nextCounter(ctx, venue._id, `order:${serviceDayKey(now, venue.timezone)}`));
+  const reference = orderReference(await nextCounter(ctx, venue._id, `order:${serviceDayKey(now, venue.timezone, settings.service.serviceDayStartHour ?? 4)}`));
   // « Déjà préparée » ne vaut que pour ce qui a été fait sur papier : un service retenu
   // (le dessert « à suivre ») attend toujours l'appel du serveur.
   const servedOnPaper = (course: number) => params.enteredOffline === true && !params.heldCourses.includes(course);
@@ -183,6 +184,7 @@ export async function createOrder(
         unitPrice: line.unitPrice,
         lineTotal: line.lineTotal,
         taxSnapshot: line.tax,
+        taxIncluded: settings.tax.pricesIncludeTax,
         ...(line.instructions ? { instructions: line.instructions } : {}),
         courseNumber: line.courseNumber,
         status: servedOnPaper(line.courseNumber) ? "served" : "ordered",
@@ -485,11 +487,26 @@ export const cancelItem = mutation({
       throw forbidden(inProduction ? "Ce plat est déjà en préparation : l'annuler demande un droit que vous n'avez pas." : undefined);
     }
     const reason = cleanReason(args.reason, inProduction);
+    await assertNotPaid(ctx, item.tableSessionId, [item._id]);
     await cancelLine(ctx, actor, item, ticketItem, ticket, reason, inProduction);
     await refreshOrder(ctx, item.orderId, actor.event);
     await touchSession(ctx, item.tableSessionId);
   },
 });
+
+/**
+ * Annuler ce qui est déjà encaissé ferait devoir de l'argent au client, en silence : refusé. On
+ * rembourse d'abord (T3) — c'est un geste nommé, avec son motif et son auteur.
+ */
+async function assertNotPaid(ctx: MutationCtx, sessionId: Id<"tableSessions">, itemIds: Id<"orderItems">[]) {
+  if (itemIds.length === 0) return;
+  const session = await ctx.db.get(sessionId);
+  if (!session) return;
+  const after = await loadSessionBilling(ctx, session, { excludeItems: new Set(itemIds) });
+  if (negativeCheck(after)) {
+    throw conflict("Ce qui est annulé est déjà encaissé : remboursez d'abord, puis annulez.");
+  }
+}
 
 async function cancelLine(
   ctx: MutationCtx,
@@ -514,14 +531,18 @@ async function cancelLine(
   }
   const order = (await ctx.db.get(item.orderId))!;
   const totals = { ...order.totals };
-  totals.subtotal -= item.lineTotal;
   const itemTax = item.taxSnapshot.reduce((s, t) => s + t.amount, 0);
+  totals.subtotal -= item.lineTotal;
   totals.tax -= itemTax;
-  totals.total -= item.lineTotal + (totals.total === totals.subtotal + item.lineTotal ? 0 : itemTax);
+  // Lu sur la ligne, jamais deviné en comparant des totaux : l'addition en dépend (T3).
+  totals.total -= lineGross(item);
   await ctx.db.patch(order._id, { totals });
   await writeOrderEvent(ctx, order, "item_cancelled", actor.event, {
     item: item.nameSnapshot,
     quantity: item.quantity,
+    amount: lineGross(item),
+    /** Déjà en cuisine : des denrées perdues, que le rapport de fin de service montre. */
+    afterFire: audited,
     ...(reason ? { reason } : {}),
   });
   if (audited) {
@@ -555,6 +576,7 @@ export const cancelOrder = mutation({
     if (items.some((i) => i.status === "preparing" || i.status === "ready") && !actor.permissions.has("order.modify.after_fire")) {
       throw forbidden("Des plats sont déjà en préparation : les annuler demande un droit que vous n'avez pas.");
     }
+    await assertNotPaid(ctx, order.tableSessionId, items.filter((i) => i.status !== "cancelled" && i.status !== "served").map((i) => i._id));
     for (const item of items) {
       if (item.status === "cancelled" || item.status === "served") continue;
       const ticketItem = await ctx.db

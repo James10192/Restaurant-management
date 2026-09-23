@@ -296,6 +296,11 @@ export default defineSchema({
       qrStrategy,
       guestDirectCategories: v.array(v.id("menuSections")),
       autoAbandonMinutes: v.number(),
+      /**
+       * Heure locale où commence le jour de service (défaut 4 h). Un maquis qui ferme à 5 h le
+       * week-end règle 6 : sinon ses derniers encaissements tombent sur le lendemain.
+       */
+      serviceDayStartHour: v.optional(v.number()),
     }),
     tax: v.object({
       pricesIncludeTax: v.boolean(),
@@ -350,6 +355,17 @@ export default defineSchema({
       ),
       /** Pas de montant imposé par certains agrégateurs (voir D-028). */
       amountStep: v.optional(v.number()),
+      /**
+       * Où va l'espèce (T3). `central` : dans le tiroir ouvert, quel que soit l'encaisseur.
+       * `per_waiter` : dans la pochette de celui qui encaisse — « la caisse de Koffi ».
+       * Absent = `central`.
+       */
+      cashMode: v.optional(v.union(v.literal("central"), v.literal("per_waiter"))),
+      /**
+       * Portefeuilles Mobile Money que l'établissement reçoit sur SES téléphones (Wave, Orange…).
+       * Réglé par lui, jamais écrit dans le code : la liste change d'un pays à l'autre.
+       */
+      mobileMoneyWallets: v.optional(v.array(v.string())),
     }),
     /** Canaux de notification par événement. Était documenté sans exister dans le schéma. */
     notifications: v.array(
@@ -818,6 +834,11 @@ export default defineSchema({
      * mono-valué). Voir CRITIQUE.md S1.
      */
     mergedIntoSessionId: v.optional(v.id("tableSessions")),
+    /**
+     * Le dû abandonné à une clôture `closed_with_debt`, figé à cet instant. Sans lui, le rapport
+     * dit qu'une table est partie sans payer, pas combien.
+     */
+    debtAmount: v.optional(money),
   })
     .index("by_venue_status", ["venueId", "status"])
     .index("by_table_status", ["tableId", "status"]) // garantit R1
@@ -970,6 +991,12 @@ export default defineSchema({
     unitPrice: money,
     lineTotal: money,
     taxSnapshot: v.array(taxSnapshot),
+    /**
+     * Le prix était-il TTC au moment de la commande ? Figé : l'addition en dépend (hors taxe, la
+     * taxe s'ajoute au dû), et le réglage peut changer ensuite. Absent sur les lignes d'avant T3 :
+     * lu comme `true`, le seul réglage que ces lignes aient connu.
+     */
+    taxIncluded: v.optional(v.boolean()),
     instructions: v.optional(v.string()),
     courseNumber: v.number(),
     /** Figé : changer la station d'un produit ne rejoue pas le passé. */
@@ -1011,6 +1038,8 @@ export default defineSchema({
     tableSessionId: v.id("tableSessions"),
     orderId: v.optional(v.id("orders")),
     checkId: v.optional(v.id("checks")),
+    /** Un « offert » vise une ligne ; une remise vise l'addition entière. */
+    orderItemId: v.optional(v.id("orderItems")),
     type: v.union(
       v.literal("discount"),
       v.literal("service_charge"),
@@ -1021,12 +1050,17 @@ export default defineSchema({
     label: v.string(),
     amount: money,
     percent: v.optional(v.number()),
-    appliedByUserId: v.id("users"),
+    /** Un membre, pas un compte : les tables d'argent nomment la personne, PIN compris (T3). */
+    appliedByMemberId: v.id("organizationMembers"),
     reason: v.optional(v.string()),
+    createdAt: v.number(),
   })
     .index("by_session", ["tableSessionId"])
     .index("by_order", ["orderId"])
-    .index("by_venue_type", ["venueId", "type"]),
+    .index("by_check", ["checkId"])
+    .index("by_order_item", ["orderItemId"])
+    .index("by_venue_type", ["venueId", "type"])
+    .index("by_venue_createdAt", ["venueId", "createdAt"]),
 
   /**
    * Compteurs d'un établissement : la référence dite à voix haute (« A-042 », repartant chaque
@@ -1130,43 +1164,42 @@ export default defineSchema({
    * 8. ADDITIONS, PAIEMENTS, CAISSE
    * ══════════════════════════════════════════════════════════════════════════ */
 
+  /**
+   * L'addition. Elle ne porte AUCUN montant : le solde se calcule (`lib/billing.ts`,
+   * `checkBalance`) depuis les lignes, les ajustements et les paiements, qui font seuls foi. Une
+   * version antérieure stockait huit totaux — deux caches d'argent sur les mêmes faits, sans
+   * invariant, exactement ce que `tableSessions` avait déjà écarté. Seul le ticket fige des totaux.
+   *
+   * Deux sortes (T3) :
+   *  - `remainder` — « le reste de la table » : AUCUNE ligne attachée, son contenu se calcule
+   *    (toutes les lignes vivantes de la session, moins celles attribuées ailleurs). Au maquis on
+   *    recommande une bière après l'addition et on paie par tournée : figer les lignes à la demande
+   *    d'addition fabriquerait des lignes orphelines à chaque verre. Au plus un par session.
+   *  - `allocated` — des lignes détachées par un partage, ou figées par l'émission d'un ticket ;
+   *    ses lignes sont dans `checkItems`.
+   */
   checks: defineTable({
     venueId: v.id("venues"),
     tableSessionId: v.id("tableSessions"),
     reference: v.string(),
     label: v.optional(v.string()),
-    splitMode: v.union(
-      v.literal("full"),
-      v.literal("by_items"),
-      v.literal("by_guest"),
-      v.literal("by_amount"),
-      v.literal("even"),
-    ),
-    status: v.union(
-      v.literal("open"),
-      v.literal("awaiting_payment"),
-      v.literal("partially_paid"),
-      v.literal("paid"),
-      v.literal("voided"),
-    ),
-    subtotal: money,
-    discountTotal: money,
-    taxTotal: money,
-    serviceCharge: money,
-    tipAmount: money,
-    total: money,
-    paidTotal: money,
-    dueTotal: money,
+    kind: v.union(v.literal("remainder"), v.literal("allocated")),
+    /** `voided` : un partage défait avant tout paiement ; ses lignes retournent au reste. */
+    status: v.union(v.literal("open"), v.literal("voided")),
     currency: v.string(),
-    guestSessionIds: v.optional(v.array(v.id("guestSessions"))),
-    openedByUserId: v.optional(v.id("users")),
-    closedAt: v.optional(v.number()),
+    createdByMemberId: v.optional(v.id("organizationMembers")),
+    createdAt: v.number(),
+    /** Renseigné quand un ticket a figé les lignes d'un « reste ». */
+    frozenAt: v.optional(v.number()),
   })
     .index("by_session", ["tableSessionId"])
-    .index("by_venue_status", ["venueId", "status"])
-    .index("by_venue_closedAt", ["venueId", "closedAt"]),
+    .index("by_venue_createdAt", ["venueId", "createdAt"]),
 
-  /** Allocation d'une ligne à une addition, y compris PARTIELLE (plat partagé à deux). */
+  /**
+   * Allocation d'une ligne à une addition `allocated`, y compris PARTIELLE (plat partagé à deux).
+   * Le montant est STOCKÉ : c'est une attribution décidée, pas un cache. Le reste de division
+   * reste sur le « reste de la table » — aucun franc ne disparaît.
+   */
   checkItems: defineTable({
     venueId: v.id("venues"),
     checkId: v.id("checks"),
@@ -1179,7 +1212,7 @@ export default defineSchema({
     .index("by_check", ["checkId"])
     .index("by_order_item", ["orderItemId"]), // vérifie qu'une ligne n'est pas allouée deux fois
 
-  /** Une intention n'est pas de l'argent. */
+  /** Une intention n'est pas de l'argent. (T5 — paiement en ligne.) */
   paymentIntents: defineTable({
     venueId: v.id("venues"),
     checkId: v.id("checks"),
@@ -1204,7 +1237,7 @@ export default defineSchema({
     ),
     idempotencyKey: v.string(),
     guestSessionId: v.optional(v.id("guestSessions")),
-    createdByUserId: v.optional(v.id("users")),
+    createdByMemberId: v.optional(v.id("organizationMembers")),
     redirectUrl: v.optional(v.string()),
     expiresAt: v.number(),
     lastCheckedAt: v.optional(v.number()),
@@ -1212,7 +1245,8 @@ export default defineSchema({
   })
     .index("by_check", ["checkId"])
     .index("by_provider_ref", ["provider", "providerRef"]) // chemin du webhook
-    .index("by_idempotency", ["idempotencyKey"])
+    // Par établissement, jamais globale (D-064).
+    .index("by_venue_idempotency", ["venueId", "idempotencyKey"])
     .index("by_status_expires", ["status", "expiresAt"]),
 
   /** De l'argent réellement reçu. La table la plus sensible du produit. Jamais supprimée. */
@@ -1221,9 +1255,13 @@ export default defineSchema({
     checkId: v.id("checks"),
     tableSessionId: v.id("tableSessions"),
     method: paymentMethod,
+    /** Mobile Money : le portefeuille qui a reçu (« Wave »). C'est lui que le gérant rapproche. */
+    wallet: v.optional(v.string()),
     provider: v.optional(v.string()),
+    /** Référence de transaction, facultative en saisie manuelle. */
     providerRef: v.optional(v.string()),
     paymentIntentId: v.optional(v.id("paymentIntents")),
+    /** Ce qui s'impute sur l'addition. */
     amount: money,
     tipAmount: money,
     currency: v.string(),
@@ -1233,15 +1271,28 @@ export default defineSchema({
       v.literal("refunded"),
       v.literal("partially_refunded"),
     ),
-    /** QUI a encaissé — indispensable à la traçabilité de l'argent. */
-    collectedByUserId: v.optional(v.id("users")),
+    /**
+     * QUI a encaissé. Facultatif dans le schéma pour le paiement en ligne (T5, sans humain) ;
+     * EXIGÉ par la mutation pour toute saisie au comptoir.
+     */
+    collectedByMemberId: v.optional(v.id("organizationMembers")),
+    deviceId: v.optional(v.id("trustedDevices")),
     guestSessionId: v.optional(v.id("guestSessions")),
+    /** La caisse où l'espèce est entrée — ou d'où la monnaie est sortie. */
     cashRegisterSessionId: v.optional(v.id("cashRegisterSessions")),
+    /** Remis par le client. */
     receivedAmount: v.optional(money),
+    /**
+     * Monnaie RÉELLEMENT rendue, en espèces. Sur un paiement non espèces (10 000 par Wave pour
+     * 9 500), elle sort du tiroir sans paiement en espèces : l'attendu la retranche.
+     */
     changeAmount: v.optional(money),
     idempotencyKey: v.string(),
     voidedReason: v.optional(v.string()),
-    voidedByUserId: v.optional(v.id("users")),
+    voidedByMemberId: v.optional(v.id("organizationMembers")),
+    voidedAt: v.optional(v.number()),
+    /** Recopié de la session : exclut le paiement des agrégats sans jointure (G2). */
+    isSimulation: v.boolean(),
     createdAt: v.number(),
   })
     .index("by_check", ["checkId"])
@@ -1249,25 +1300,33 @@ export default defineSchema({
     .index("by_register_session", ["cashRegisterSessionId"])
     .index("by_venue_method_createdAt", ["venueId", "method", "createdAt"])
     .index("by_provider_ref", ["provider", "providerRef"])
-    .index("by_idempotency", ["idempotencyKey"]),
+    // Par établissement, jamais globale (D-064).
+    .index("by_venue_idempotency", ["venueId", "idempotencyKey"]),
 
   refunds: defineTable({
     venueId: v.id("venues"),
     paymentId: v.id("payments"),
     checkId: v.id("checks"),
     amount: money,
+    /** Comment l'argent est rendu : en espèces (sort d'un tiroir choisi) ou par le même moyen. */
+    method: paymentMethod,
+    /** Espèces : le tiroir qui paie, choisi explicitement. */
+    cashRegisterSessionId: v.optional(v.id("cashRegisterSessions")),
     /** Obligatoire. Vérifié dans la mutation. */
     reason: v.string(),
     status: v.union(v.literal("pending"), v.literal("succeeded"), v.literal("failed")),
-    requestedByUserId: v.id("users"),
-    approvedByUserId: v.optional(v.id("users")),
+    requestedByMemberId: v.id("organizationMembers"),
+    approvedByMemberId: v.optional(v.id("organizationMembers")),
     provider: v.optional(v.string()),
     providerRef: v.optional(v.string()),
     idempotencyKey: v.string(),
+    isSimulation: v.boolean(),
     createdAt: v.number(),
   })
     .index("by_payment", ["paymentId"])
-    .index("by_venue_createdAt", ["venueId", "createdAt"]),
+    .index("by_venue_createdAt", ["venueId", "createdAt"])
+    .index("by_register_session", ["cashRegisterSessionId"])
+    .index("by_venue_idempotency", ["venueId", "idempotencyKey"]),
 
   /** La table qui rend l'idempotence des webhooks possible (R16). */
   webhookEvents: defineTable({
@@ -1287,19 +1346,30 @@ export default defineSchema({
     .index("by_processed", ["processedAt"])
     .index("by_provider_received", ["provider", "receivedAt"]),
 
+  /** Un tiroir physique (mode `central`). Le premier, « Caisse principale », se crée seul. */
   cashRegisters: defineTable({
     venueId: v.id("venues"),
     name: v.string(),
     isActive: v.boolean(),
   }).index("by_venue", ["venueId"]),
 
+  /**
+   * Une session de caisse : un tiroir (`cashRegisterId`) ou la pochette d'une personne
+   * (`holderMemberId`, mode `per_waiter`). Au plus une session non close par tiroir, et par
+   * titulaire. L'attendu est CALCULÉ au comptage (`lib/billing.ts`, `expectedCash`), jamais saisi.
+   */
   cashRegisterSessions: defineTable({
     venueId: v.id("venues"),
-    cashRegisterId: v.id("cashRegisters"),
-    openedByUserId: v.id("users"),
+    cashRegisterId: v.optional(v.id("cashRegisters")),
+    holderMemberId: v.optional(v.id("organizationMembers")),
+    openedByMemberId: v.id("organizationMembers"),
     openedAt: v.number(),
     openingFloat: money,
-    /** Les cinq états de la machine d'ARCHITECTURE.md §8 — le schéma n'en portait que trois. */
+    currency: v.string(),
+    /**
+     * `counting` : plus aucun encaissement ; le comptage se fait À L'AVEUGLE (l'attendu n'est
+     * montré qu'après). `balanced` / `discrepancy` : comptage saisi.
+     */
     status: v.union(
       v.literal("open"),
       v.literal("counting"),
@@ -1307,32 +1377,41 @@ export default defineSchema({
       v.literal("discrepancy"),
       v.literal("closed"),
     ),
-    /** CALCULÉ depuis les paiements en espèces de la session, jamais saisi. */
+    countingStartedAt: v.optional(v.number()),
+    /** Figé au premier comptage, puis au recomptage. */
     expectedAmount: v.optional(money),
+    /** Un comptage, puis au plus un recomptage : les deux sont conservés. */
+    counts: v.array(
+      v.object({
+        amount: money,
+        countedByMemberId: v.id("organizationMembers"),
+        at: v.number(),
+      }),
+    ),
     countedAmount: v.optional(money),
     discrepancy: v.optional(money),
-    closedByUserId: v.optional(v.id("users")),
+    /** Obligatoire pour clôturer avec un écart non nul. */
+    closeReason: v.optional(v.string()),
+    closedByMemberId: v.optional(v.id("organizationMembers")),
     closedAt: v.optional(v.number()),
-    adjustedByUserId: v.optional(v.id("users")),
-    adjustmentReason: v.optional(v.string()),
+    isSimulation: v.boolean(),
   })
     .index("by_register_status", ["cashRegisterId", "status"]) // au plus une session ouverte
+    .index("by_venue_holder_status", ["venueId", "holderMemberId", "status"])
+    .index("by_venue_status", ["venueId", "status"])
     .index("by_venue_openedAt", ["venueId", "openedAt"]),
 
+  /**
+   * Ce qui entre ou sort d'une caisse HORS paiements : un achat de glace, un apport de monnaie.
+   * Pas de mouvement « vente » : il doublerait `payments`, qui fait seul foi.
+   */
   cashMovements: defineTable({
     venueId: v.id("venues"),
     registerSessionId: v.id("cashRegisterSessions"),
-    type: v.union(
-      v.literal("sale"),
-      v.literal("refund"),
-      v.literal("payout"),
-      v.literal("deposit"),
-      v.literal("correction"),
-    ),
+    type: v.union(v.literal("payout"), v.literal("deposit")),
     amount: money,
-    reason: v.optional(v.string()),
-    createdByUserId: v.id("users"),
-    paymentId: v.optional(v.id("payments")),
+    reason: v.string(),
+    createdByMemberId: v.id("organizationMembers"),
     createdAt: v.number(),
   })
     .index("by_session", ["registerSessionId"])

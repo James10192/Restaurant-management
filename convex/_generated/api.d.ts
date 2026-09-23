@@ -10,7 +10,10 @@
 
 import type * as auth from "../auth.js";
 import type * as availability from "../availability.js";
+import type * as bills from "../bills.js";
 import type * as carts from "../carts.js";
+import type * as cash from "../cash.js";
+import type * as checks from "../checks.js";
 import type * as devSeed from "../devSeed.js";
 import type * as devices from "../devices.js";
 import type * as floor from "../floor.js";
@@ -24,6 +27,7 @@ import type * as lib_audit from "../lib/audit.js";
 import type * as lib_authority from "../lib/authority.js";
 import type * as lib_availability from "../lib/availability.js";
 import type * as lib_availabilityIndex from "../lib/availabilityIndex.js";
+import type * as lib_billing from "../lib/billing.js";
 import type * as lib_catalog from "../lib/catalog.js";
 import type * as lib_catalogAccess from "../lib/catalogAccess.js";
 import type * as lib_countries from "../lib/countries.js";
@@ -58,9 +62,11 @@ import type * as modifiers from "../modifiers.js";
 import type * as operators from "../operators.js";
 import type * as orders from "../orders.js";
 import type * as organizations from "../organizations.js";
+import type * as payments from "../payments.js";
 import type * as products from "../products.js";
 import type * as publications from "../publications.js";
 import type * as qr from "../qr.js";
+import type * as reports from "../reports.js";
 import type * as roles from "../roles.js";
 import type * as serviceRequests from "../serviceRequests.js";
 import type * as sessions from "../sessions.js";
@@ -79,7 +85,10 @@ import type {
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   availability: typeof availability;
+  bills: typeof bills;
   carts: typeof carts;
+  cash: typeof cash;
+  checks: typeof checks;
   devSeed: typeof devSeed;
   devices: typeof devices;
   floor: typeof floor;
@@ -93,6 +102,7 @@ declare const fullApi: ApiFromModules<{
   "lib/authority": typeof lib_authority;
   "lib/availability": typeof lib_availability;
   "lib/availabilityIndex": typeof lib_availabilityIndex;
+  "lib/billing": typeof lib_billing;
   "lib/catalog": typeof lib_catalog;
   "lib/catalogAccess": typeof lib_catalogAccess;
   "lib/countries": typeof lib_countries;
@@ -127,9 +137,11 @@ declare const fullApi: ApiFromModules<{
   operators: typeof operators;
   orders: typeof orders;
   organizations: typeof organizations;
+  payments: typeof payments;
   products: typeof products;
   publications: typeof publications;
   qr: typeof qr;
+  reports: typeof reports;
   roles: typeof roles;
   serviceRequests: typeof serviceRequests;
   sessions: typeof sessions;

@@ -223,8 +223,9 @@ lecture d'un nom d'établissement.
 
 | Bloc | Contenu |
 |---|---|
-| `service` | `orderingMode` (`staff_only`/`guest_with_approval`/`guest_direct`/`hybrid`), `paymentTiming` (`post_paid`/`pre_paid`/`per_order`), `paymentLocations[]`, `qrStrategy` (`frictionless`/`table_activation`/`approval`/`presence_code`), `guestDirectCategories[]` |
-| `tax` | `pricesIncludeTax`, `rates[]` (`{code,label,percent,appliesTo}`), `serviceChargePercent?` |
+| `service` | `orderingMode` (`staff_only`/`guest_with_approval`/`guest_direct`/`hybrid`), `paymentTiming` (`post_paid`/`pre_paid`/`per_order`), `paymentLocations[]`, `qrStrategy` (`frictionless`/`table_activation`/`approval`/`presence_code`), `guestDirectCategories[]`, `serviceDayStartHour?` (heure locale de début du jour de service, 4 h par défaut) |
+| `tax` | `pricesIncludeTax`, `rates[]` (`{code,label,percent,appliesTo}`), `serviceChargePercent?` (**non appliqué en T3** : aucun écran ne le règle, et l'addition ne l'ajoute pas) |
+| `payments` | `enabledMethods[]` et `onlineProviders[]` (paiement en ligne, T5), `amountStep?` (pas d'arrondi des parts), `cashMode?` (`central`/`per_waiter`, défaut `central`), `mobileMoneyWallets?[]` (portefeuilles de l'établissement, réglés par lui) |
 | `tipping` | `enabled`, `mode` (`free`/`percentages`), `suggestions[]` |
 | `branding` | `logoStorageId?`, `coverStorageId?`, `primaryColor`, `theme` |
 | `fiscal` | `regime`, `taxId?`, `fneEnabled`, `receiptFooter?` *(D-020)* |
@@ -511,6 +512,7 @@ l'installation à la clôture. Ni la table, ni la commande, ni l'addition.
 | `assignedWaiterMemberId?` | Id<"organizationMembers"> | attribution du service et du pourboire *(A2)* ; un **membre**, pour qu'un serveur sans compte puisse tenir une table (D-060) |
 | `openedByMemberId?`, `openedAt`, `closedAt?`, `closedByMemberId?` | | |
 | `closeReason?` | string | **obligatoire** si `closed_with_debt` |
+| `debtAmount?` | number | le dû abandonné à une clôture `closed_with_debt`, **figé** — sans lui, le rapport dit qu'une table est partie sans payer, pas combien (T3) |
 | `currency` | string | figé à l'ouverture |
 | `activationCode?` | string | mode « code de présence » (§9) |
 | `clientRef?` | string | UUID choisi par l'appareil quand la table s'ouvre hors ligne ; index `by_venue_clientRef` (D-062) |
@@ -619,6 +621,7 @@ accepté.
 | `modifiers` | `[{groupName, optionName, priceDelta}]` | **intégré** — snapshot, jamais une jointure |
 | `quantity`, `unitPrice`, `lineTotal` | number | |
 | `taxSnapshot` | `[{code, percent, amount}]` | le taux du jour de la commande |
+| `taxIncluded?` | boolean | le prix était-il TTC ce jour-là ? Hors taxe, la taxe s'ajoute au dû de l'addition. Absent sur les lignes d'avant T3 : lu comme `true` |
 | `instructions?` | string | « sans oignon » |
 | `courseNumber` | number | 1 = boissons, 2 = entrée… |
 | `prepStationId?` | Id | figé : changer la station d'un produit ne rejoue pas le passé |
@@ -645,9 +648,11 @@ délais)
 **Objectif.** Une remise, un geste commercial, un frais. Séparé de la ligne pour que le prix
 d'origine reste lisible — sinon on ne sait plus si le plat était à 5 000 ou à 4 000.
 **Champs** : `orderId?`, `checkId?`, `tableSessionId`, `type` (`discount`/`service_charge`/`fee`/`comp`),
-`source` (`manual`/`promotion`/`loyalty`), `label`, `amount`, `percent?`, `appliedByUserId`, `reason?`.
-**Index** : `by_session ["tableSessionId"]` · `by_order ["orderId"]` · `by_venue_type ["venueId","type"]`
-**Permissions** : `order.discount.apply`. **Auditée** au-delà d'un seuil réglé par établissement.
+`source` (`manual`/`promotion`/`loyalty`), `label`, `amount`, `percent?`, `orderItemId?` (un « offert »
+vise une ligne), `appliedByMemberId`, `reason?`, `createdAt`.
+**Index** : `by_session` · `by_order` · `by_check` · `by_order_item` · `by_venue_type` · `by_venue_createdAt`
+**Permissions** : `order.discount.apply` (compte seulement), motif obligatoire, **toujours auditée**
+(T3). Jamais au-delà du dû : ce qui est payé se rembourse.
 
 ### `venueCounters`
 **Objectif.** Les compteurs d'un établissement qui fabriquent les références dites à voix haute :
@@ -717,84 +722,95 @@ information de service, pas une faute à effacer.
 **Objectif.** L'addition : un regroupement de lignes à payer. **Séparée de la commande** *(D-007)* —
 c'est ce qui rend le partage possible sans toucher aux commandes.
 
+**Elle ne porte AUCUN montant** *(T3, D-075)*. Le solde se calcule (`convex/lib/billing.ts`,
+`checkBalance`) depuis les lignes, les ajustements et les paiements, qui font seuls foi. Une version
+antérieure stockait huit totaux : deux caches d'argent sur les mêmes faits, exactement ce que
+`tableSessions` avait déjà écarté. Seul le ticket (`bills.snapshot`) fige des totaux.
+
 | Champ | Type | Note |
 |---|---|---|
-| `organizationId`, `venueId`, `tableSessionId` | Id | |
-| `reference` | string | |
-| `label?` | string | « Marcel », « Table entière » |
-| `splitMode` | `full`/`by_items`/`by_guest`/`by_amount`/`even` | |
-| `status` | `open`/`awaiting_payment`/`partially_paid`/`paid`/`voided` | |
-| `subtotal`, `discountTotal`, `taxTotal`, `serviceCharge`, `tipAmount`, `total`, `paidTotal`, `dueTotal` | number | |
+| `venueId`, `tableSessionId` | Id | |
+| `reference` | string | `TS-2026-000123-2` : la session, puis le rang |
+| `label?` | string | « Marcel » |
+| `kind` | `remainder`/`allocated` | `remainder` = **le reste de la table**, sans ligne attachée : son contenu se calcule (toutes les lignes vivantes, moins celles détachées ailleurs). Au plus un par session. `allocated` = lignes détachées par un partage, ou figées par un ticket, dans `checkItems` |
+| `status` | `open`/`voided` | `voided` : un partage défait avant tout paiement |
 | `currency` | string | |
-| `guestSessionIds?` | Id[] | si l'addition vise des invités |
-| `openedByUserId?`, `closedAt?` | | |
+| `createdByMemberId?`, `createdAt` | | |
+| `frozenAt?` | number | un ticket a figé les lignes d'un « reste » |
 
-**Index** : `by_session ["tableSessionId"]` · `by_venue_status ["venueId","status"]` (écran caisse) ·
-`by_venue_closedAt ["venueId","closedAt"]`
-**Permissions** : `check.manage`, lecture par la session invité concernée.
-**Invariant** : la somme des paiements alloués ne peut jamais dépasser `total` *(R17)*.
+**Pourquoi le reste est calculé.** Au maquis on recommande une bière après avoir demandé l'addition,
+et on paie **par tournée**. Figer les lignes à la demande d'addition fabriquerait des lignes
+orphelines à chaque verre.
+
+**Index** : `by_session ["tableSessionId"]` · `by_venue_createdAt ["venueId","createdAt"]`
+**Permissions** : `payment.read` (lire), `check.manage` (demander, partager, défaire).
+**Invariant** : le dû d'une addition n'est jamais négatif *(R17)* — on n'encaisse pas au-delà, et on
+n'annule, n'offre ni ne détache ce qui est déjà payé.
 
 ### `checkItems`
-**Objectif.** L'allocation d'une ligne de commande à une addition — y compris **partielle**, pour le
-plat partagé à deux.
-**Pourquoi une table** : sans elle, « je paie mon plat et la moitié de la bouteille » est
-impossible à représenter.
-**Champs** : `checkId`, `orderItemId`, `tableSessionId`, `quantityShare` (fraction ou quantité),
-`amount`, `addedAt`.
-**Index** : `by_check ["checkId"]` · `by_order_item ["orderItemId"]` (vérifier qu'une ligne n'est pas
-allouée deux fois)
-**Invariant** : pour une ligne donnée, la somme des `amount` de toutes ses allocations est égale à son
-`lineTotal`. Vérifié à chaque écriture ; c'est ce qui empêche une part de repas de disparaître.
+**Objectif.** L'allocation d'une ligne de commande à une addition `allocated` — y compris
+**partielle**, pour le plat partagé à deux.
+**Champs** : `checkId`, `orderItemId`, `tableSessionId`, `quantityShare` (fractionnaire : ½ bouteille),
+`amount` (**stocké** : c'est une attribution décidée, pas un cache), `addedAt`.
+**Index** : `by_check ["checkId"]` · `by_order_item ["orderItemId"]`
+**Invariant** : le montant d'une part est arrondi à l'unité inférieure ; le reste demeure sur « le
+reste de la table », et celui qui prend le dernier morceau prend exactement ce qui reste. Aucun franc
+ne disparaît.
 
 ### `paymentIntents`
-**Objectif.** Une intention de paiement en ligne, avant toute certitude. Distincte du paiement :
-**une intention n'est pas de l'argent**.
-**Champs** : `organizationId`, `venueId`, `checkId`, `tableSessionId`, `provider`, `providerRef?`,
-`amount`, `currency`, `acceptedAmount?` (le montant réellement accepté par le fournisseur — certains imposent un pas et
-arrondissent en silence, voir D-028), `status`
-(`created`/`processing`/`awaiting_confirmation`/`succeeded`/`failed`/`expired`), `idempotencyKey`, `guestSessionId?`, `createdByUserId?`, `redirectUrl?`, `expiresAt`, `lastCheckedAt?`,
-`failureReason?`.
-**Index** : `by_check ["checkId"]` · `by_provider_ref ["provider","providerRef"]` (chemin du webhook) ·
-`by_idempotency ["idempotencyKey"]` · `by_status_expires ["status","expiresAt"]` (réconciliation)
-**Cycle** : machine §7 d'ARCHITECTURE.md. **Le montant est recalculé côté serveur à la création**,
-jamais repris du client *(R14)*.
+**Objectif.** Une intention de paiement en ligne (T5), avant toute certitude : **une intention n'est
+pas de l'argent**.
+**Champs** : `venueId`, `checkId`, `tableSessionId`, `provider`, `providerRef?`, `amount`, `currency`,
+`acceptedAmount?` (montant réellement accepté — certains arrondissent en silence, D-028), `status`
+(`created`/`processing`/`awaiting_confirmation`/`succeeded`/`failed`/`expired`), `idempotencyKey`,
+`guestSessionId?`, `createdByMemberId?`, `redirectUrl?`, `expiresAt`, `lastCheckedAt?`, `failureReason?`.
+**Index** : `by_check` · `by_provider_ref ["provider","providerRef"]` · `by_venue_idempotency
+["venueId","idempotencyKey"]` (**par établissement**, D-064) · `by_status_expires`
 
 ### `payments`
 **Objectif.** De l'argent réellement reçu. La table la plus sensible du produit.
 
 | Champ | Type | Note |
 |---|---|---|
-| `organizationId`, `venueId`, `checkId`, `tableSessionId` | Id | |
+| `venueId`, `checkId`, `tableSessionId` | Id | |
 | `method` | `cash`/`mobile_money`/`card`/`external_terminal`/`transfer`/`other` | **l'espèce est de première classe** *(D-019)* |
-| `provider?`, `providerRef?` | string | si en ligne |
-| `paymentIntentId?` | Id | |
-| `amount`, `tipAmount`, `currency` | | |
+| `wallet?` | string | Mobile Money : le portefeuille qui a reçu (« Wave ») — **obligatoire** en saisie : c'est lui que le gérant rapproche |
+| `provider?`, `providerRef?` | string | référence de transaction, facultative en saisie manuelle |
+| `paymentIntentId?` | Id | T5 |
+| `amount`, `tipAmount`, `currency` | | `amount` = ce qui s'impute sur l'addition ; `tipAmount` reste 0 (D-027) |
 | `status` | `succeeded`/`voided`/`refunded`/`partially_refunded` | un paiement n'existe que s'il a réussi |
-| `collectedByUserId?` | Id | **qui a encaissé** — indispensable à `P2` |
-| `guestSessionId?` | Id | si payé par le client lui-même |
-| `cashRegisterSessionId?` | Id | rattache l'espèce à une caisse |
-| `receivedAmount?`, `changeAmount?` | number | espèces : remis / rendu |
+| `collectedByMemberId?` | Id | **qui a encaissé** — un membre, PIN compris ; exigé par la mutation pour toute saisie |
+| `deviceId?` | Id | l'appareil enrôlé, sous PIN |
+| `guestSessionId?` | Id | T5 |
+| `cashRegisterSessionId?` | Id | la caisse où l'espèce est entrée — ou d'où la monnaie est sortie |
+| `receivedAmount?`, `changeAmount?` | number | remis, et monnaie **réellement** rendue en espèces |
 | `idempotencyKey` | string | |
-| `voidedReason?`, `voidedByUserId?` | | |
+| `voidedReason?`, `voidedByMemberId?`, `voidedAt?` | | |
+| `isSimulation` | boolean | recopié de la session : exclu des agrégats sans jointure (G2) |
 | `createdAt` | number | |
 
-**Index** : `by_check ["checkId"]` · `by_venue_createdAt ["venueId","createdAt"]` (journal de caisse) ·
-`by_register_session ["cashRegisterSessionId"]` (attendu de clôture) ·
-`by_provider_ref ["provider","providerRef"]` · `by_idempotency ["idempotencyKey"]` ·
-`by_venue_method_createdAt ["venueId","method","createdAt"]` (répartition des moyens)
-**Permissions** : `payment.read` / `collect` / `void`.
-**Cycle** : créé **succeeded** → éventuellement `voided` ou `refunded`. **Jamais supprimé** *(R18)*.
+**Index** : `by_check` · `by_venue_createdAt` (journal, rapport) · `by_register_session` (attendu de
+clôture) · `by_venue_method_createdAt` · `by_provider_ref` · `by_venue_idempotency` (**par
+établissement**, D-064 — l'index était global)
+**Permissions** : `payment.read` / `collect` (PIN) / `void` (compte).
+**Cycle** : créé **succeeded** → éventuellement `voided` (saisie erronée, tant que caisse ouverte,
+aucun ticket, table ouverte, et jamais par son propre auteur) ou `refunded`. **Jamais supprimé**
+*(R18)*.
 
 > Le paiement mixte — 15 000 en espèces et 20 000 en Mobile Money sur la même addition — se
-> représente naturellement : **deux lignes**, même `checkId`. C'est précisément ce qu'aucun
-> concurrent étudié ne traite, et cela ne demande aucune structure supplémentaire.
+> représente naturellement : **deux lignes**, même `checkId`. Le partage égal et « chacun paie tant »
+> ne sont pas des additions : ce sont plusieurs paiements sur la même.
 
 ### `refunds`
-**Champs** : `paymentId`, `checkId`, `amount`, `reason` (**obligatoire**), `status`,
-`requestedByUserId`, `approvedByUserId?`, `provider?`, `providerRef?`, `idempotencyKey`, `createdAt`.
-**Index** : `by_payment ["paymentId"]` · `by_venue_createdAt ["venueId","createdAt"]`
-**Permissions** : `payment.refund`. **Toujours auditée.**
-**Invariant** : la somme des remboursements d'un paiement ne peut excéder son montant *(R19)*.
+**Champs** : `venueId`, `paymentId`, `checkId`, `amount`, `method` (espèces, ou le moyen d'origine),
+`cashRegisterSessionId?` (espèces : **le tiroir qui paie**, choisi explicitement), `reason`
+(**obligatoire**), `status`, `requestedByMemberId`, `approvedByMemberId?`, `provider?`, `providerRef?`,
+`idempotencyKey`, `isSimulation`, `createdAt`.
+**Index** : `by_payment` · `by_venue_createdAt` · `by_register_session` · `by_venue_idempotency`
+**Permissions** : `payment.refund` (compte seulement). **Toujours auditée.**
+**Invariant** : la somme des remboursements d'un paiement ne peut excéder son montant *(R19)*. Un
+remboursement ne rouvre pas le dû : il réduit la recette. Si un ticket existait, un **avoir** lié le
+corrige.
 
 ### `webhookEvents`
 **Objectif.** La mémoire des notifications reçues d'un fournisseur. **C'est cette table qui rend
@@ -806,21 +822,34 @@ l'idempotence possible** *(R16)*.
 **Cycle** : reçu → traité. **Un second passage du même `providerEventId` ne produit aucun effet.**
 
 ### `cashRegisters` / `cashRegisterSessions` / `cashMovements`
-**Objectif.** La caisse physique, ses ouvertures, et tout ce qui y entre ou en sort.
+**Objectif.** La caisse physique, ses ouvertures, et ce qui y entre ou en sort hors paiements.
+
+Deux organisations réelles, un réglage (`venueSettings.payments.cashMode`) :
+- `central` : un ou plusieurs **tiroirs** (`cashRegisters`, le premier « Caisse principale » se crée
+  seul) ; l'espèce va dans le tiroir ouvert, quel que soit l'encaisseur ;
+- `per_waiter` : chaque serveur porte **sa pochette** (session avec `holderMemberId`, sans tiroir) —
+  « la caisse de Koffi ».
 
 `cashRegisters` : `venueId`, `name`, `isActive`.
-`cashRegisterSessions` : `venueId`, `cashRegisterId`, `openedByUserId`, `openedAt`, `openingFloat`,
-`status` (`open`/`counting`/`closed`), `expectedAmount?`, `countedAmount?`, `discrepancy?`,
-`closedByUserId?`, `closedAt?`, `adjustedByUserId?`, `adjustmentReason?`.
-`cashMovements` : `registerSessionId`, `type` (`sale`/`refund`/`payout`/`deposit`/`correction`),
-`amount`, `reason?`, `createdByUserId`, `paymentId?`, `createdAt`.
+`cashRegisterSessions` : `venueId`, `cashRegisterId?` **ou** `holderMemberId?`, `openedByMemberId`,
+`openedAt`, `openingFloat`, `currency`, `status` (`open`/`counting`/`balanced`/`discrepancy`/`closed`),
+`countingStartedAt?`, `expectedAmount?` (**calculé** au comptage, figé), `counts[]` (`amount`,
+`countedByMemberId`, `at` — un comptage puis au plus un recomptage, **les deux conservés**),
+`countedAmount?`, `discrepancy?`, `closeReason?` (obligatoire si écart), `closedByMemberId?`, `closedAt?`,
+`isSimulation`.
+`cashMovements` : `registerSessionId`, `type` (`payout`/`deposit`), `amount`, `reason` (obligatoire),
+`createdByMemberId`, `createdAt`. **Pas de mouvement « vente »** : il doublerait `payments`.
 
-**Index** : `by_venue ["venueId"]` · `by_register_status ["cashRegisterId","status"]` (au plus une
-session ouverte) · `by_venue_openedAt ["venueId","openedAt"]` · `by_session ["registerSessionId"]`
-**Permissions** : `cash_register.open` / `close` / `adjust`.
-**Invariant** : `expectedAmount` est **calculé** à partir des paiements en espèces rattachés à la
-session, jamais saisi. `discrepancy = countedAmount − expectedAmount`. Toute correction exige un motif
-et laisse une trace nominative *(R21)*.
+**Index** : `by_venue` · `by_register_status ["cashRegisterId","status"]` (au plus une session non
+close par tiroir) · `by_venue_holder_status ["venueId","holderMemberId","status"]` (au plus une par
+titulaire) · `by_venue_status` · `by_venue_openedAt` · `by_session`
+**Permissions** : ouvrir un tiroir `cash_register.open` ; ouvrir **sa** pochette `payment.collect` ;
+compter et clôturer `cash_register.close` — **jamais sa propre pochette**. `cash_register.adjust` est
+réservé : la correction liée d'un écart est reportée, un comptage ne se réécrit jamais.
+**Attendu** : fonds + espèces encaissées − monnaie rendue en billets sur un paiement non espèces −
+remboursements en espèces − sorties + entrées. Le comptage se fait **à l'aveugle** : l'attendu n'est
+rendu qu'après la saisie du compté. `discrepancy = countedAmount − expectedAmount` ; l'écart n'est pas
+une faute, c'est une donnée — visible, attribuée, motivée *(R21)*.
 
 ### `bills`  *(et non `receipts`)*
 **Objectif.** La pièce remise au client.

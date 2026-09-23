@@ -352,10 +352,13 @@ export function stationCode(name: string): string {
   return (letters || "POS").slice(0, 3);
 }
 
-/** Jour de service (il se termine à 4 h du matin, heure de l'établissement) : « 2026-09-23 ». */
-export function serviceDayKey(now: number, timeZone: string): string {
-  // Avant 4 h, on appartient encore à la veille.
-  const shifted = now - 4 * 3_600_000;
+/**
+ * Jour de service : « 2026-09-23 ». Il commence à `startHour` heure de l'établissement (4 h par
+ * défaut, réglable : un maquis qui ferme à 5 h le week-end règle 6) — avant, on appartient encore
+ * à la veille.
+ */
+export function serviceDayKey(now: number, timeZone: string, startHour = 4): string {
+  const shifted = now - startHour * 3_600_000;
   const parts = Object.fromEntries(
     new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" })
       .formatToParts(new Date(shifted))

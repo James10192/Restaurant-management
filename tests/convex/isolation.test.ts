@@ -64,6 +64,8 @@ async function twoTenants() {
     t, a, b, venueA2, waiterA, waiterB, pendingB, invitationB, catalogA, catalogB, ruleB, floorA, floorB,
     /** Le service de B, monté seulement par les cas qui en ont besoin (il occupe la table de B). */
     serviceB: undefined as ServiceFixture | undefined,
+    /** L'argent de B (T3), monté seulement par les cas qui en ont besoin. */
+    moneyB: undefined as MoneyFixture | undefined,
   };
 }
 
@@ -138,6 +140,41 @@ async function guestAtB(w: World) {
   await w.t.mutation(api.guestService.requestService, { ...guest, type: "call_waiter" });
   const [cart, request] = await w.t.run(async (ctx) => [(await ctx.db.query("carts").collect())[0]!, (await ctx.db.query("serviceRequests").collect())[0]!] as const);
   return { service, guest, cartId: cart._id, requestId: request._id };
+}
+
+type MoneyFixture = {
+  service: ServiceFixture;
+  cashSessionId: Id<"cashRegisterSessions">;
+  checkId: Id<"checks">;
+  paymentId: Id<"payments">;
+  billId: Id<"bills">;
+  registerId: Id<"cashRegisters">;
+};
+
+/** L'argent de B : une caisse ouverte, une addition réglée par carte, son ticket. */
+async function moneyAtB(w: World): Promise<MoneyFixture> {
+  w.moneyB ??= await buildMoneyAtB(w);
+  return w.moneyB;
+}
+
+async function buildMoneyAtB(w: World): Promise<MoneyFixture> {
+  const service = await withServiceB(w);
+  const b = w.b.owner;
+  const cashSessionId = await b.as.mutation(api.cash.open, { venueId: w.b.venueId, openingFloat: 0 });
+  const checkId = await b.as.mutation(api.checks.requestBill, { venueId: w.b.venueId, sessionId: service.sessionId });
+  const bill = await b.as.query(api.checks.forSession, { venueId: w.b.venueId, sessionId: service.sessionId });
+  const paid = await b.as.mutation(api.payments.collect, {
+    venueId: w.b.venueId,
+    sessionId: service.sessionId,
+    checkId,
+    method: "card",
+    amount: bill.due,
+    idempotencyKey: "isolation-argent-b-00000001",
+  });
+  if (!paid.ok) throw new Error("paiement de B refusé");
+  const billId = await b.as.mutation(api.bills.issue, { venueId: w.b.venueId, checkId });
+  const registerId = (await w.t.run((ctx) => ctx.db.get(cashSessionId)))!.cashRegisterId!;
+  return { service, cashSessionId, checkId, paymentId: paid.paymentId, billId, registerId };
 }
 
 /** A ouvre sa propre table, pour les franchissements « son établissement + un objet de B ». */
@@ -1226,6 +1263,168 @@ const CASES: Record<string, (w: Awaited<ReturnType<typeof twoTenants>>) => Promi
     await expectCode(a.owner.as.query(api.operators.me, { venueId: b.venueId }), "NOT_FOUND");
     expect((await a.owner.as.query(api.operators.me, { venueId: a.venueId })).venueName).toBe("Maquis A — Cocody");
   },
+  /* ── T3 : l'argent ─────────────────────────────────────────────────────── */
+  "checks.forSession": async (w) => {
+    const m = await moneyAtB(w);
+    await bothRefused(
+      w.a.owner.as.query(api.checks.forSession, { venueId: w.b.venueId, sessionId: m.service.sessionId }),
+      w.a.owner.as.query(api.checks.forSession, { venueId: w.a.venueId, sessionId: m.service.sessionId }),
+    );
+  },
+  "checks.requestBill": async (w) => {
+    const s = await withServiceB(w);
+    await bothRefused(
+      w.a.owner.as.mutation(api.checks.requestBill, { venueId: w.b.venueId, sessionId: s.sessionId }),
+      w.a.owner.as.mutation(api.checks.requestBill, { venueId: w.a.venueId, sessionId: s.sessionId }),
+    );
+  },
+  "checks.split": async (w) => {
+    const s = await withServiceB(w);
+    const lines = [{ orderItemId: s.itemId, quantity: 1 }];
+    await bothRefused(
+      w.a.owner.as.mutation(api.checks.split, { venueId: w.b.venueId, sessionId: s.sessionId, lines }),
+      w.a.owner.as.mutation(api.checks.split, { venueId: w.a.venueId, sessionId: s.sessionId, lines }),
+    );
+  },
+  "checks.unsplit": async (w) => {
+    const m = await moneyAtB(w);
+    await bothRefused(
+      w.a.owner.as.mutation(api.checks.unsplit, { venueId: w.b.venueId, checkId: m.checkId }),
+      w.a.owner.as.mutation(api.checks.unsplit, { venueId: w.a.venueId, checkId: m.checkId }),
+    );
+  },
+  "checks.comp": async (w) => {
+    const s = await withServiceB(w);
+    const args = { checkId: null, orderItemId: s.itemId, reason: "intrusion de A" };
+    await bothRefused(
+      w.a.owner.as.mutation(api.checks.comp, { venueId: w.b.venueId, sessionId: s.sessionId, ...args }),
+      w.a.owner.as.mutation(api.checks.comp, { venueId: w.a.venueId, sessionId: s.sessionId, ...args }),
+    );
+  },
+  "checks.discount": async (w) => {
+    const s = await withServiceB(w);
+    const args = { checkId: null, amount: 100, reason: "intrusion de A" };
+    await bothRefused(
+      w.a.owner.as.mutation(api.checks.discount, { venueId: w.b.venueId, sessionId: s.sessionId, ...args }),
+      w.a.owner.as.mutation(api.checks.discount, { venueId: w.a.venueId, sessionId: s.sessionId, ...args }),
+    );
+  },
+  "payments.collect": async (w) => {
+    const s = await withServiceB(w);
+    const args = { checkId: null, method: "card" as const, amount: 100, idempotencyKey: "isolation-intrusion-000001" };
+    await bothRefused(
+      w.a.owner.as.mutation(api.payments.collect, { venueId: w.b.venueId, sessionId: s.sessionId, ...args }),
+      w.a.owner.as.mutation(api.payments.collect, { venueId: w.a.venueId, sessionId: s.sessionId, ...args }),
+    );
+    // Sa propre table, mais l'addition de B.
+    const m = await moneyAtB(w);
+    const mine = await openA(w);
+    await expectCode(w.a.owner.as.mutation(api.payments.collect, { venueId: w.a.venueId, sessionId: mine, ...args, checkId: m.checkId }), "NOT_FOUND");
+  },
+  "payments.voidPayment": async (w) => {
+    const m = await moneyAtB(w);
+    await bothRefused(
+      w.a.owner.as.mutation(api.payments.voidPayment, { venueId: w.b.venueId, paymentId: m.paymentId, reason: "intrusion de A" }),
+      w.a.owner.as.mutation(api.payments.voidPayment, { venueId: w.a.venueId, paymentId: m.paymentId, reason: "intrusion de A" }),
+    );
+  },
+  "payments.refund": async (w) => {
+    const m = await moneyAtB(w);
+    const args = { paymentId: m.paymentId, amount: 100, reason: "intrusion de A", method: "original" as const, idempotencyKey: "isolation-intrusion-000002" };
+    await bothRefused(
+      w.a.owner.as.mutation(api.payments.refund, { venueId: w.b.venueId, ...args }),
+      w.a.owner.as.mutation(api.payments.refund, { venueId: w.a.venueId, ...args }),
+    );
+    expect((await w.t.run((ctx) => ctx.db.get(m.paymentId)))!.status).toBe("succeeded");
+  },
+  "bills.issue": async (w) => {
+    const m = await moneyAtB(w);
+    await bothRefused(
+      w.a.owner.as.mutation(api.bills.issue, { venueId: w.b.venueId, checkId: m.checkId }),
+      w.a.owner.as.mutation(api.bills.issue, { venueId: w.a.venueId, checkId: m.checkId }),
+    );
+  },
+  "bills.get": async (w) => {
+    const m = await moneyAtB(w);
+    await bothRefused(
+      w.a.owner.as.query(api.bills.get, { venueId: w.b.venueId, billId: m.billId }),
+      w.a.owner.as.query(api.bills.get, { venueId: w.a.venueId, billId: m.billId }),
+    );
+  },
+  "bills.recordPrint": async (w) => {
+    const m = await moneyAtB(w);
+    await bothRefused(
+      w.a.owner.as.mutation(api.bills.recordPrint, { venueId: w.b.venueId, billId: m.billId }),
+      w.a.owner.as.mutation(api.bills.recordPrint, { venueId: w.a.venueId, billId: m.billId }),
+    );
+  },
+  "cash.overview": async (w) => {
+    await moneyAtB(w);
+    await expectCode(w.a.owner.as.query(api.cash.overview, { venueId: w.b.venueId }), "NOT_FOUND");
+    expect((await w.a.owner.as.query(api.cash.overview, { venueId: w.a.venueId })).sessions).toEqual([]);
+  },
+  "cash.createRegister": async ({ a, b }) => {
+    await expectCode(a.owner.as.mutation(api.cash.createRegister, { venueId: b.venueId, name: "Bar" }), "NOT_FOUND");
+    await a.owner.as.mutation(api.cash.createRegister, { venueId: a.venueId, name: "Bar" });
+  },
+  "cash.open": async (w) => {
+    const m = await moneyAtB(w);
+    await expectCode(w.a.owner.as.mutation(api.cash.open, { venueId: w.b.venueId, openingFloat: 0 }), "NOT_FOUND");
+    await expectCode(w.a.owner.as.mutation(api.cash.open, { venueId: w.a.venueId, registerId: m.registerId, openingFloat: 0 }), "NOT_FOUND");
+  },
+  "cash.startCount": async (w) => {
+    const m = await moneyAtB(w);
+    await bothRefused(
+      w.a.owner.as.mutation(api.cash.startCount, { venueId: w.b.venueId, sessionId: m.cashSessionId }),
+      w.a.owner.as.mutation(api.cash.startCount, { venueId: w.a.venueId, sessionId: m.cashSessionId }),
+    );
+  },
+  "cash.submitCount": async (w) => {
+    const m = await moneyAtB(w);
+    await bothRefused(
+      w.a.owner.as.mutation(api.cash.submitCount, { venueId: w.b.venueId, sessionId: m.cashSessionId, countedAmount: 0 }),
+      w.a.owner.as.mutation(api.cash.submitCount, { venueId: w.a.venueId, sessionId: m.cashSessionId, countedAmount: 0 }),
+    );
+  },
+  "cash.close": async (w) => {
+    const m = await moneyAtB(w);
+    await bothRefused(
+      w.a.owner.as.mutation(api.cash.close, { venueId: w.b.venueId, sessionId: m.cashSessionId, reason: "intrusion de A" }),
+      w.a.owner.as.mutation(api.cash.close, { venueId: w.a.venueId, sessionId: m.cashSessionId, reason: "intrusion de A" }),
+    );
+  },
+  "cash.addMovement": async (w) => {
+    const m = await moneyAtB(w);
+    const args = { sessionId: m.cashSessionId, type: "payout" as const, amount: 100, reason: "intrusion de A" };
+    await bothRefused(
+      w.a.owner.as.mutation(api.cash.addMovement, { venueId: w.b.venueId, ...args }),
+      w.a.owner.as.mutation(api.cash.addMovement, { venueId: w.a.venueId, ...args }),
+    );
+  },
+  "cash.setPaymentSettings": async ({ t, a, b }) => {
+    const args = { cashMode: "per_waiter" as const, mobileMoneyWallets: ["Wave"], amountStep: 5, serviceDayStartHour: 6 };
+    await expectCode(a.owner.as.mutation(api.cash.setPaymentSettings, { venueId: b.venueId, ...args }), "NOT_FOUND");
+    await a.owner.as.mutation(api.cash.setPaymentSettings, { venueId: a.venueId, ...args });
+    const settingsB = await t.run((ctx) => ctx.db.query("venueSettings").withIndex("by_venue", (q) => q.eq("venueId", b.venueId)).unique());
+    expect(settingsB!.payments.cashMode).toBeUndefined();
+  },
+  "cash.paymentSettings": async ({ a, b }) => {
+    await expectCode(a.owner.as.query(api.cash.paymentSettings, { venueId: b.venueId }), "NOT_FOUND");
+    expect((await a.owner.as.query(api.cash.paymentSettings, { venueId: a.venueId })).cashMode).toBe("central");
+  },
+  "sessions.closeWithDebt": async (w) => {
+    const s = await withServiceB(w);
+    await bothRefused(
+      w.a.owner.as.mutation(api.sessions.closeWithDebt, { venueId: w.b.venueId, sessionId: s.sessionId, reason: "intrusion de A" }),
+      w.a.owner.as.mutation(api.sessions.closeWithDebt, { venueId: w.a.venueId, sessionId: s.sessionId, reason: "intrusion de A" }),
+    );
+  },
+  "reports.serviceDay": async (w) => {
+    await moneyAtB(w);
+    await expectCode(w.a.owner.as.query(api.reports.serviceDay, { venueId: w.b.venueId }), "NOT_FOUND");
+    const mine = await w.a.owner.as.query(api.reports.serviceDay, { venueId: w.a.venueId });
+    expect([mine.totals.collected, mine.cashSessions, mine.openTables]).toEqual([0, [], []]);
+  },
 };
 
 describe("isolation multi-tenant : A ne voit ni ne touche rien de B", () => {
@@ -1274,10 +1473,24 @@ describe("isolation multi-tenant : A ne voit ni ne touche rien de B", () => {
           pending: "pending_acceptance",
           ticket: "queued",
           item: "ordered",
-          session: "ordering",
+          session: world.moneyB ? "settling" : "ordering",
           station: "Bar B",
           sectionRouting: null,
         });
+      }
+      // Et l'argent de B n'a pas bougé : paiement, caisse, addition, ticket.
+      if (world.moneyB) {
+        const m = world.moneyB;
+        const money = await world.t.run(async (ctx) => ({
+          payment: (await ctx.db.get(m.paymentId))?.status,
+          cash: (await ctx.db.get(m.cashSessionId))?.status,
+          check: (await ctx.db.get(m.checkId))?.status,
+          bill: (await ctx.db.get(m.billId))?.deliveredVia,
+          refunds: (await ctx.db.query("refunds").collect()).length,
+          adjustments: (await ctx.db.query("orderAdjustments").collect()).length,
+          movements: (await ctx.db.query("cashMovements").collect()).length,
+        }));
+        expect(money).toEqual({ payment: "succeeded", cash: "open", check: "open", bill: [], refunds: 0, adjustments: 0, movements: 0 });
       }
     });
   }

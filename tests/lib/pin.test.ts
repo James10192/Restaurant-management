@@ -80,7 +80,9 @@ describe("le plafond du PIN (D-060)", () => {
       expect(meta.sensitive ?? false, p).toBe(false);
       expect(meta.scope, p).toBe("venue");
       expect(p, p).not.toMatch(/^(team|permissions|device|export|audit|analytics|platform|organization)\./);
-      expect(p, p).not.toMatch(/\.(manage|publish|price\.edit|settings\.service)$/);
+      // `check.manage` est la seule exception, et elle est nommée : partager une addition est un
+      // geste de salle (T3), pas un réglage. Tout autre `.manage` reste hors du PIN.
+      if (p !== "check.manage") expect(p, p).not.toMatch(/\.(manage|publish|price\.edit|settings\.service)$/);
     }
   });
 
@@ -88,6 +90,14 @@ describe("le plafond du PIN (D-060)", () => {
     for (const p of ["order.create", "order.serve", "kitchen.ticket.update", "table.session.open", "service_request.handle"] as const) {
       expect(PIN_PERMISSIONS.has(p)).toBe(true);
     }
-    expect(PIN_PERMISSIONS.size).toBeLessThan(ALL_PERMISSIONS.length / 3);
+    // T3 y a ajouté l'encaissement (encaisser, partager, ouvrir et compter une caisse) : le plafond
+    // reste une minorité étroite du catalogue.
+    for (const p of ["payment.collect", "check.manage", "cash_register.open", "cash_register.close"] as const) {
+      expect(PIN_PERMISSIONS.has(p)).toBe(true);
+    }
+    for (const p of ["payment.refund", "payment.void", "cash_register.adjust", "order.discount.apply", "table.session.close_with_debt"] as const) {
+      expect(PIN_PERMISSIONS.has(p), p).toBe(false);
+    }
+    expect(PIN_PERMISSIONS.size).toBeLessThan(ALL_PERMISSIONS.length * 0.4);
   });
 });

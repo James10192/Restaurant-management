@@ -102,19 +102,23 @@ export const PERMISSIONS = {
   "service_request.handle": { label: "Prendre en charge une demande client", group: "Service", scope: "venue", pin: true },
 
   /* ── Encaissement ────────────────────────────────────────────────────── */
-  "payment.read": { label: "Voir les paiements", group: "Encaissement", scope: "venue" },
-  "payment.collect": { label: "Encaisser", group: "Encaissement", scope: "venue", audited: true },
+  "payment.read": { label: "Voir les paiements", group: "Encaissement", scope: "venue", pin: true },
+  "payment.collect": { label: "Encaisser", group: "Encaissement", scope: "venue", audited: true, pin: true },
   "payment.refund": { label: "Rembourser", group: "Encaissement", scope: "venue", sensitive: true, audited: true, requiresReason: true },
   "payment.void": { label: "Annuler un paiement saisi par erreur", group: "Encaissement", scope: "venue", sensitive: true, audited: true, requiresReason: true },
-  "check.manage": { label: "Créer, scinder et fusionner des additions", group: "Encaissement", scope: "venue" },
+  "check.manage": { label: "Créer, scinder et fusionner des additions", group: "Encaissement", scope: "venue", pin: true },
   // Renvoyer un ticket à un client qui l'a perdu : ce n'est pas lire un paiement, c'est
   // ré-émettre une pièce — et l'envoyer quelque part. D'où une permission à part.
   "bill.reissue": { label: "Ré-émettre ou renvoyer un ticket", group: "Encaissement", scope: "venue", audited: true },
-  "cash_register.open": { label: "Ouvrir une session de caisse", group: "Encaissement", scope: "venue", audited: true },
+  // Sous PIN (T3) : le caissier sur la tablette partagée. Ouvrir SA PROPRE pochette relève
+  // de `payment.collect` ; `cash_register.open`/`close` servent aux tiroirs et au comptage de la
+  // pochette d'un autre. Rembourser, annuler un paiement, corriger un écart : compte seulement
+  // (D-060 — jamais le PIN d'un gérant tapé sur un appareil partagé).
+  "cash_register.open": { label: "Ouvrir une session de caisse", group: "Encaissement", scope: "venue", audited: true, pin: true },
   // Clôturer AVEC un écart constaté relève de `cash_register.close` : l'écart est une
   // donnée, pas une faute. Seule sa CORRECTION exige `cash_register.adjust`. Sans cette
   // distinction, un caissier ne pouvait pas fermer sa caisse un soir d'écart. (Manque G4.)
-  "cash_register.close": { label: "Clôturer une session de caisse, écart compris", group: "Encaissement", scope: "venue", audited: true },
+  "cash_register.close": { label: "Clôturer une session de caisse, écart compris", group: "Encaissement", scope: "venue", audited: true, pin: true },
   "cash_register.adjust": { label: "Corriger un écart de caisse", group: "Encaissement", scope: "venue", sensitive: true, audited: true, requiresReason: true },
 
   /* ── Clients ─────────────────────────────────────────────────────────── */

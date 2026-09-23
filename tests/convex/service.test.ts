@@ -59,6 +59,21 @@ async function openAndOrder(s: Service) {
   return { sessionId, orderId: sent.orderId, reference: sent.reference, idempotencyKey };
 }
 
+/** Tout le dû de la table, réglé par carte (sans caisse à ouvrir). */
+async function payByCard(s: Service, sessionId: Id<"tableSessions">) {
+  const bill = await s.owner.as.query(api.checks.forSession, { venueId: s.cocody, sessionId });
+  const paid = await s.owner.as.mutation(api.payments.collect, {
+    venueId: s.cocody,
+    sessionId,
+    checkId: null,
+    method: "card",
+    amount: bill.due,
+    idempotencyKey: key(),
+  });
+  if (!paid.ok) throw new Error(JSON.stringify(paid));
+  return bill.due;
+}
+
 async function ticketsOf(s: Service, orderId: Id<"orders">) {
   return s.t.run((ctx) => ctx.db.query("kitchenTickets").withIndex("by_order", (q) => q.eq("orderId", orderId)).collect());
 }
@@ -151,6 +166,9 @@ describe("service complet", () => {
     }
     expect(await status()).toBe("served");
 
+    // Tout est servi, mais rien n'est encaissé : la table ne se clôt pas (T3).
+    await expectCode(s.waiter.as.mutation(api.sessions.close, { venueId: s.cocody, sessionId }), "CONFLICT");
+    await payByCard(s, sessionId);
     await s.waiter.as.mutation(api.sessions.close, { venueId: s.cocody, sessionId });
     const [session, table] = await s.t.run(async (ctx) => [await ctx.db.get(sessionId), await ctx.db.get(s.tableId)] as const);
     expect(session!.status).toBe("closed");
@@ -425,7 +443,8 @@ describe("rejeu d'une file hors ligne (D-062)", () => {
     expect((await ticketsOf(s, sent.orderId)).map((t) => t.status)).toEqual(["served"]);
     const board = await s.cook.as.query(api.kitchen.board, { venueId: s.cocody, stationId: s.cuisine });
     expect([board.active, board.ready]).toEqual([[], []]);
-    // Rien en cours : la table se clôt.
+    // Rien en cours ; une fois réglée, la table se clôt.
+    await payByCard(s, sessionId);
     await s.waiter.as.mutation(api.sessions.close, { venueId: s.cocody, sessionId });
     // Et la cuisine ne peut pas s'en servir pour enregistrer des plats servis.
     await expectCode(
