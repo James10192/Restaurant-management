@@ -168,7 +168,8 @@ export function rowsFromCsv(text: string, currency: string): { rows: ImportRow[]
     if (price === null) {
       errors.push({
         line,
-        message: `Prix illisible : « ${cells.price ?? ""} ».${currencyExponent(currency as never) === 0 ? " Le franc CFA n'a pas de centimes." : ""}`,
+        // L'indice sur les centimes n'a de sens que pour un prix écrit avec des décimales.
+        message: `Prix illisible : « ${cells.price ?? ""} ».${currencyExponent(currency as never) === 0 && /\d[.,]\d{1,2}\s*\D*$/.test(cells.price ?? "") ? " Le franc CFA n'a pas de centimes." : ""}`,
       });
     }
     const allergens: string[] = [];

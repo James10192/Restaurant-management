@@ -43,6 +43,9 @@ describe("lecture du fichier", () => {
     expect(rows.map((r) => [r.line, r.name, r.price, r.allergens])).toEqual([[2, "Poulet", 3500, ["arachides"]]]);
     expect(errors.map((e) => e.line)).toEqual([3, 4, 5]);
     expect(errors[2]!.message).toContain("Piment");
+    // « cinq cents » n'a rien à voir avec les centimes : pas d'indice trompeur.
+    expect(errors[1]!.message).not.toContain("centimes");
+    expect(rowsFromCsv("section;nom;prix\nPlats;Garba;1 500,50", "XOF").errors[0]!.message).toContain("centimes");
   });
 
   test("une colonne obligatoire manquante est signalée d'emblée", () => {
