@@ -16,3 +16,5 @@ pnpm exec convex env set GUEST_PASS_SECRET "$(node -e "console.log(require('cryp
 pnpm exec convex env set RESEND_API_KEY "test-local"
 pnpm exec convex env set EMAIL_FROM "Joliba <noreply@joliba.test>"
 pnpm exec convex env set RESEND_API_URL "http://127.0.0.1:4010/emails"
+# Autorise `scripts/seed-demo.mjs` (restaurant de démonstration, convex/devSeed.ts).
+pnpm exec convex env set JOLIBA_DEMO_SEED "1"

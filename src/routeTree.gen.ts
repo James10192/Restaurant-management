@@ -10,35 +10,56 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as AppRouteImport } from './routes/app'
-import { Route as ConnexionRouteImport } from './routes/connexion'
+import { Route as AuthRouteImport } from './routes/_auth'
+import { Route as RobotsDottxtRouteImport } from './routes/robots[.]txt'
+import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
+import { Route as AuthAppRouteImport } from './routes/_auth.app'
+import { Route as AuthConnexionRouteImport } from './routes/_auth.connexion'
 import { Route as ApiClientErrorsRouteImport } from './routes/api/client-errors'
 import { Route as ApiHealthRouteImport } from './routes/api/health'
-import { Route as AppIndexRouteImport } from './routes/app.index'
-import { Route as AppAccountRouteImport } from './routes/app.account'
-import { Route as AppOnboardingRouteImport } from './routes/app.onboarding'
-import { Route as AppTeamRouteImport } from './routes/app.team'
-import { Route as AuthOtpRouteImport } from './routes/auth.otp'
-import { Route as InvitationTokenRouteImport } from './routes/invitation.$token'
+import { Route as MenuVenueSlugRouteImport } from './routes/menu.$venueSlug'
+import { Route as AuthAppIndexRouteImport } from './routes/_auth.app.index'
+import { Route as AuthAppAccountRouteImport } from './routes/_auth.app.account'
+import { Route as AuthAppOnboardingRouteImport } from './routes/_auth.app.onboarding'
+import { Route as AuthAppTeamRouteImport } from './routes/_auth.app.team'
+import { Route as AuthAuthOtpRouteImport } from './routes/_auth.auth.otp'
+import { Route as AuthInvitationTokenRouteImport } from './routes/_auth.invitation.$token'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth.$'
-import { Route as AppRolesIndexRouteImport } from './routes/app.roles.index'
-import { Route as AppRolesRoleIdRouteImport } from './routes/app.roles.$roleId'
-import { Route as AppSettingsVenueRouteImport } from './routes/app.settings.venue'
+import { Route as RVenueSlugIndisponibleRouteImport } from './routes/r.$venueSlug.indisponible'
+import { Route as RVenueSlugTableRouteImport } from './routes/r.$venueSlug.table'
+import { Route as AuthAppRolesIndexRouteImport } from './routes/_auth.app.roles.index'
+import { Route as AuthAppRolesRoleIdRouteImport } from './routes/_auth.app.roles.$roleId'
+import { Route as AuthAppSettingsVenueRouteImport } from './routes/_auth.app.settings.venue'
+import { Route as RVenueSlugTTokenRouteImport } from './routes/r.$venueSlug.t.$token'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AppRoute = AppRouteImport.update({
-  id: '/app',
-  path: '/app',
+const AuthRoute = AuthRouteImport.update({
+  id: '/_auth',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ConnexionRoute = ConnexionRouteImport.update({
+const RobotsDottxtRoute = RobotsDottxtRouteImport.update({
+  id: '/robots.txt',
+  path: '/robots.txt',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
+  id: '/sitemap.xml',
+  path: '/sitemap.xml',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthAppRoute = AuthAppRouteImport.update({
+  id: '/app',
+  path: '/app',
+  getParentRoute: () => AuthRoute,
+} as any)
+const AuthConnexionRoute = AuthConnexionRouteImport.update({
   id: '/connexion',
   path: '/connexion',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => AuthRoute,
 } as any)
 const ApiClientErrorsRoute = ApiClientErrorsRouteImport.update({
   id: '/api/client-errors',
@@ -50,170 +71,231 @@ const ApiHealthRoute = ApiHealthRouteImport.update({
   path: '/api/health',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AppIndexRoute = AppIndexRouteImport.update({
+const MenuVenueSlugRoute = MenuVenueSlugRouteImport.update({
+  id: '/menu/$venueSlug',
+  path: '/menu/$venueSlug',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthAppIndexRoute = AuthAppIndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => AppRoute,
+  getParentRoute: () => AuthAppRoute,
 } as any)
-const AppAccountRoute = AppAccountRouteImport.update({
+const AuthAppAccountRoute = AuthAppAccountRouteImport.update({
   id: '/account',
   path: '/account',
-  getParentRoute: () => AppRoute,
+  getParentRoute: () => AuthAppRoute,
 } as any)
-const AppOnboardingRoute = AppOnboardingRouteImport.update({
+const AuthAppOnboardingRoute = AuthAppOnboardingRouteImport.update({
   id: '/onboarding',
   path: '/onboarding',
-  getParentRoute: () => AppRoute,
+  getParentRoute: () => AuthAppRoute,
 } as any)
-const AppTeamRoute = AppTeamRouteImport.update({
+const AuthAppTeamRoute = AuthAppTeamRouteImport.update({
   id: '/team',
   path: '/team',
-  getParentRoute: () => AppRoute,
+  getParentRoute: () => AuthAppRoute,
 } as any)
-const AuthOtpRoute = AuthOtpRouteImport.update({
+const AuthAuthOtpRoute = AuthAuthOtpRouteImport.update({
   id: '/auth/otp',
   path: '/auth/otp',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => AuthRoute,
 } as any)
-const InvitationTokenRoute = InvitationTokenRouteImport.update({
+const AuthInvitationTokenRoute = AuthInvitationTokenRouteImport.update({
   id: '/invitation/$token',
   path: '/invitation/$token',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => AuthRoute,
 } as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   id: '/api/auth/$',
   path: '/api/auth/$',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AppRolesIndexRoute = AppRolesIndexRouteImport.update({
+const RVenueSlugIndisponibleRoute = RVenueSlugIndisponibleRouteImport.update({
+  id: '/r/$venueSlug/indisponible',
+  path: '/r/$venueSlug/indisponible',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RVenueSlugTableRoute = RVenueSlugTableRouteImport.update({
+  id: '/r/$venueSlug/table',
+  path: '/r/$venueSlug/table',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthAppRolesIndexRoute = AuthAppRolesIndexRouteImport.update({
   id: '/roles/',
   path: '/roles/',
-  getParentRoute: () => AppRoute,
+  getParentRoute: () => AuthAppRoute,
 } as any)
-const AppRolesRoleIdRoute = AppRolesRoleIdRouteImport.update({
+const AuthAppRolesRoleIdRoute = AuthAppRolesRoleIdRouteImport.update({
   id: '/roles/$roleId',
   path: '/roles/$roleId',
-  getParentRoute: () => AppRoute,
+  getParentRoute: () => AuthAppRoute,
 } as any)
-const AppSettingsVenueRoute = AppSettingsVenueRouteImport.update({
+const AuthAppSettingsVenueRoute = AuthAppSettingsVenueRouteImport.update({
   id: '/settings/venue',
   path: '/settings/venue',
-  getParentRoute: () => AppRoute,
+  getParentRoute: () => AuthAppRoute,
+} as any)
+const RVenueSlugTTokenRoute = RVenueSlugTTokenRouteImport.update({
+  id: '/r/$venueSlug/t/$token',
+  path: '/r/$venueSlug/t/$token',
+  getParentRoute: () => rootRouteImport,
 } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/app': typeof AppRouteWithChildren
-  '/connexion': typeof ConnexionRoute
+  '/robots.txt': typeof RobotsDottxtRoute
+  '/sitemap.xml': typeof SitemapDotxmlRoute
+  '/app': typeof AuthAppRouteWithChildren
+  '/connexion': typeof AuthConnexionRoute
   '/api/client-errors': typeof ApiClientErrorsRoute
   '/api/health': typeof ApiHealthRoute
-  '/app/account': typeof AppAccountRoute
-  '/app/onboarding': typeof AppOnboardingRoute
-  '/app/team': typeof AppTeamRoute
-  '/auth/otp': typeof AuthOtpRoute
-  '/invitation/$token': typeof InvitationTokenRoute
-  '/app/': typeof AppIndexRoute
+  '/menu/$venueSlug': typeof MenuVenueSlugRoute
+  '/app/account': typeof AuthAppAccountRoute
+  '/app/onboarding': typeof AuthAppOnboardingRoute
+  '/app/team': typeof AuthAppTeamRoute
+  '/auth/otp': typeof AuthAuthOtpRoute
+  '/invitation/$token': typeof AuthInvitationTokenRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
-  '/app/roles/$roleId': typeof AppRolesRoleIdRoute
-  '/app/settings/venue': typeof AppSettingsVenueRoute
-  '/app/roles/': typeof AppRolesIndexRoute
+  '/r/$venueSlug/indisponible': typeof RVenueSlugIndisponibleRoute
+  '/r/$venueSlug/table': typeof RVenueSlugTableRoute
+  '/app/': typeof AuthAppIndexRoute
+  '/app/roles/$roleId': typeof AuthAppRolesRoleIdRoute
+  '/app/settings/venue': typeof AuthAppSettingsVenueRoute
+  '/r/$venueSlug/t/$token': typeof RVenueSlugTTokenRoute
+  '/app/roles/': typeof AuthAppRolesIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/connexion': typeof ConnexionRoute
+  '/robots.txt': typeof RobotsDottxtRoute
+  '/sitemap.xml': typeof SitemapDotxmlRoute
+  '/connexion': typeof AuthConnexionRoute
   '/api/client-errors': typeof ApiClientErrorsRoute
   '/api/health': typeof ApiHealthRoute
-  '/app/account': typeof AppAccountRoute
-  '/app/onboarding': typeof AppOnboardingRoute
-  '/app/team': typeof AppTeamRoute
-  '/auth/otp': typeof AuthOtpRoute
-  '/invitation/$token': typeof InvitationTokenRoute
-  '/app': typeof AppIndexRoute
+  '/menu/$venueSlug': typeof MenuVenueSlugRoute
+  '/app/account': typeof AuthAppAccountRoute
+  '/app/onboarding': typeof AuthAppOnboardingRoute
+  '/app/team': typeof AuthAppTeamRoute
+  '/auth/otp': typeof AuthAuthOtpRoute
+  '/invitation/$token': typeof AuthInvitationTokenRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
-  '/app/roles/$roleId': typeof AppRolesRoleIdRoute
-  '/app/settings/venue': typeof AppSettingsVenueRoute
-  '/app/roles': typeof AppRolesIndexRoute
+  '/r/$venueSlug/indisponible': typeof RVenueSlugIndisponibleRoute
+  '/r/$venueSlug/table': typeof RVenueSlugTableRoute
+  '/app': typeof AuthAppIndexRoute
+  '/app/roles/$roleId': typeof AuthAppRolesRoleIdRoute
+  '/app/settings/venue': typeof AuthAppSettingsVenueRoute
+  '/r/$venueSlug/t/$token': typeof RVenueSlugTTokenRoute
+  '/app/roles': typeof AuthAppRolesIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/app': typeof AppRouteWithChildren
-  '/connexion': typeof ConnexionRoute
+  '/_auth': typeof AuthRouteWithChildren
+  '/robots.txt': typeof RobotsDottxtRoute
+  '/sitemap.xml': typeof SitemapDotxmlRoute
+  '/_auth/app': typeof AuthAppRouteWithChildren
+  '/_auth/connexion': typeof AuthConnexionRoute
   '/api/client-errors': typeof ApiClientErrorsRoute
   '/api/health': typeof ApiHealthRoute
-  '/app/account': typeof AppAccountRoute
-  '/app/onboarding': typeof AppOnboardingRoute
-  '/app/team': typeof AppTeamRoute
-  '/auth/otp': typeof AuthOtpRoute
-  '/invitation/$token': typeof InvitationTokenRoute
-  '/app/': typeof AppIndexRoute
+  '/menu/$venueSlug': typeof MenuVenueSlugRoute
+  '/_auth/app/account': typeof AuthAppAccountRoute
+  '/_auth/app/onboarding': typeof AuthAppOnboardingRoute
+  '/_auth/app/team': typeof AuthAppTeamRoute
+  '/_auth/auth/otp': typeof AuthAuthOtpRoute
+  '/_auth/invitation/$token': typeof AuthInvitationTokenRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
-  '/app/roles/$roleId': typeof AppRolesRoleIdRoute
-  '/app/settings/venue': typeof AppSettingsVenueRoute
-  '/app/roles/': typeof AppRolesIndexRoute
+  '/r/$venueSlug/indisponible': typeof RVenueSlugIndisponibleRoute
+  '/r/$venueSlug/table': typeof RVenueSlugTableRoute
+  '/_auth/app/': typeof AuthAppIndexRoute
+  '/_auth/app/roles/$roleId': typeof AuthAppRolesRoleIdRoute
+  '/_auth/app/settings/venue': typeof AuthAppSettingsVenueRoute
+  '/r/$venueSlug/t/$token': typeof RVenueSlugTTokenRoute
+  '/_auth/app/roles/': typeof AuthAppRolesIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/robots.txt'
+    | '/sitemap.xml'
     | '/app'
     | '/connexion'
     | '/api/client-errors'
     | '/api/health'
+    | '/menu/$venueSlug'
     | '/app/account'
     | '/app/onboarding'
     | '/app/team'
     | '/auth/otp'
     | '/invitation/$token'
-    | '/app/'
     | '/api/auth/$'
+    | '/r/$venueSlug/indisponible'
+    | '/r/$venueSlug/table'
+    | '/app/'
     | '/app/roles/$roleId'
     | '/app/settings/venue'
+    | '/r/$venueSlug/t/$token'
     | '/app/roles/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/robots.txt'
+    | '/sitemap.xml'
     | '/connexion'
     | '/api/client-errors'
     | '/api/health'
+    | '/menu/$venueSlug'
     | '/app/account'
     | '/app/onboarding'
     | '/app/team'
     | '/auth/otp'
     | '/invitation/$token'
-    | '/app'
     | '/api/auth/$'
+    | '/r/$venueSlug/indisponible'
+    | '/r/$venueSlug/table'
+    | '/app'
     | '/app/roles/$roleId'
     | '/app/settings/venue'
+    | '/r/$venueSlug/t/$token'
     | '/app/roles'
   id:
     | '__root__'
     | '/'
-    | '/app'
-    | '/connexion'
+    | '/_auth'
+    | '/robots.txt'
+    | '/sitemap.xml'
+    | '/_auth/app'
+    | '/_auth/connexion'
     | '/api/client-errors'
     | '/api/health'
-    | '/app/account'
-    | '/app/onboarding'
-    | '/app/team'
-    | '/auth/otp'
-    | '/invitation/$token'
-    | '/app/'
+    | '/menu/$venueSlug'
+    | '/_auth/app/account'
+    | '/_auth/app/onboarding'
+    | '/_auth/app/team'
+    | '/_auth/auth/otp'
+    | '/_auth/invitation/$token'
     | '/api/auth/$'
-    | '/app/roles/$roleId'
-    | '/app/settings/venue'
-    | '/app/roles/'
+    | '/r/$venueSlug/indisponible'
+    | '/r/$venueSlug/table'
+    | '/_auth/app/'
+    | '/_auth/app/roles/$roleId'
+    | '/_auth/app/settings/venue'
+    | '/r/$venueSlug/t/$token'
+    | '/_auth/app/roles/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  AppRoute: typeof AppRouteWithChildren
-  ConnexionRoute: typeof ConnexionRoute
+  AuthRoute: typeof AuthRouteWithChildren
+  RobotsDottxtRoute: typeof RobotsDottxtRoute
+  SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   ApiClientErrorsRoute: typeof ApiClientErrorsRoute
   ApiHealthRoute: typeof ApiHealthRoute
-  AuthOtpRoute: typeof AuthOtpRoute
-  InvitationTokenRoute: typeof InvitationTokenRoute
+  MenuVenueSlugRoute: typeof MenuVenueSlugRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
+  RVenueSlugIndisponibleRoute: typeof RVenueSlugIndisponibleRoute
+  RVenueSlugTableRoute: typeof RVenueSlugTableRoute
+  RVenueSlugTTokenRoute: typeof RVenueSlugTTokenRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -225,19 +307,40 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/app': {
-      id: '/app'
-      path: '/app'
-      fullPath: '/app'
-      preLoaderRoute: typeof AppRouteImport
+    '/_auth': {
+      id: '/_auth'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AuthRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/connexion': {
-      id: '/connexion'
+    '/robots.txt': {
+      id: '/robots.txt'
+      path: '/robots.txt'
+      fullPath: '/robots.txt'
+      preLoaderRoute: typeof RobotsDottxtRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sitemap.xml': {
+      id: '/sitemap.xml'
+      path: '/sitemap.xml'
+      fullPath: '/sitemap.xml'
+      preLoaderRoute: typeof SitemapDotxmlRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_auth/app': {
+      id: '/_auth/app'
+      path: '/app'
+      fullPath: '/app'
+      preLoaderRoute: typeof AuthAppRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    '/_auth/connexion': {
+      id: '/_auth/connexion'
       path: '/connexion'
       fullPath: '/connexion'
-      preLoaderRoute: typeof ConnexionRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof AuthConnexionRouteImport
+      parentRoute: typeof AuthRoute
     }
     '/api/client-errors': {
       id: '/api/client-errors'
@@ -253,47 +356,54 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiHealthRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/app/': {
-      id: '/app/'
+    '/menu/$venueSlug': {
+      id: '/menu/$venueSlug'
+      path: '/menu/$venueSlug'
+      fullPath: '/menu/$venueSlug'
+      preLoaderRoute: typeof MenuVenueSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_auth/app/': {
+      id: '/_auth/app/'
       path: '/'
       fullPath: '/app/'
-      preLoaderRoute: typeof AppIndexRouteImport
-      parentRoute: typeof AppRoute
+      preLoaderRoute: typeof AuthAppIndexRouteImport
+      parentRoute: typeof AuthAppRoute
     }
-    '/app/account': {
-      id: '/app/account'
+    '/_auth/app/account': {
+      id: '/_auth/app/account'
       path: '/account'
       fullPath: '/app/account'
-      preLoaderRoute: typeof AppAccountRouteImport
-      parentRoute: typeof AppRoute
+      preLoaderRoute: typeof AuthAppAccountRouteImport
+      parentRoute: typeof AuthAppRoute
     }
-    '/app/onboarding': {
-      id: '/app/onboarding'
+    '/_auth/app/onboarding': {
+      id: '/_auth/app/onboarding'
       path: '/onboarding'
       fullPath: '/app/onboarding'
-      preLoaderRoute: typeof AppOnboardingRouteImport
-      parentRoute: typeof AppRoute
+      preLoaderRoute: typeof AuthAppOnboardingRouteImport
+      parentRoute: typeof AuthAppRoute
     }
-    '/app/team': {
-      id: '/app/team'
+    '/_auth/app/team': {
+      id: '/_auth/app/team'
       path: '/team'
       fullPath: '/app/team'
-      preLoaderRoute: typeof AppTeamRouteImport
-      parentRoute: typeof AppRoute
+      preLoaderRoute: typeof AuthAppTeamRouteImport
+      parentRoute: typeof AuthAppRoute
     }
-    '/auth/otp': {
-      id: '/auth/otp'
+    '/_auth/auth/otp': {
+      id: '/_auth/auth/otp'
       path: '/auth/otp'
       fullPath: '/auth/otp'
-      preLoaderRoute: typeof AuthOtpRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof AuthAuthOtpRouteImport
+      parentRoute: typeof AuthRoute
     }
-    '/invitation/$token': {
-      id: '/invitation/$token'
+    '/_auth/invitation/$token': {
+      id: '/_auth/invitation/$token'
       path: '/invitation/$token'
       fullPath: '/invitation/$token'
-      preLoaderRoute: typeof InvitationTokenRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof AuthInvitationTokenRouteImport
+      parentRoute: typeof AuthRoute
     }
     '/api/auth/$': {
       id: '/api/auth/$'
@@ -302,61 +412,102 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAuthSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/app/roles/': {
-      id: '/app/roles/'
+    '/r/$venueSlug/indisponible': {
+      id: '/r/$venueSlug/indisponible'
+      path: '/r/$venueSlug/indisponible'
+      fullPath: '/r/$venueSlug/indisponible'
+      preLoaderRoute: typeof RVenueSlugIndisponibleRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/r/$venueSlug/table': {
+      id: '/r/$venueSlug/table'
+      path: '/r/$venueSlug/table'
+      fullPath: '/r/$venueSlug/table'
+      preLoaderRoute: typeof RVenueSlugTableRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_auth/app/roles/': {
+      id: '/_auth/app/roles/'
       path: '/roles'
       fullPath: '/app/roles/'
-      preLoaderRoute: typeof AppRolesIndexRouteImport
-      parentRoute: typeof AppRoute
+      preLoaderRoute: typeof AuthAppRolesIndexRouteImport
+      parentRoute: typeof AuthAppRoute
     }
-    '/app/roles/$roleId': {
-      id: '/app/roles/$roleId'
+    '/_auth/app/roles/$roleId': {
+      id: '/_auth/app/roles/$roleId'
       path: '/roles/$roleId'
       fullPath: '/app/roles/$roleId'
-      preLoaderRoute: typeof AppRolesRoleIdRouteImport
-      parentRoute: typeof AppRoute
+      preLoaderRoute: typeof AuthAppRolesRoleIdRouteImport
+      parentRoute: typeof AuthAppRoute
     }
-    '/app/settings/venue': {
-      id: '/app/settings/venue'
+    '/_auth/app/settings/venue': {
+      id: '/_auth/app/settings/venue'
       path: '/settings/venue'
       fullPath: '/app/settings/venue'
-      preLoaderRoute: typeof AppSettingsVenueRouteImport
-      parentRoute: typeof AppRoute
+      preLoaderRoute: typeof AuthAppSettingsVenueRouteImport
+      parentRoute: typeof AuthAppRoute
+    }
+    '/r/$venueSlug/t/$token': {
+      id: '/r/$venueSlug/t/$token'
+      path: '/r/$venueSlug/t/$token'
+      fullPath: '/r/$venueSlug/t/$token'
+      preLoaderRoute: typeof RVenueSlugTTokenRouteImport
+      parentRoute: typeof rootRouteImport
     }
   }
 }
 
-interface AppRouteChildren {
-  AppAccountRoute: typeof AppAccountRoute
-  AppOnboardingRoute: typeof AppOnboardingRoute
-  AppTeamRoute: typeof AppTeamRoute
-  AppIndexRoute: typeof AppIndexRoute
-  AppRolesRoleIdRoute: typeof AppRolesRoleIdRoute
-  AppSettingsVenueRoute: typeof AppSettingsVenueRoute
-  AppRolesIndexRoute: typeof AppRolesIndexRoute
+interface AuthAppRouteChildren {
+  AuthAppAccountRoute: typeof AuthAppAccountRoute
+  AuthAppOnboardingRoute: typeof AuthAppOnboardingRoute
+  AuthAppTeamRoute: typeof AuthAppTeamRoute
+  AuthAppIndexRoute: typeof AuthAppIndexRoute
+  AuthAppRolesRoleIdRoute: typeof AuthAppRolesRoleIdRoute
+  AuthAppSettingsVenueRoute: typeof AuthAppSettingsVenueRoute
+  AuthAppRolesIndexRoute: typeof AuthAppRolesIndexRoute
 }
 
-const AppRouteChildren: AppRouteChildren = {
-  AppAccountRoute: AppAccountRoute,
-  AppOnboardingRoute: AppOnboardingRoute,
-  AppTeamRoute: AppTeamRoute,
-  AppIndexRoute: AppIndexRoute,
-  AppRolesRoleIdRoute: AppRolesRoleIdRoute,
-  AppSettingsVenueRoute: AppSettingsVenueRoute,
-  AppRolesIndexRoute: AppRolesIndexRoute,
+const AuthAppRouteChildren: AuthAppRouteChildren = {
+  AuthAppAccountRoute: AuthAppAccountRoute,
+  AuthAppOnboardingRoute: AuthAppOnboardingRoute,
+  AuthAppTeamRoute: AuthAppTeamRoute,
+  AuthAppIndexRoute: AuthAppIndexRoute,
+  AuthAppRolesRoleIdRoute: AuthAppRolesRoleIdRoute,
+  AuthAppSettingsVenueRoute: AuthAppSettingsVenueRoute,
+  AuthAppRolesIndexRoute: AuthAppRolesIndexRoute,
 }
 
-const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
+const AuthAppRouteWithChildren =
+  AuthAppRoute._addFileChildren(AuthAppRouteChildren)
+
+interface AuthRouteChildren {
+  AuthAppRoute: typeof AuthAppRouteWithChildren
+  AuthConnexionRoute: typeof AuthConnexionRoute
+  AuthAuthOtpRoute: typeof AuthAuthOtpRoute
+  AuthInvitationTokenRoute: typeof AuthInvitationTokenRoute
+}
+
+const AuthRouteChildren: AuthRouteChildren = {
+  AuthAppRoute: AuthAppRouteWithChildren,
+  AuthConnexionRoute: AuthConnexionRoute,
+  AuthAuthOtpRoute: AuthAuthOtpRoute,
+  AuthInvitationTokenRoute: AuthInvitationTokenRoute,
+}
+
+const AuthRouteWithChildren = AuthRoute._addFileChildren(AuthRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  AppRoute: AppRouteWithChildren,
-  ConnexionRoute: ConnexionRoute,
+  AuthRoute: AuthRouteWithChildren,
+  RobotsDottxtRoute: RobotsDottxtRoute,
+  SitemapDotxmlRoute: SitemapDotxmlRoute,
   ApiClientErrorsRoute: ApiClientErrorsRoute,
   ApiHealthRoute: ApiHealthRoute,
-  AuthOtpRoute: AuthOtpRoute,
-  InvitationTokenRoute: InvitationTokenRoute,
+  MenuVenueSlugRoute: MenuVenueSlugRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
+  RVenueSlugIndisponibleRoute: RVenueSlugIndisponibleRoute,
+  RVenueSlugTableRoute: RVenueSlugTableRoute,
+  RVenueSlugTTokenRoute: RVenueSlugTTokenRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

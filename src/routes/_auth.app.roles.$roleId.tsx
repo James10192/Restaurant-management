@@ -17,7 +17,7 @@ import { LoadingState, PermissionDeniedState } from "~/components/ui/states";
 import { Textarea } from "~/components/ui/textarea";
 import { describeError } from "~/lib/errors";
 
-export const Route = createFileRoute("/app/roles/$roleId")({
+export const Route = createFileRoute("/_auth/app/roles/$roleId")({
   head: () => ({ meta: [{ title: "Rôle — Joliba" }] }),
   component: RoleEditorPage,
 });

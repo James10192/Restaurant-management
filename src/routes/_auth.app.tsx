@@ -21,7 +21,7 @@ import { LoadingState } from "~/components/ui/states";
 import { authClient } from "~/lib/auth-client";
 import { cn } from "~/lib/cn";
 
-export const Route = createFileRoute("/app")({
+export const Route = createFileRoute("/_auth/app")({
   head: () => ({ meta: [{ title: "Joliba" }, { name: "robots", content: "noindex, nofollow" }] }),
   component: AppLayout,
   errorComponent: ({ error, reset }) => (

@@ -8,7 +8,7 @@ import { Button } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
 import { LoadingState, PermissionDeniedState } from "~/components/ui/states";
 
-export const Route = createFileRoute("/app/roles/")({
+export const Route = createFileRoute("/_auth/app/roles/")({
   head: () => ({ meta: [{ title: "Rôles — Joliba" }] }),
   component: RolesPage,
 });

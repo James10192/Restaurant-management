@@ -23,6 +23,7 @@ describe("journaux structurés", () => {
 
   test("le jeton d'invitation est retiré de la route", () => {
     expect(redactRoute("/invitation/AbC-123_xyz?x=1")).toBe("/invitation/:jeton");
+    expect(redactRoute("/r/maquis-awa/t/Zx9_-kQ2mPvLw8RtYu3aBc")).toBe("/r/maquis-awa/t/:jeton");
     expect(sanitizeLogFields({ route: "/invitation/AbC-123_xyz" }).route).toBe("/invitation/:jeton");
   });
 });

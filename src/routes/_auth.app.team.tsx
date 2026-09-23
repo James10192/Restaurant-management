@@ -24,7 +24,7 @@ import {
 import { EmptyState, LoadingState, PermissionDeniedState } from "~/components/ui/states";
 import { describeError } from "~/lib/errors";
 
-export const Route = createFileRoute("/app/team")({
+export const Route = createFileRoute("/_auth/app/team")({
   head: () => ({ meta: [{ title: "Équipe — Joliba" }] }),
   component: TeamPage,
 });

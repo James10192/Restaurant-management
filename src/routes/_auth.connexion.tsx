@@ -12,7 +12,7 @@ import { pendingEmail, safeRedirect } from "~/lib/redirect";
 
 type Search = { redirect?: string };
 
-export const Route = createFileRoute("/connexion")({
+export const Route = createFileRoute("/_auth/connexion")({
   validateSearch: (search: Record<string, unknown>): Search =>
     typeof search.redirect === "string" ? { redirect: search.redirect } : {},
   head: () => ({ meta: [{ title: "Connexion — Joliba" }, { name: "robots", content: "noindex" }] }),

@@ -11,7 +11,7 @@ import { pendingEmail, safeRedirect } from "~/lib/redirect";
 
 type Search = { redirect?: string };
 
-export const Route = createFileRoute("/auth/otp")({
+export const Route = createFileRoute("/_auth/auth/otp")({
   validateSearch: (search: Record<string, unknown>): Search =>
     typeof search.redirect === "string" ? { redirect: search.redirect } : {},
   head: () => ({ meta: [{ title: "Code de connexion — Joliba" }, { name: "robots", content: "noindex" }] }),

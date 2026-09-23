@@ -13,7 +13,7 @@ import { LoadingState } from "~/components/ui/states";
 import { authClient } from "~/lib/auth-client";
 import { describeError } from "~/lib/errors";
 
-export const Route = createFileRoute("/app/account")({
+export const Route = createFileRoute("/_auth/app/account")({
   head: () => ({ meta: [{ title: "Mon compte — Joliba" }] }),
   component: AccountPage,
 });

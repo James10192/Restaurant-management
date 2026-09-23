@@ -12,7 +12,7 @@ import { LoadingState } from "~/components/ui/states";
 import { authClient } from "~/lib/auth-client";
 import { describeError } from "~/lib/errors";
 
-export const Route = createFileRoute("/invitation/$token")({
+export const Route = createFileRoute("/_auth/invitation/$token")({
   head: () => ({
     // Le jeton est dans l'URL : ne jamais la transmettre à un tiers, ni la faire indexer.
     meta: [{ title: "Invitation — Joliba" }, { name: "robots", content: "noindex, nofollow" }, { name: "referrer", content: "no-referrer" }],

@@ -10,6 +10,7 @@
 
 import type * as auth from "../auth.js";
 import type * as availability from "../availability.js";
+import type * as devSeed from "../devSeed.js";
 import type * as floor from "../floor.js";
 import type * as guest from "../guest.js";
 import type * as health from "../health.js";
@@ -60,6 +61,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   availability: typeof availability;
+  devSeed: typeof devSeed;
   floor: typeof floor;
   guest: typeof guest;
   health: typeof health;

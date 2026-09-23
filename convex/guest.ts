@@ -100,7 +100,13 @@ export const publicMenu = query({
     if (!venue || !venue.publicMenuEnabled || venue.status === "archived") return null;
     const menus = await loadPublishedMenus(ctx, venue._id);
     if (menus.length === 0) return null;
-    return { venue: publicVenue(venue), menus, live: await loadLiveAvailability(ctx, venue._id) };
+    return {
+      venue: publicVenue(venue),
+      menus,
+      live: await loadLiveAvailability(ctx, venue._id),
+      // Les mêmes faits que le plan du site et l'écran de réglages : une seule porte de qualité.
+      facts: await publishedFacts(ctx, venue),
+    };
   },
 });
 

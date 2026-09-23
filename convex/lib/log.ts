@@ -28,11 +28,14 @@ const ALLOWED = new Set<string>(LOG_FIELDS);
 const MAX_VALUE_LENGTH = 300;
 
 /**
- * Certaines routes portent un secret dans leur chemin (le lien d'invitation). Un champ
+ * Certaines routes portent un secret dans leur chemin (le lien d'invitation, le jeton d'un QR). Un champ
  * `route` est donc toujours réécrit avant journalisation.
  */
 export function redactRoute(route: string): string {
-  return route.replace(/\/invitation\/[^/?#]+/g, "/invitation/:jeton").replace(/[?#].*$/, "");
+  return route
+    .replace(/\/invitation\/[^/?#]+/g, "/invitation/:jeton")
+    .replace(/(\/r\/[^/?#]+)\/t\/[^/?#]+/g, "$1/t/:jeton")
+    .replace(/[?#].*$/, "");
 }
 
 /** Ne garde que les champs autorisés, en valeurs scalaires, tronquées. */

@@ -10,6 +10,16 @@ export default defineConfig(({ command }) => ({
   // Une seule copie de React au rendu serveur : sans cela, les bibliothèques Convex et
   // Better Auth, externalisées, résolvent une seconde instance (« more than one copy »).
   resolve: { dedupe: ["react", "react-dom"] },
+  build: {
+    rollupOptions: {
+      treeshake: {
+        // `convex/_generated/api.js` n'a pas d'effet de bord, mais Rollup ne peut pas le savoir
+        // (il appelle une fabrique de Proxy). Sans cette indication, un simple import devenu
+        // inutile après le découpage des routes suffit à embarquer ~9 Ko dans CHAQUE page.
+        moduleSideEffects: (id) => !id.endsWith("/convex/_generated/api.js"),
+      },
+    },
+  },
   ssr: {
     noExternal: [
       "convex",
@@ -40,6 +50,20 @@ export default defineConfig(({ command }) => ({
             "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
           },
         },
+        // La surface client à table : jamais indexée, jamais mise en cache par un intermédiaire,
+        // jamais de référent (IA §3.0, D-023, D-030). Doublé par la balise `robots` de la page.
+        "/r/**": {
+          headers: {
+            "X-Robots-Tag": "noindex, nofollow, noarchive, nosnippet",
+            "Cache-Control": "no-store",
+            "Referrer-Policy": "no-referrer",
+          },
+        },
+        // La carte publique : courte durée en cache partagé, la disponibilité arrive en direct.
+        "/menu/**": { headers: { "Cache-Control": "public, max-age=0, s-maxage=60, stale-while-revalidate=300" } },
+        // Le service worker doit être relu à chaque visite, sinon une correction n'arrive jamais.
+        "/sw.js": { headers: { "Cache-Control": "no-cache" } },
+        "/assets/**": { headers: { "Cache-Control": "public, max-age=31536000, immutable" } },
       },
     }),
     viteReact(),

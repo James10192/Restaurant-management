@@ -12,7 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/com
 import { EmptyState } from "~/components/ui/states";
 import { describeError } from "~/lib/errors";
 
-export const Route = createFileRoute("/app/")({
+export const Route = createFileRoute("/_auth/app/")({
   component: AppHome,
 });
 

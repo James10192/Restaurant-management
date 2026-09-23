@@ -2,8 +2,6 @@ import type { ReactNode } from "react";
 import { HeadContent, Outlet, Scripts, createRootRouteWithContext } from "@tanstack/react-router";
 import fontUrl from "@fontsource-variable/archivo/files/archivo-latin-wght-normal.woff2?url";
 import appCss from "~/styles/app.css?url";
-import { ConvexProviders } from "~/components/app/convex-providers";
-import { RouteError } from "~/components/app/route-error";
 import type { RouterContext } from "~/router";
 
 export const Route = createRootRouteWithContext<RouterContext>()({
@@ -25,20 +23,15 @@ export const Route = createRootRouteWithContext<RouterContext>()({
   }),
   component: RootComponent,
   notFoundComponent: NotFound,
-  errorComponent: ({ error, reset }) => (
-    <main className="mx-auto flex min-h-dvh max-w-md items-center px-4">
-      <RouteError error={error} reset={reset} />
-    </main>
-  ),
+  // Volontairement nu : tout ce que la racine importe est téléchargé par CHAQUE page, carte du
+  // client comprise. Les écrans d'erreur riches vivent dans les mises en page qui s'en servent.
+  errorComponent: RootError,
 });
 
 function RootComponent() {
-  const { convex } = Route.useRouteContext();
   return (
     <RootDocument>
-      <ConvexProviders client={convex}>
-        <Outlet />
-      </ConvexProviders>
+      <Outlet />
     </RootDocument>
   );
 }
@@ -66,6 +59,18 @@ function NotFound() {
       <a href="/" className="text-body text-accent-700 underline underline-offset-4">
         Revenir à l'accueil
       </a>
+    </main>
+  );
+}
+
+function RootError({ reset }: { reset: () => void }) {
+  return (
+    <main className="mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center gap-3 px-4 text-center">
+      <h1 className="text-title-xl text-ink">Le contenu n'a pas pu être chargé</h1>
+      <p className="text-body text-ink-2">Vérifiez la connexion, puis réessayez.</p>
+      <button type="button" onClick={reset} className="h-11 rounded-sm bg-accent-600 px-5 text-label text-on-fill">
+        Réessayer
+      </button>
     </main>
   );
 }

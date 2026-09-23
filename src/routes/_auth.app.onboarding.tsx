@@ -14,7 +14,7 @@ import { Input } from "~/components/ui/input";
 import { NativeSelect } from "~/components/ui/native-select";
 import { describeError } from "~/lib/errors";
 
-export const Route = createFileRoute("/app/onboarding")({
+export const Route = createFileRoute("/_auth/app/onboarding")({
   head: () => ({ meta: [{ title: "Ouvrir mon établissement — Joliba" }] }),
   component: Onboarding,
 });
