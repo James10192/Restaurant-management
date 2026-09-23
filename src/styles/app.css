@@ -1,381 +1,130 @@
-/*
- * Joliba — feuille de style de l'application.
- * Source de vérité : DESIGN.md §2.4 (jetons) et §3 (mode sombre).
- * Toute valeur ici doit exister dans DESIGN.md ; un écart est signalé en commentaire.
- */
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "@fontsource-variable/geist";
 
-/* ---------------------------------------------------------------------------
- * Fontes — DESIGN.md §2.2
- * Un seul fichier téléchargé : Archivo Variable, latin, axe wght (≈ 35 Ko,
- * budget ≤ 40 Ko). Le fichier couvre 100–900 ; on ne déclare que 400–700.
- * ------------------------------------------------------------------------- */
-@font-face {
-  font-family: "Archivo Variable";
-  font-style: normal;
-  font-display: swap;
-  font-weight: 400 700;
-  src: url("../../node_modules/@fontsource-variable/archivo/files/archivo-latin-wght-normal.woff2")
-    format("woff2-variations");
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
-    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215,
-    U+FEFF, U+FFFD;
-}
+@custom-variant dark (&:is(.dark *));
 
-/*
- * Replis ajustés métriquement (§2.2, règle 2) : l'échange de fonte ne décale rien.
- * Valeurs mesurées sur le fichier livré (UPM 1000, ascendante 878, descendante 210,
- * chasse moyenne pondérée 0,4328 em à wght 400), rapportées à Arial et à Roboto.
- * Deux faces, parce qu'Android n'a pas Arial : si aucune source locale n'existe,
- * la face est ignorée et la suivante prend le relais.
- */
-@font-face {
-  font-family: "Archivo Fallback";
-  src: local("Arial"), local("ArialMT"), local("Arimo"), local("Liberation Sans");
-  size-adjust: 98.05%;
-  ascent-override: 89.55%;
-  descent-override: 21.42%;
-  line-gap-override: 0%;
-}
-
-@font-face {
-  font-family: "Archivo Fallback Roboto";
-  src: local("Roboto"), local("Roboto-Regular");
-  size-adjust: 97.3%;
-  ascent-override: 90.24%;
-  descent-override: 21.58%;
-  line-gap-override: 0%;
-}
-
-/* Mode sombre piloté par attribut : la station, le compte ou le système le posent (§3). */
-@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
-
-@theme {
-  /* ---------- Couleur : accent (Pétrole) ---------- */
-  --color-accent-50: #edf6f9;
-  --color-accent-100: #d3e9f0;
-  --color-accent-300: #6fbbd1;
-  --color-accent-500: #0f7e97;
-  --color-accent-600: #0b6478;
-  --color-accent-700: #08505f;
-  --color-accent-800: #063e4a;
-  --color-accent-900: #052f3a;
-
-  /* ---------- Couleur : neutres grège ---------- */
-  --color-ink: #1b1714;
-  --color-ink-2: #4e4741;
-  --color-ink-3: #6b635c;
-  --color-ink-4: #786f68;
-  --color-ink-disabled: #8a817a;
-  --color-line: #e4ded7;
-  --color-line-2: #d3ccc4;
-  --color-line-control: #8a817a;
-  --color-surface: #ffffff;
-  --color-surface-2: #f4f0eb;
-  --color-bg: #faf8f5;
-
-  /*
-   * Texte posé sur un aplat plein (accent-600, success-600, warning-600, danger-600).
-   * Ajout à DESIGN.md : blanc en clair (≥ 5,40:1, §2.1), mais en sombre les aplats
-   * deviennent clairs et le blanc n'y tient plus — d'où un rôle distinct, réaffecté plus bas.
-   */
-  --color-on-fill: #ffffff;
-
-  /* ---------- Couleur : sémantiques ---------- */
-  --color-success-50: #e9f6ee;
-  --color-success-600: #0e7a44;
-  --color-success-700: #0b5c34;
-  --color-warning-50: #fbf2e1;
-  --color-warning-600: #9a5b05;
-  --color-warning-700: #774604;
-  --color-danger-50: #fcedea;
-  --color-danger-600: #bc2c1a;
-  --color-danger-700: #941f11;
-
-  /* ---------- Couleur : rampe sombre ---------- */
-  --color-dark-bg: #14120f;
-  --color-dark-surface: #1e1b17;
-  --color-dark-surface-2: #2a2620;
-  --color-dark-line: #3b352e;
-  --color-dark-line-control: #7a6f63;
-  --color-dark-ink: #f7f4f0;
-  --color-dark-ink-2: #c2bab1;
-  --color-dark-ink-3: #968d84;
-  --color-dark-accent: #3fa8c4;
-  --color-dark-success: #4fbe7c;
-  --color-dark-warning: #e0a23c;
-  --color-dark-danger: #f2705c;
-
-  /* ---------- Couleur : pastilles pleines KDS ---------- */
-  --color-kds-ontime: #8ed9f0;
-  --color-kds-soon: #f2c062;
-  --color-kds-late: #ff9e8c;
-
-  /* ---------- Typographie ---------- */
-  --font-sans:
-    "Archivo Variable", "Archivo", "Archivo Fallback", "Archivo Fallback Roboto", system-ui,
-    -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-
-  --text-display: clamp(2.25rem, 6vw, 4rem);
-  --text-display--line-height: 1.05;
-  --text-display--letter-spacing: -0.03em;
-  --text-display--font-weight: 700;
-
-  --text-title-2xl: 30px;
-  --text-title-2xl--line-height: 1.15;
-  --text-title-2xl--letter-spacing: -0.02em;
-  --text-title-2xl--font-weight: 700;
-
-  --text-title-xl: 24px;
-  --text-title-xl--line-height: 1.2;
-  --text-title-xl--letter-spacing: -0.015em;
-  --text-title-xl--font-weight: 700;
-
-  --text-title-lg: 20px;
-  --text-title-lg--line-height: 1.3;
-  --text-title-lg--letter-spacing: -0.01em;
-  --text-title-lg--font-weight: 600;
-
-  --text-title-md: 17px;
-  --text-title-md--line-height: 1.4;
-  --text-title-md--font-weight: 600;
-
-  --text-body: 15px;
-  --text-body--line-height: 1.55;
-
-  --text-label: 13px;
-  --text-label--line-height: 1.4;
-  --text-label--font-weight: 500;
-
-  --text-micro: 11px;
-  --text-micro--line-height: 1.35;
-  --text-micro--font-weight: 600;
-  --text-micro--letter-spacing: 0.01em;
-
-  /* ---------- Rayons ---------- */
-  --radius-xs: 4px;
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 18px;
-  --radius-full: 9999px;
-
-  /* ---------- Élévation : deux niveaux ---------- */
-  --shadow-e1: 0 1px 2px rgb(27 23 20 / 0.06), 0 8px 20px -12px rgb(27 23 20 / 0.16);
-  --shadow-e2: 0 12px 32px -8px rgb(27 23 20 / 0.24);
-
-  /* ---------- Courbes ---------- */
-  --ease-out-soft: cubic-bezier(0.2, 0.8, 0.2, 1);
-  --ease-in-out-soft: cubic-bezier(0.4, 0, 0.2, 1);
-
-  /* ---------- Points de rupture ---------- */
-  --breakpoint-sm: 380px;
-  --breakpoint-md: 600px;
-  --breakpoint-lg: 900px;
-  --breakpoint-xl: 1280px;
-  --breakpoint-2xl: 1600px;
-
-  /*
-   * ---------- Apparitions des surcouches (§2.3 « Mouvement ») ----------
-   * Entrée en m-sheet (220 ms), sortie en m-fast, opacité et léger glissement.
-   * Sous prefers-reduced-motion, la règle de base ramène tout à 1 ms.
-   */
-  --animate-overlay-in: joliba-fade-in var(--m-sheet) var(--ease-out-soft);
-  --animate-overlay-out: joliba-fade-out var(--m-fast) var(--ease-out-soft);
-  --animate-dialog-in: joliba-rise-in var(--m-sheet) var(--ease-out-soft);
-  --animate-dialog-out: joliba-fade-out var(--m-fast) var(--ease-out-soft);
-  --animate-popover-in: joliba-drop-in var(--m-base) var(--ease-out-soft);
-  --animate-popover-out: joliba-fade-out var(--m-fast) var(--ease-out-soft);
-
-  @keyframes joliba-fade-in {
-    from {
-      opacity: 0;
-    }
-  }
-  @keyframes joliba-fade-out {
-    to {
-      opacity: 0;
-    }
-  }
-  /* `transform` et non `translate` : les utilitaires de centrage de Tailwind v4 posent
-     la propriété `translate`, les deux se composent au lieu de s'écraser. */
-  @keyframes joliba-rise-in {
-    from {
-      opacity: 0;
-      transform: translateY(8px);
-    }
-  }
-  @keyframes joliba-drop-in {
-    from {
-      opacity: 0;
-      transform: translateY(-4px);
-    }
-  }
+@theme inline {
+    --font-heading: var(--font-sans);
+    --font-sans: 'Geist Variable', sans-serif;
+    --color-sidebar-ring: var(--sidebar-ring);
+    --color-sidebar-border: var(--sidebar-border);
+    --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+    --color-sidebar-accent: var(--sidebar-accent);
+    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+    --color-sidebar-primary: var(--sidebar-primary);
+    --color-sidebar-foreground: var(--sidebar-foreground);
+    --color-sidebar: var(--sidebar);
+    --color-chart-5: var(--chart-5);
+    --color-chart-4: var(--chart-4);
+    --color-chart-3: var(--chart-3);
+    --color-chart-2: var(--chart-2);
+    --color-chart-1: var(--chart-1);
+    --color-ring: var(--ring);
+    --color-input: var(--input);
+    --color-border: var(--border);
+    --color-destructive: var(--destructive);
+    --color-accent-foreground: var(--accent-foreground);
+    --color-accent: var(--accent);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-muted: var(--muted);
+    --color-secondary-foreground: var(--secondary-foreground);
+    --color-secondary: var(--secondary);
+    --color-primary-foreground: var(--primary-foreground);
+    --color-primary: var(--primary);
+    --color-popover-foreground: var(--popover-foreground);
+    --color-popover: var(--popover);
+    --color-card-foreground: var(--card-foreground);
+    --color-card: var(--card);
+    --color-foreground: var(--foreground);
+    --color-background: var(--background);
+    --radius-sm: calc(var(--radius) * 0.6);
+    --radius-md: calc(var(--radius) * 0.8);
+    --radius-lg: var(--radius);
+    --radius-xl: calc(var(--radius) * 1.4);
+    --radius-2xl: calc(var(--radius) * 1.8);
+    --radius-3xl: calc(var(--radius) * 2.2);
+    --radius-4xl: calc(var(--radius) * 2.6);
 }
 
 :root {
-  /* ---------- Durées ---------- */
-  --m-fast: 120ms;
-  --m-base: 160ms;
-  --m-sheet: 220ms;
-
-  /* ---------- Profondeurs ---------- */
-  --z-base: 0;
-  --z-sticky: 10;
-  --z-dock: 20;
-  --z-scrim: 40;
-  --z-overlay: 50;
-  --z-popover: 60;
-  --z-toast: 70;
-  --z-system: 80;
-  --z-skip: 100;
-
-  /* ---------- Densité : réglage par défaut = ops ---------- */
-  --tap: 44px; /* cible tactile minimale — jamais franchie vers le bas (R-D4) */
-  --control-h: 44px; /* hauteur de bouton, champ, sélection */
-  --row-h: 44px; /* hauteur de ligne de tableau */
-  --pad-x: 12px; /* rembourrage horizontal d'un contrôle */
-  --pad-card: 16px; /* rembourrage intérieur d'un conteneur */
-  --gap: 8px; /* écart entre éléments frères */
-  --font-base: 15px;
-  --icon: 20px;
-  --stroke: 1.75;
-
-  /* ---------- Voile ---------- */
-  --scrim: rgb(27 23 20 / 0.44);
-
-  color-scheme: light;
+    --background: oklch(1 0 0);
+    --foreground: oklch(0.145 0 0);
+    --card: oklch(1 0 0);
+    --card-foreground: oklch(0.145 0 0);
+    --popover: oklch(1 0 0);
+    --popover-foreground: oklch(0.145 0 0);
+    --primary: oklch(0.205 0 0);
+    --primary-foreground: oklch(0.985 0 0);
+    --secondary: oklch(0.97 0 0);
+    --secondary-foreground: oklch(0.205 0 0);
+    --muted: oklch(0.97 0 0);
+    --muted-foreground: oklch(0.556 0 0);
+    --accent: oklch(0.97 0 0);
+    --accent-foreground: oklch(0.205 0 0);
+    --destructive: oklch(0.577 0.245 27.325);
+    --border: oklch(0.922 0 0);
+    --input: oklch(0.922 0 0);
+    --ring: oklch(0.708 0 0);
+    --chart-1: oklch(0.87 0 0);
+    --chart-2: oklch(0.556 0 0);
+    --chart-3: oklch(0.439 0 0);
+    --chart-4: oklch(0.371 0 0);
+    --chart-5: oklch(0.269 0 0);
+    --radius: 0.625rem;
+    --sidebar: oklch(0.985 0 0);
+    --sidebar-foreground: oklch(0.145 0 0);
+    --sidebar-primary: oklch(0.205 0 0);
+    --sidebar-primary-foreground: oklch(0.985 0 0);
+    --sidebar-accent: oklch(0.97 0 0);
+    --sidebar-accent-foreground: oklch(0.205 0 0);
+    --sidebar-border: oklch(0.922 0 0);
+    --sidebar-ring: oklch(0.708 0 0);
 }
 
-/* La densité est un attribut posé sur la racine de la surface, jamais un thème séparé. */
-[data-density="guest"] {
-  --tap: 56px;
-  --control-h: 52px;
-  --row-h: auto;
-  --pad-x: 16px;
-  --pad-card: 20px;
-  --gap: 16px;
-  --font-base: 17px;
-  --icon: 24px;
-  --stroke: 1.75;
-}
-[data-density="ops"] {
-  --tap: 44px;
-  --control-h: 44px;
-  --row-h: 44px;
-  --pad-x: 12px;
-  --pad-card: 16px;
-  --gap: 8px;
-  --font-base: 15px;
-  --icon: 20px;
-  --stroke: 1.75;
-}
-[data-density="kds"] {
-  --tap: 72px;
-  --control-h: 64px;
-  --row-h: 72px;
-  --pad-x: 16px;
-  --pad-card: 16px;
-  --gap: 12px;
-  --font-base: 20px;
-  --icon: 28px;
-  --stroke: 2;
-}
-
-/* Bascule sombre : on réaffecte les rôles, on ne renomme rien (§2.4). */
-[data-theme="dark"] {
-  --color-bg: var(--color-dark-bg);
-  --color-surface: var(--color-dark-surface);
-  --color-surface-2: var(--color-dark-surface-2);
-  --color-line: var(--color-dark-line);
-  --color-line-2: var(--color-dark-line-control);
-  --color-line-control: var(--color-dark-line-control);
-  --color-ink: var(--color-dark-ink);
-  --color-ink-2: var(--color-dark-ink-2);
-  --color-ink-3: var(--color-dark-ink-3);
-  --color-ink-4: var(--color-dark-ink-3);
-  --color-accent-600: var(--color-dark-accent);
-  --color-success-600: var(--color-dark-success);
-  --color-warning-600: var(--color-dark-warning);
-  --color-danger-600: var(--color-dark-danger);
-  --scrim: rgb(0 0 0 / 0.6);
-
-  /*
-   * Compléments à DESIGN.md §2.4, qui ne réaffecte que les aplats -600.
-   * Sans eux, les fonds -50 resteraient des pastilles claires sur fond sombre et
-   * le texte -700 y deviendrait illisible. Ratios calculés (formule WCAG 2.x) :
-   * -700 sur -50 ≥ 6,12:1 ; texte on-fill sur -600, -700 et -800 ≥ 6,45:1.
-   * En sombre, « -700 » garde son sens de « plus contrasté que -600 » : il s'éclaircit.
-   */
-  --color-on-fill: var(--color-dark-bg);
-  --color-accent-50: color-mix(in srgb, var(--color-dark-accent) 14%, var(--color-dark-surface));
-  --color-accent-100: color-mix(in srgb, var(--color-dark-accent) 24%, var(--color-dark-surface));
-  --color-accent-700: color-mix(in srgb, var(--color-dark-accent) 75%, var(--color-dark-ink));
-  --color-accent-800: color-mix(in srgb, var(--color-dark-accent) 60%, var(--color-dark-ink));
-  --color-success-50: color-mix(in srgb, var(--color-dark-success) 14%, var(--color-dark-surface));
-  --color-success-700: color-mix(in srgb, var(--color-dark-success) 75%, var(--color-dark-ink));
-  --color-warning-50: color-mix(in srgb, var(--color-dark-warning) 14%, var(--color-dark-surface));
-  --color-warning-700: color-mix(in srgb, var(--color-dark-warning) 75%, var(--color-dark-ink));
-  --color-danger-50: color-mix(in srgb, var(--color-dark-danger) 14%, var(--color-dark-surface));
-  --color-danger-700: color-mix(in srgb, var(--color-dark-danger) 75%, var(--color-dark-ink));
-
-  color-scheme: dark;
+.dark {
+    --background: oklch(0.145 0 0);
+    --foreground: oklch(0.985 0 0);
+    --card: oklch(0.205 0 0);
+    --card-foreground: oklch(0.985 0 0);
+    --popover: oklch(0.205 0 0);
+    --popover-foreground: oklch(0.985 0 0);
+    --primary: oklch(0.922 0 0);
+    --primary-foreground: oklch(0.205 0 0);
+    --secondary: oklch(0.269 0 0);
+    --secondary-foreground: oklch(0.985 0 0);
+    --muted: oklch(0.269 0 0);
+    --muted-foreground: oklch(0.708 0 0);
+    --accent: oklch(0.269 0 0);
+    --accent-foreground: oklch(0.985 0 0);
+    --destructive: oklch(0.704 0.191 22.216);
+    --border: oklch(1 0 0 / 10%);
+    --input: oklch(1 0 0 / 15%);
+    --ring: oklch(0.556 0 0);
+    --chart-1: oklch(0.87 0 0);
+    --chart-2: oklch(0.556 0 0);
+    --chart-3: oklch(0.439 0 0);
+    --chart-4: oklch(0.371 0 0);
+    --chart-5: oklch(0.269 0 0);
+    --sidebar: oklch(0.205 0 0);
+    --sidebar-foreground: oklch(0.985 0 0);
+    --sidebar-primary: oklch(0.488 0.243 264.376);
+    --sidebar-primary-foreground: oklch(0.985 0 0);
+    --sidebar-accent: oklch(0.269 0 0);
+    --sidebar-accent-foreground: oklch(0.985 0 0);
+    --sidebar-border: oklch(1 0 0 / 10%);
+    --sidebar-ring: oklch(0.556 0 0);
 }
 
 @layer base {
-  html {
-    font-family: var(--font-sans);
-    -webkit-text-size-adjust: 100%;
-    text-size-adjust: 100%;
-  }
-
+  * {
+    @apply border-border outline-ring/50;
+    }
   body {
-    background: var(--color-bg);
-    color: var(--color-ink);
-    font-size: var(--font-base);
-    line-height: 1.55;
-  }
-
-  /* Valeurs mesurables : chasse fixe, toujours (R-D6). Archivo expose bien « tnum ». */
-  .num,
-  td.num,
-  [data-num] {
-    font-variant-numeric: tabular-nums;
-    font-feature-settings: "tnum" 1;
-  }
-
-  /* Focus : double anneau, visible aussi bien sur fond clair que sur un aplat coloré (§9.1). */
-  :focus-visible {
-    outline: 2px solid var(--color-accent-600);
-    outline-offset: 2px;
-    box-shadow: 0 0 0 4px var(--color-surface);
-  }
-
-  /* 1 ms et non 0, pour ne pas casser les écouteurs de transitionend (§2.3). */
-  @media (prefers-reduced-motion: reduce) {
-    *,
-    *::before,
-    *::after {
-      animation-duration: 1ms !important;
-      animation-iteration-count: 1 !important;
-      transition-duration: 1ms !important;
-      scroll-behavior: auto !important;
+    @apply bg-background text-foreground;
     }
-  }
-
-  /* Impression : toujours clair, jamais d'aplat sombre (§3). */
-  @media print {
-    :root,
-    [data-theme="dark"] {
-      --color-bg: #ffffff;
-      --color-surface: #ffffff;
-      --color-surface-2: #ffffff;
-      --color-ink: #000000;
-      --color-ink-2: #000000;
-      --color-line: #999999;
+  html {
+    @apply font-sans;
     }
-    [data-print-hide] {
-      display: none !important;
-    }
-  }
 }

@@ -1,12 +1,13 @@
-import type { ComponentProps } from "react";
-import { cn } from "../../lib/cn";
+import { cn } from "cn"
 
-/*
- * Squelette — DESIGN.md §10.1 : à la forme réelle du contenu (mêmes hauteurs, mêmes
- * rayons), fond surface-2, sans animation de balayage (du calcul pour rien sur un
- * appareil d'entrée de gamme). L'annonce du chargement revient au conteneur
- * (`LoadingState`), pas à chaque bloc.
- */
-export function Skeleton({ className, ...props }: ComponentProps<"div">) {
-  return <div aria-hidden="true" className={cn("rounded-sm bg-surface-2", className)} {...props} />;
+function Skeleton({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="skeleton"
+      className={cn("animate-pulse rounded-md bg-muted", className)}
+      {...props}
+    />
+  )
 }
+
+export { Skeleton }

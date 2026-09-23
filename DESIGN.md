@@ -101,6 +101,16 @@ components:
 
 # Système de design — Joliba
 
+> ⚠️ **Mise à jour du 2026-09-23 (D-058).** L'interface est désormais construite **uniquement avec
+> les composants officiels de shadcn/ui** (preset Nova, base Radix, thème `neutral`, police Geist,
+> icônes Lucide), à la demande du propriétaire. En conséquence :
+> - **caducs** : les jetons de couleur et de typographie maison (§2.1, §2.2, §2.4 — Pétrole, Grège,
+>   Archivo) et les spécifications visuelles des composants (§9) ; la source de vérité visuelle est
+>   `components.json`, `src/styles/app.css` et `src/components/ui/` tels que générés par la CLI shadcn ;
+> - **toujours en vigueur** : les huit règles nommées (§4, R-D1 à R-D8), les états d'écran (§10),
+>   le budget de performance de la carte client et les exigences d'accessibilité.
+> Le front-matter ci-dessus est conservé pour l'historique ; il ne pilote plus le code.
+
 > Ce document est **opposable**. Chaque valeur qu'il contient est justifiée par un usage réel :
 > une cuisine bruyante, un coup de feu à dix-neuf heures, un téléphone Android à 100 $ sur une 4G
 > qui tombe. Une valeur sans justification n'a pas sa place ici et doit être retirée.

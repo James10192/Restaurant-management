@@ -1,144 +1,66 @@
-import type { ComponentProps } from "react";
-import { Slot } from "radix-ui";
-import { cva, type VariantProps } from "class-variance-authority";
-import { cn } from "../../lib/cn";
-import { useHydrated } from "../../lib/use-hydrated";
-import { Spinner } from "./spinner";
+import * as React from "react"
+import { cva, type VariantProps } from "class-variance-authority"
+import { cn } from "cn"
+import { Slot } from "radix-ui"
 
-/*
- * DESIGN.md §9.1. Une seule action `primary` par vue (R-D1).
- * Les survols passent par `not-disabled:` et non `enabled:` : `:enabled` ne
- * s'applique pas à un lien rendu via `asChild`.
- * Aucun déplacement ni changement d'échelle à la pression (§9.1, état `active`).
- */
-export const buttonVariants = cva(
-  [
-    "relative inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap select-none",
-    "rounded-sm border border-transparent font-semibold",
-    "transition-colors duration-(--m-fast) ease-out-soft",
-    "[&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-5",
-    "disabled:cursor-not-allowed aria-disabled:cursor-not-allowed aria-busy:cursor-progress",
-    // Désactivé (§9.1) : fond surface-2, texte ink-disabled. Pas pendant le chargement,
-    // où le bouton garde son apparence et affiche « Envoi… ».
-    "disabled:not-aria-busy:border-line disabled:not-aria-busy:bg-surface-2 disabled:not-aria-busy:text-ink-disabled",
-    "aria-disabled:border-line aria-disabled:bg-surface-2 aria-disabled:text-ink-disabled aria-disabled:pointer-events-none",
-  ],
+const buttonVariants = cva(
+  "group/button inline-flex shrink-0 items-center justify-center rounded-lg border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {
-        primary:
-          "bg-accent-600 text-on-fill not-disabled:hover:bg-accent-700 not-disabled:active:bg-accent-800",
+        default: "bg-primary text-primary-foreground hover:bg-primary/80",
+        outline:
+          "border-border bg-background hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50",
         secondary:
-          "border-line-control bg-surface text-ink not-disabled:hover:bg-surface-2 not-disabled:active:bg-line",
-        quiet:
-          "bg-transparent text-ink-2 not-disabled:hover:bg-surface-2 not-disabled:hover:text-ink not-disabled:active:bg-line",
-        danger:
-          "border-danger-600 bg-surface text-danger-600 not-disabled:hover:bg-danger-50 not-disabled:hover:text-danger-700 not-disabled:active:border-danger-700",
-        "danger-solid":
-          "bg-danger-600 text-on-fill not-disabled:hover:bg-danger-700 not-disabled:active:bg-danger-700",
-        link: "bg-transparent text-accent-600 underline underline-offset-4 not-disabled:hover:text-accent-700",
+          "bg-secondary text-secondary-foreground hover:bg-[color-mix(in_oklch,var(--secondary),var(--foreground)_5%)] aria-expanded:bg-secondary aria-expanded:text-secondary-foreground",
+        ghost:
+          "hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:hover:bg-muted/50",
+        destructive:
+          "bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40",
+        link: "text-primary underline-offset-4 hover:underline",
       },
       size: {
-        // Visuellement plus petit, mais la zone active reste à --tap (R-D4) grâce au pseudo-élément.
-        sm: [
-          "h-9 px-3 text-label in-data-[density=guest]:text-body [&_svg:not([class*='size-'])]:size-4",
-          "after:absolute after:top-1/2 after:left-1/2 after:size-full after:min-h-(--tap) after:min-w-(--tap) after:-translate-1/2",
-        ],
-        md: "h-(--control-h) px-5 text-(length:--font-base)",
-        lg: "h-[max(56px,var(--control-h))] px-6 text-title-md",
-        icon: "size-(--tap) p-0",
+        default:
+          "h-8 gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2",
+        xs: "h-6 gap-1 rounded-[min(var(--radius-md),10px)] px-2 text-xs in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3",
+        sm: "h-7 gap-1 rounded-[min(var(--radius-md),12px)] px-2.5 text-[0.8rem] in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3.5",
+        lg: "h-9 gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2",
+        icon: "size-8",
+        "icon-xs":
+          "size-6 rounded-[min(var(--radius-md),10px)] in-data-[slot=button-group]:rounded-lg [&_svg:not([class*='size-'])]:size-3",
+        "icon-sm":
+          "size-7 rounded-[min(var(--radius-md),12px)] in-data-[slot=button-group]:rounded-lg",
+        "icon-lg": "size-9",
       },
     },
-    compoundVariants: [
-      {
-        variant: "link",
-        className:
-          "h-auto min-h-(--tap) px-1 disabled:not-aria-busy:border-transparent disabled:not-aria-busy:bg-transparent aria-disabled:border-transparent aria-disabled:bg-transparent",
-      },
-    ],
     defaultVariants: {
-      variant: "primary",
-      size: "md",
+      variant: "default",
+      size: "default",
     },
-  },
-);
-
-export type ButtonProps = ComponentProps<"button"> &
-  VariantProps<typeof buttonVariants> & {
-    /** Rend l'enfant unique (un lien, par exemple) avec l'apparence d'un bouton. */
-    asChild?: boolean;
-    /**
-     * État d'envoi (R-D5). Fige la largeur, pose `aria-busy`, désactive le bouton et
-     * remplace le libellé par `loadingText`. Passer `loading={false}` au repos réserve
-     * déjà la largeur, pour qu'aucun saut ne se produise au moment de l'envoi.
-     */
-    loading?: boolean;
-    /** Libellé pendant l'envoi. « Enregistrement… » pour un formulaire (§6.6). */
-    loadingText?: string;
-  };
-
-export function Button({
-  className,
-  variant,
-  size,
-  asChild = false,
-  loading,
-  loadingText = "Envoi…",
-  disabled,
-  type,
-  children,
-  ...props
-}: ButtonProps) {
-  const classes = cn(buttonVariants({ variant, size }), className);
-  const hydrated = useHydrated();
-
-  if (asChild) {
-    return (
-      <Slot.Root className={classes} {...props}>
-        {children}
-      </Slot.Root>
-    );
   }
+)
 
-  const busy = loading === true;
-  // Un bouton d'envoi reste inerte tant que la page n'est pas hydratée : sinon le
-  // formulaire partirait en HTML, sans validation, et la saisie serait perdue.
-  const inert = type === "submit" && !hydrated;
+function Button({
+  className,
+  variant = "default",
+  size = "default",
+  asChild = false,
+  ...props
+}: React.ComponentProps<"button"> &
+  VariantProps<typeof buttonVariants> & {
+    asChild?: boolean
+  }) {
+  const Comp = asChild ? Slot.Root : "button"
 
   return (
-    <button
-      type={type ?? "button"}
-      className={classes}
-      disabled={disabled || busy || inert}
-      aria-busy={busy || undefined}
-      data-loading={busy ? "" : undefined}
+    <Comp
+      data-slot="button"
+      data-variant={variant}
+      data-size={size}
+      className={cn(buttonVariants({ variant, size, className }))}
       {...props}
-    >
-      {loading === undefined ? (
-        children
-      ) : (
-        // Les deux couches occupent la même cellule : la largeur est celle de la plus
-        // large, le bouton ne bouge donc pas quand l'une remplace l'autre (§9.1).
-        <span className="grid items-center justify-items-center">
-          <span
-            className={cn(
-              "col-start-1 row-start-1 inline-flex items-center gap-2",
-              busy && "invisible",
-            )}
-          >
-            {children}
-          </span>
-          <span
-            className={cn(
-              "col-start-1 row-start-1 inline-flex items-center gap-2",
-              !busy && "invisible",
-            )}
-          >
-            <Spinner decorative size="sm" />
-            {size === "icon" ? null : loadingText}
-          </span>
-        </span>
-      )}
-    </button>
-  );
+    />
+  )
 }
+
+export { Button, buttonVariants }

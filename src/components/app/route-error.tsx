@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { Button } from "~/components/ui/button";
-import { ErrorState } from "~/components/ui/states";
+import { ErrorState } from "~/components/app/states";
 import { forgetWorkspaceSelection } from "~/components/app/workspace";
 import { describeError } from "~/lib/errors";
 import { reportError } from "~/lib/observability";
