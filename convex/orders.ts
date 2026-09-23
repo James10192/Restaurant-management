@@ -23,7 +23,9 @@ import type { MutationCtx } from "./lib/guards";
 import { requireServiceActor, requireServiceMutation, type ServiceActor } from "./lib/serviceActor";
 import { loadLiveAvailability } from "./lib/guestMenu";
 import {
+  OFFLINE_REPLAY_MAX_MS,
   ORDER_LIMITS,
+  isClientRef,
   indexPublishedProducts,
   lineTax,
   orderReference,
@@ -37,6 +39,7 @@ import {
   type TicketStatus,
 } from "./lib/ordering";
 import {
+  activeSessionOf,
   advanceTicket,
   isOpenSession,
   loadOrderingMenus,
@@ -126,6 +129,9 @@ export async function createOrder(
     placedByGuestSessionId?: Id<"guestSessions">;
     accepted: boolean;
     now: number;
+    /** Préparée et servie sur papier pendant une coupure : enregistrée, jamais envoyée en cuisine. */
+    enteredOffline?: boolean;
+    clientCreatedAt?: number;
   },
 ): Promise<{ orderId: Id<"orders">; reference: string }> {
   const { venue, session, now } = params;
@@ -142,7 +148,7 @@ export async function createOrder(
     venueId: venue._id,
     tableSessionId: session._id,
     reference,
-    status: params.accepted ? "accepted" : "pending_acceptance",
+    status: params.enteredOffline ? "served" : params.accepted ? "accepted" : "pending_acceptance",
     channel: params.channel,
     ...(params.placedByMemberId ? { placedByMemberId: params.placedByMemberId } : {}),
     ...(params.placedByGuestSessionId ? { placedByGuestSessionId: params.placedByGuestSessionId } : {}),
@@ -152,6 +158,8 @@ export async function createOrder(
     currency: venue.currency,
     idempotencyKey: params.idempotencyKey,
     ...(params.notes ? { notes: params.notes } : {}),
+    ...(params.clientCreatedAt !== undefined ? { clientCreatedAt: params.clientCreatedAt } : {}),
+    ...(params.enteredOffline ? { enteredOffline: true, servedAt: now, readyAt: now } : {}),
   });
   const itemIds: Id<"orderItems">[] = [];
   for (const line of lines) {
@@ -171,7 +179,7 @@ export async function createOrder(
         taxSnapshot: line.tax,
         ...(line.instructions ? { instructions: line.instructions } : {}),
         courseNumber: line.courseNumber,
-        status: "ordered",
+        status: params.enteredOffline ? "served" : "ordered",
         assignedGuestSessionIds: params.placedByGuestSessionId ? [params.placedByGuestSessionId] : [],
       }),
     );
@@ -180,7 +188,8 @@ export async function createOrder(
   await writeOrderEvent(ctx, { _id: orderId, venueId: venue._id }, "submitted", actor, { lines: lines.length });
   if (params.accepted) {
     await writeOrderEvent(ctx, { _id: orderId, venueId: venue._id }, "accepted", actor);
-    await createTickets(ctx, venue, session, orderId, reference, params.heldCourses, now);
+    await createTickets(ctx, venue, session, orderId, reference, params.heldCourses, now, { recordOnly: params.enteredOffline === true });
+    if (params.enteredOffline) await writeOrderEvent(ctx, { _id: orderId, venueId: venue._id }, "recorded_offline", actor);
   }
   // Première opération financière : la devise de l'établissement se fige (R20).
   if (venue.currencyLockedAt === undefined) await ctx.db.patch(venue._id, { currencyLockedAt: now });
@@ -200,6 +209,7 @@ export async function createTickets(
   reference: string,
   heldCourses: readonly number[],
   now: number,
+  options: { recordOnly?: boolean } = {},
 ): Promise<void> {
   const table = await ctx.db.get(session.tableId);
   const items = await ctx.db
@@ -236,10 +246,12 @@ export async function createTickets(
       tableSessionId: session._id,
       reference: `${reference}-${stationCode(station.name)}${multiCourse ? `-${course}` : ""}`,
       tableNumber: table?.number ?? "?",
-      status: held ? "held" : "queued",
+      // Une commande déjà servie sur papier ne remonte jamais sur l'écran de cuisine.
+      status: options.recordOnly ? "served" : held ? "held" : "queued",
       courseNumber: course,
       priority: 0,
       ...(held ? {} : { queuedAt: now }),
+      ...(options.recordOnly ? { readyAt: now, servedAt: now } : {}),
       allergyFlags: [...allergies],
       itemCount: lines.reduce((s, l) => s + l.quantity, 0),
     });
@@ -254,11 +266,35 @@ export async function createTickets(
         modifiersSnapshot: line.modifiers.map((m) => m.optionName),
         quantity: line.quantity,
         ...(line.instructions ? { instructions: line.instructions } : {}),
-        status: "pending",
+        status: options.recordOnly ? "ready" : "pending",
         ...(lineAllergens.length > 0 ? { allergyNote: lineAllergens.join(", ") } : {}),
       });
     }
   }
+}
+
+/**
+ * La table visée par une commande. Par sa référence d'appareil d'abord ; à défaut, la session
+ * ouverte de la table : une ouverture hors ligne a pu rejoindre celle d'un collègue (R1).
+ */
+async function resolveSession(
+  ctx: MutationCtx,
+  venueId: Id<"venues">,
+  args: { sessionId?: Id<"tableSessions">; sessionRef?: { clientRef: string; tableId: Id<"restaurantTables"> } },
+): Promise<Doc<"tableSessions">> {
+  if ((args.sessionId === undefined) === (args.sessionRef === undefined)) throw invalid("Désignez la table.");
+  if (args.sessionId) return getInVenue(ctx, args.sessionId, venueId, "Cette table");
+  const ref = args.sessionRef!;
+  if (!isClientRef(ref.clientRef)) throw invalid("Référence d'appareil invalide.");
+  const byRef = await ctx.db
+    .query("tableSessions")
+    .withIndex("by_venue_clientRef", (q) => q.eq("venueId", venueId).eq("clientRef", ref.clientRef))
+    .unique();
+  if (byRef) return byRef;
+  const table = await getInVenue(ctx, ref.tableId, venueId, "Cette table");
+  const active = await activeSessionOf(ctx, table._id);
+  if (!active) throw conflict(`La table ${table.number} n'est pas ouverte.`);
+  return active;
 }
 
 /**
@@ -268,11 +304,18 @@ export async function createTickets(
 export const submit = mutation({
   args: {
     venueId: v.id("venues"),
-    sessionId: v.id("tableSessions"),
+    /** La table, par son identifiant… */
+    sessionId: v.optional(v.id("tableSessions")),
+    /** …ou, rejouée d'une file hors ligne, par la référence de l'appareil qui l'a ouverte (D-062). */
+    sessionRef: v.optional(v.object({ clientRef: v.string(), tableId: v.id("restaurantTables") })),
     lines: v.array(lineArg),
     heldCourses: v.array(v.number()),
     notes: v.optional(v.string()),
     idempotencyKey: v.string(),
+    /** Heure du geste sur l'appareil, pour un rejeu. */
+    clientCreatedAt: v.optional(v.number()),
+    /** « Déjà préparée » : enregistrer sans envoyer en cuisine (liste « À régulariser »). */
+    recordOnly: v.optional(v.boolean()),
   },
   handler: async (
     ctx,
@@ -288,7 +331,12 @@ export const submit = mutation({
     if (previous) {
       return { ok: true, orderId: previous._id, reference: previous.reference, replayed: true };
     }
-    const session = await getInVenue(ctx, args.sessionId, actor.venue._id, "Cette table");
+    const now = Date.now();
+    if (args.clientCreatedAt !== undefined && now - args.clientCreatedAt > OFFLINE_REPLAY_MAX_MS) {
+      throw invalid("Commande saisie il y a plus de six heures : un gérant doit la relire et la ressaisir.");
+    }
+    if (args.recordOnly && !actor.permissions.has("order.serve")) throw forbidden();
+    const session = await resolveSession(ctx, actor.venue._id, args);
     if (!isOpenSession(session)) throw conflict("Cette table est clôturée : ouvrez-la de nouveau pour commander.");
     const notes = args.notes?.trim() || undefined;
     if (notes && notes.length > ORDER_LIMITS.note) throw invalid(`La note tient en ${ORDER_LIMITS.note} caractères.`);
@@ -296,7 +344,7 @@ export const submit = mutation({
     if (heldCourses.some((c) => !Number.isInteger(c) || c < 2 || c > ORDER_LIMITS.courses)) {
       throw invalid("Seuls les services 2 à 4 peuvent attendre.");
     }
-    const now = Date.now();
+    if (args.recordOnly && heldCourses.length > 0) throw invalid("Une commande déjà servie n'a pas de service en attente.");
     const priced = await priceRequest(ctx, actor.venue, args.lines, now);
     if (priced.problems.length > 0) return { ok: false, problems: priced.problems };
     const created = await createOrder(ctx, {
@@ -311,6 +359,8 @@ export const submit = mutation({
       actor: actor.event,
       accepted: true,
       now,
+      ...(args.recordOnly ? { enteredOffline: true } : {}),
+      ...(args.clientCreatedAt !== undefined ? { clientCreatedAt: args.clientCreatedAt } : {}),
     });
     return { ok: true, ...created, replayed: false };
   },

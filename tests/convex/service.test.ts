@@ -263,3 +263,86 @@ describe("règles du service", () => {
     expect(stations.map((x) => [x.name, x.isDefault])).toEqual([["Cuisine", true]]);
   });
 });
+
+describe("rejeu d'une file hors ligne (D-062)", () => {
+  const ref = (n: number) => `0190a1b2-c3d4-7e5f-8a9b-${String(n).padStart(12, "0")}`;
+
+  test("ouvrir deux fois avec la même référence ne crée qu'une table ; la commande la désigne par cette référence", async () => {
+    const s = await serviceReady();
+    const first = await s.waiter.as.mutation(api.sessions.open, { venueId: s.cocody, tableId: s.tableId, clientRef: ref(1) });
+    const again = await s.waiter.as.mutation(api.sessions.open, { venueId: s.cocody, tableId: s.tableId, clientRef: ref(1) });
+    expect(again).toBe(first);
+    const sent = await s.waiter.as.mutation(api.orders.submit, {
+      venueId: s.cocody,
+      sessionRef: { clientRef: ref(1), tableId: s.tableId },
+      lines: [line(s.products.alloco)],
+      heldCourses: [],
+      idempotencyKey: key(),
+      clientCreatedAt: Date.now() - 60_000,
+    });
+    expect(sent.ok).toBe(true);
+    if (sent.ok) expect((await s.t.run((ctx) => ctx.db.get(sent.orderId)))!.tableSessionId).toBe(first);
+  });
+
+  test("ouverte hors ligne pendant qu'un collègue l'ouvrait : une seule table, et c'est noté", async () => {
+    const s = await serviceReady();
+    const online = await s.floor.as.mutation(api.sessions.open, { venueId: s.cocody, tableId: s.tableId });
+    const offline = await s.waiter.as.mutation(api.sessions.open, { venueId: s.cocody, tableId: s.tableId, clientRef: ref(2) });
+    expect(offline).toBe(online);
+    const audit = await s.t.run((ctx) => ctx.db.query("auditLogs").collect());
+    expect(audit.some((a) => a.action === "table.session.offline_merge")).toBe(true);
+    // La commande rejouée désigne une référence inconnue : elle rejoint la table ouverte.
+    const sent = await s.waiter.as.mutation(api.orders.submit, {
+      venueId: s.cocody,
+      sessionRef: { clientRef: ref(3), tableId: s.tableId },
+      lines: [line(s.products.bissap)],
+      heldCourses: [],
+      idempotencyKey: key(),
+    });
+    if (sent.ok) expect((await s.t.run((ctx) => ctx.db.get(sent.orderId)))!.tableSessionId).toBe(online);
+    else throw new Error("commande refusée");
+  });
+
+  test("un geste de plus de six heures est refusé", async () => {
+    const s = await serviceReady();
+    const sessionId = await s.waiter.as.mutation(api.sessions.open, { venueId: s.cocody, tableId: s.tableId });
+    await expectCode(
+      s.waiter.as.mutation(api.orders.submit, {
+        venueId: s.cocody,
+        sessionId,
+        lines: [line(s.products.alloco)],
+        heldCourses: [],
+        idempotencyKey: key(),
+        clientCreatedAt: Date.now() - 7 * 60 * 60_000,
+      }),
+      "INVALID_ARGUMENT",
+    );
+  });
+
+  test("« déjà préparée » : enregistrée comme servie, jamais montrée à la cuisine", async () => {
+    const s = await serviceReady();
+    const sessionId = await s.waiter.as.mutation(api.sessions.open, { venueId: s.cocody, tableId: s.tableId });
+    const sent = await s.waiter.as.mutation(api.orders.submit, {
+      venueId: s.cocody,
+      sessionId,
+      lines: [line(s.products.alloco, 1, 2)],
+      heldCourses: [],
+      idempotencyKey: key(),
+      clientCreatedAt: Date.now() - 20 * 60_000,
+      recordOnly: true,
+    });
+    if (!sent.ok) throw new Error("commande refusée");
+    const order = (await s.t.run((ctx) => ctx.db.get(sent.orderId)))!;
+    expect([order.status, order.enteredOffline]).toEqual(["served", true]);
+    expect((await ticketsOf(s, sent.orderId)).map((t) => t.status)).toEqual(["served"]);
+    const board = await s.cook.as.query(api.kitchen.board, { venueId: s.cocody, stationId: s.cuisine });
+    expect([board.active, board.ready]).toEqual([[], []]);
+    // Rien en cours : la table se clôt.
+    await s.waiter.as.mutation(api.sessions.close, { venueId: s.cocody, sessionId });
+    // Et la cuisine ne peut pas s'en servir pour enregistrer des plats servis.
+    await expectCode(
+      s.cook.as.mutation(api.orders.submit, { venueId: s.cocody, sessionId, lines: [line(s.products.alloco)], heldCourses: [], idempotencyKey: key(), recordOnly: true }),
+      "FORBIDDEN",
+    );
+  });
+});

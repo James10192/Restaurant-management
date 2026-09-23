@@ -19,7 +19,7 @@ import { getInVenue } from "./lib/catalogAccess";
 import { conflict, invalid, notFound } from "./lib/errors";
 import { memberCoversVenue, type ReadCtx } from "./lib/guards";
 import { requireServiceActor, requireServiceMutation } from "./lib/serviceActor";
-import { ACTIVE_ORDER, type OrderStatus } from "./lib/ordering";
+import { ACTIVE_ORDER, isClientRef, type OrderStatus } from "./lib/ordering";
 import { activeSessionOf, isOpenSession, memberName, nextCounter, OPEN_SESSION, settingsOf } from "./lib/service";
 
 /** « TS-2026-000123 » : l'année de l'établissement, puis le rang dans l'année. */
@@ -42,16 +42,44 @@ async function ordersOf(ctx: ReadCtx, sessionId: Id<"tableSessions">) {
  * temps n'obtiennent pas deux sessions — le second voit « déjà ouverte ».
  */
 export const open = mutation({
-  args: { venueId: v.id("venues"), tableId: v.id("restaurantTables"), guestCount: v.optional(v.number()) },
+  args: {
+    venueId: v.id("venues"),
+    tableId: v.id("restaurantTables"),
+    guestCount: v.optional(v.number()),
+    /** Présente quand l'ouverture vient de la file d'un appareil (D-062). */
+    clientRef: v.optional(v.string()),
+  },
   handler: async (ctx, args) => {
     const actor = await requireServiceMutation(ctx, "table.session.open", { venueId: args.venueId });
     const table = await getInVenue(ctx, args.tableId, actor.venue._id, "Cette table");
+    if (args.clientRef !== undefined) {
+      if (!isClientRef(args.clientRef)) throw invalid("Référence d'appareil invalide.");
+      const replay = await ctx.db
+        .query("tableSessions")
+        .withIndex("by_venue_clientRef", (q) => q.eq("venueId", actor.venue._id).eq("clientRef", args.clientRef))
+        .unique();
+      if (replay) return replay._id; // rejouée : déjà ouverte par ce geste
+    }
     if (!table.isActive || table.status === "out_of_service") throw conflict("Cette table est hors service.");
     if (args.guestCount !== undefined && (!Number.isInteger(args.guestCount) || args.guestCount < 1 || args.guestCount > 40)) {
       throw invalid("Le nombre de couverts va de 1 à 40.");
     }
     const existing = await activeSessionOf(ctx, table._id);
-    if (existing) throw conflict(`La table ${table.number} est déjà ouverte.`);
+    if (existing) {
+      if (args.clientRef === undefined) throw conflict(`La table ${table.number} est déjà ouverte.`);
+      // Ouverte hors ligne pendant qu'un collègue l'ouvrait en ligne : une seule session (R1).
+      // Le geste rejoué rejoint la session existante, et c'est noté pour relecture.
+      await writeAudit(ctx, {
+        organizationId: actor.organization._id,
+        venueId: actor.venue._id,
+        ...actor.audit,
+        action: "table.session.offline_merge",
+        resourceType: "tableSession",
+        resourceId: existing._id,
+        after: { clientRef: args.clientRef },
+      });
+      return existing._id;
+    }
     const now = Date.now();
     const settings = await settingsOf(ctx, actor.venue._id);
     const sessionId = await ctx.db.insert("tableSessions", {
@@ -64,6 +92,7 @@ export const open = mutation({
       ...(actor.member ? { assignedWaiterMemberId: actor.member._id, openedByMemberId: actor.member._id } : {}),
       openedAt: now,
       currency: actor.venue.currency,
+      ...(args.clientRef !== undefined ? { clientRef: args.clientRef } : {}),
       lastActivityAt: now,
       isSimulation: actor.venue.isSimulation,
     });

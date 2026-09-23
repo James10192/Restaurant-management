@@ -361,3 +361,18 @@ export function serviceDayKey(now: number, timeZone: string): string {
   );
   return `${parts.year}-${parts.month}-${parts.day}`;
 }
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * Rejeu après une coupure (D-062)
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+/** Une référence d'appareil : un UUID (v4 ou v7), rien d'autre. */
+export function isClientRef(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[47][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(value);
+}
+
+/** Au-delà, un geste rejoué est refusé : un gérant le relit et le ressaisit. */
+export const OFFLINE_REPLAY_MAX_MS = 6 * 60 * 60_000;
+
+/** Au-delà, l'appareil ne renvoie plus seul une commande en cuisine : elle passe « À régulariser ». */
+export const OFFLINE_AUTO_SEND_MAX_MS = 3 * 60_000;

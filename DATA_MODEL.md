@@ -513,6 +513,7 @@ l'installation à la clôture. Ni la table, ni la commande, ni l'addition.
 | `closeReason?` | string | **obligatoire** si `closed_with_debt` |
 | `currency` | string | figé à l'ouverture |
 | `activationCode?` | string | mode « code de présence » (§9) |
+| `clientRef?` | string | UUID choisi par l'appareil quand la table s'ouvre hors ligne ; index `by_venue_clientRef` (D-062) |
 | `lastActivityAt` | number | alimente l'abandon automatique |
 
 **Index** : `by_venue_status ["venueId","status"]` (écran serveur et caisse) ·
@@ -590,6 +591,8 @@ accepté.
 | `placedByGuestSessionId?`, `placedByMemberId?` | | |
 | `acceptedByMemberId?`, `acceptedAt?`, `rejectedReason?` | | |
 | `submittedAt`, `readyAt?`, `servedAt?`, `closedAt?` | | jalons pour les délais de service |
+| `clientCreatedAt?` | number | heure du geste sur l'appareil, pour un rejeu — statistique, jamais légale |
+| `enteredOffline?` | boolean | préparée sur papier pendant une coupure, enregistrée sans passer par la cuisine (D-062) |
 | `totals` | `{subtotal, discounts, tax, serviceCharge, total}` | calculé serveur |
 | `currency` | string | |
 | `idempotencyKey` | string | **empêche la double commande** *(R7)* |

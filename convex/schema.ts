@@ -798,6 +798,11 @@ export default defineSchema({
      */
     currency: v.string(),
     activationCode: v.optional(v.string()),
+    /**
+     * Référence choisie par l'appareil (UUIDv7) quand la table s'ouvre hors ligne : les commandes
+     * saisies ensuite la désignent avant que le serveur ait attribué un `_id` (D-062).
+     */
+    clientRef: v.optional(v.string()),
     lastActivityAt: v.number(),
     /** Recopié depuis la venue à l'ouverture : exclut la session de tous les agrégats (G2). */
     isSimulation: v.boolean(),
@@ -813,7 +818,8 @@ export default defineSchema({
     .index("by_venue_status", ["venueId", "status"])
     .index("by_table_status", ["tableId", "status"]) // garantit R1
     .index("by_venue_openedAt", ["venueId", "openedAt"])
-    .index("by_waiter", ["assignedWaiterMemberId"]),
+    .index("by_waiter", ["assignedWaiterMemberId"])
+    .index("by_venue_clientRef", ["venueId", "clientRef"]),
 
   /** Identité légère qui rend la commande collaborative possible SANS compte. */
   guestSessions: defineTable({
@@ -924,6 +930,10 @@ export default defineSchema({
     /** Empêche la double commande sur double clic (R7). */
     idempotencyKey: v.string(),
     notes: v.optional(v.string()),
+    /** Heure du geste sur l'appareil, pour une commande rejouée après une coupure. Statistique seulement. */
+    clientCreatedAt: v.optional(v.number()),
+    /** Préparée sur papier pendant une coupure, enregistrée sans passer par la cuisine (D-062). */
+    enteredOffline: v.optional(v.boolean()),
   })
     .index("by_session", ["tableSessionId"])
     .index("by_venue_status_submitted", ["venueId", "status", "submittedAt"])
