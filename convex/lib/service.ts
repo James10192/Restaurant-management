@@ -13,6 +13,7 @@ import type { MutationCtx, ReadCtx } from "./guards";
 import { conflict, notFound } from "./errors";
 import type { GuestMenu } from "./guestMenu";
 import type { MenuSnapshot } from "./menuSnapshot";
+import type { EventActor } from "./serviceActor";
 import {
   deriveOrderStatus,
   itemStatusForTicket,
@@ -129,7 +130,7 @@ export async function refreshOrder(ctx: MutationCtx, orderId: Id<"orders">, acto
   return { ...order, ...patch };
 }
 
-export type EventActor = { type: "staff"; userId: Id<"users"> } | { type: "guest" } | { type: "system" };
+export type { EventActor } from "./serviceActor";
 
 export async function writeOrderEvent(
   ctx: MutationCtx,
@@ -143,7 +144,9 @@ export async function writeOrderEvent(
     orderId: order._id,
     type,
     actorType: actor.type,
-    ...(actor.type === "staff" ? { actorUserId: actor.userId } : {}),
+    ...(actor.type === "staff" ? { actorMemberId: actor.memberId } : {}),
+    ...((actor.type === "staff" || actor.type === "device") && actor.deviceId ? { actorDeviceId: actor.deviceId } : {}),
+    ...(actor.type === "staff" && actor.operatorSessionId ? { actorOperatorSessionId: actor.operatorSessionId } : {}),
     ...(payload ? { payload } : {}),
     at: Date.now(),
   });
@@ -186,22 +189,22 @@ export async function advanceTicket(
   const next = nextTicketStatus(current, action);
   if (next === null) throw conflict(`Ce bon est déjà ${STATUS_LABEL[current]}.`);
   const now = Date.now();
-  const userId = actor.type === "staff" ? actor.userId : undefined;
+  const memberId = actor.type === "staff" ? actor.memberId : undefined;
   const patch: Partial<Doc<"kitchenTickets">> = { status: next };
   if (action === "fire") patch.queuedAt = now;
   if (action === "start") {
     patch.startedAt = ticket.startedAt ?? now;
-    if (userId) patch.startedByUserId = userId;
+    if (memberId) patch.startedByMemberId = memberId;
   }
   if (action === "ready") {
     patch.readyAt = now;
-    if (userId) patch.readyByUserId = userId;
+    if (memberId) patch.readyByMemberId = memberId;
     if (ticket.startedAt === undefined) patch.startedAt = now;
   }
   if (action === "recall") patch.recalledAt = now;
   if (action === "serve") {
     patch.servedAt = now;
-    if (userId) patch.servedByUserId = userId;
+    if (memberId) patch.servedByMemberId = memberId;
   }
   await ctx.db.patch(ticket._id, patch);
 
@@ -252,4 +255,14 @@ export async function recountTicket(ctx: MutationCtx, ticket: Doc<"kitchenTicket
   }
   await ctx.db.patch(ticket._id, { itemCount: items.reduce((s, i) => s + i.quantity, 0), allergyFlags: [...flags] });
   return items.length;
+}
+
+/** Le nom affiché d'un membre : celui qu'il porte sans compte, sinon celui de son compte. */
+export async function memberName(ctx: ReadCtx, memberId: Id<"organizationMembers"> | undefined): Promise<string | null> {
+  if (!memberId) return null;
+  const member = await ctx.db.get(memberId);
+  if (!member) return null;
+  if (member.displayName) return member.displayName;
+  const user = member.userId ? await ctx.db.get(member.userId) : null;
+  return user ? (user.name ?? user.email) : null;
 }

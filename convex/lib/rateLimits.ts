@@ -24,4 +24,9 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
   // Une invitation porte un nom d'organisation et d'invitant choisis par l'appelant, envoyés
   // depuis le domaine Joliba : plafond par organisation, en plus de celui par personne.
   invitationPerOrganization: { kind: "fixed window", rate: 100, period: 24 * HOUR },
+  // Enrôlement d'appareil : le code a 40 bits et vit 10 minutes, mais l'appel est public.
+  // Plafond global, en plus : un essai massif ne passe pas inaperçu.
+  deviceEnroll: { kind: "token bucket", rate: 20, period: MINUTE, capacity: 40 },
+  // Codes d'activation de PIN, par appareil enrôlé.
+  pinActivation: { kind: "fixed window", rate: 10, period: 10 * MINUTE },
 });

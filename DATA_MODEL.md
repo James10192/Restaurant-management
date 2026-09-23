@@ -139,9 +139,12 @@ d'accès** : sans ligne ici, aucun accès, quelle que soit la suite.
 
 | Champ | Type |
 |---|---|
-| `organizationId`, `userId` | Id |
+| `organizationId` | Id |
+| `userId?` | Id<"users"> — **absent pour un membre sans compte** (`kind: "pin_only"`, D-060) |
+| `kind?` | `"account"` (défaut) `\| "pin_only"` |
+| `displayName?` | nom affiché d'un membre sans compte |
 | `status` | `"invited" \| "active" \| "suspended" \| "removed"` |
-| `invitedByUserId?`, `joinedAt?`, `removedAt?` | |
+| `invitedByUserId?`, `createdByUserId?`, `joinedAt?`, `removedAt?` | |
 
 **Index** : `by_org_user ["organizationId","userId"]` · `by_user ["userId"]` (« mes organisations »)
 · `by_org_status ["organizationId","status"]`
@@ -233,22 +236,73 @@ lecture d'un nom d'établissement.
 **Permissions** : `venue.manage` ; le bloc `service` exige `venue.settings.service`.
 
 ### `trustedDevices`
-**Objectif.** Un appareil enrôlé — tablette de cuisine, poste de caisse — qui tient une session
-longue sans qu'un humain se réauthentifie à chaque réveil *(A1)*.
-**Pourquoi.** Une tablette murale n'est pas une personne. Lui demander un code à usage unique par
-courriel à chaque réveil, c'est garantir qu'elle sera débranchée.
+**Objectif.** Un appareil enrôlé : écran de production, tablette partagée, téléphone d'un employé
+*(A1, D-060)*.
+**Pourquoi.** Une tablette murale n'est pas une personne, et un serveur sans adresse e-mail
+consultée ne peut pas recevoir de code. L'appareil est enrôlé une fois par un gérant ; ensuite,
+l'écran de cuisine agit seul, et sur les autres appareils chacun s'identifie par son PIN.
 
 | Champ | Type |
 |---|---|
-| `organizationId`, `venueId` | Id |
-| `label`, `deviceType` (`kds`/`cashier`/`waiter`/`display`) | |
+| `venueId` | Id — pas d'`organizationId` : il se lit par l'établissement (invariant du schéma) |
+| `label` | string |
+| `deviceType` | `kds` (aucun humain, **aucun PIN**) · `shared` (tablette de salle, caisse) · `personal` (téléphone d'un employé) |
 | `tokenHash` | string — **jamais le jeton en clair** |
-| `stationId?` | Id<"prepStations"> |
-| `enrolledByUserId`, `enrolledAt`, `lastSeenAt`, `revokedAt?` | |
+| `stationId?` | Id<"prepStations"> — un écran de cuisine ne lit et ne touche que ce poste |
+| `memberId?` | Id — le propriétaire d'un appareil `personal`, seul à pouvoir s'y identifier |
+| `enrolledByMemberId`, `enrolledAt`, `lastSeenAt?`, `revokedAt?`, `revokedByMemberId?` | |
+| `recentPinFailures` | number[] — échecs de PIN de la dernière heure, tous membres confondus |
+| `pinSuspendedUntil?` | number — plus de PIN sur cet appareil au-delà de 15 échecs par heure |
 
-**Index** : `by_venue ["venueId"]` · `by_token ["tokenHash"]` · `by_venue_type ["venueId","deviceType"]`
+**Index** : `by_venue ["venueId"]` · `by_token ["tokenHash"]`
 **Permissions** : `device.manage`.
-**Cycle** : enrôlé → actif → révoqué (immédiat, à distance).
+**Cycle** : enrôlé → actif → révoqué (immédiat, à distance ; les sessions d'opérateur tombent avec
+lui, et les PIN de ceux qui s'y sont identifiés depuis 12 heures doivent être rechoisis).
+
+### `deviceEnrollmentCodes`
+**Objectif.** Le code à usage unique qu'un gérant fait apparaître et que l'appareil saisit pour
+s'enrôler.
+**Champs** : `venueId`, `codeHash` (SHA-256), `deviceType`, `label`, `stationId?`, `memberId?`,
+`createdByMemberId`, `expiresAt` (10 minutes), `usedAt?`, `deviceId?`.
+**Index** : `by_code ["codeHash"]` · `by_venue ["venueId"]`
+**Permissions** : `device.manage`.
+
+### `staffCredentials`
+**Objectif.** Le PIN de service d'un membre *(D-060)*.
+**Pourquoi haché avec un secret.** Un PIN a 10 000 valeurs : son simple SHA-256 se retrouve
+instantanément. Le HMAC-SHA256 sous `PIN_PEPPER`, secret qui ne vit que dans l'environnement
+Convex, rend une base volée inutilisable sans lui.
+
+| Champ | Type |
+|---|---|
+| `organizationId`, `memberId` | Id |
+| `pinHash?` | string — HMAC, absent tant que l'employé ne l'a pas choisi |
+| `status` | `pending` (activation attendue) · `active` · `disabled` (10 échecs, ou retiré) |
+| `recentFailures` | number[] — fenêtre de 15 minutes, tous appareils confondus |
+| `failuresSinceSuccess`, `lockedUntil?`, `pinSetAt?`, `lastUnlockAt?` | |
+
+**Index** : `by_member ["memberId"]`
+**Permissions** : `team.manage`, avec autorité sur le membre (verrou 1).
+**Cycle** : `pending` → `active` → (`disabled` → `pending` par un nouveau code d'activation).
+Aucun contrôle d'unicité des PIN : il révélerait le code d'un collègue.
+
+### `activationCodes`
+**Objectif.** Le code (8 caractères, 24 heures, usage unique) qu'un gérant remet à un employé pour
+qu'il choisisse **lui-même** son PIN, que le gérant ne connaît donc jamais.
+**Champs** : `organizationId`, `memberId`, `codeHash`, `createdByMemberId`, `expiresAt`, `usedAt?`,
+`revokedAt?`.
+**Index** : `by_code ["codeHash"]` · `by_member ["memberId"]`
+**Permissions** : `team.manage`.
+
+### `operatorSessions`
+**Objectif.** Une personne identifiée par son PIN sur un appareil, du déverrouillage au
+verrouillage. Le jeton d'opérateur (10 minutes, signé par Convex) la désigne ; chaque appel la
+relit.
+**Champs** : `venueId`, `deviceId`, `memberId`, `secretHash` (secret de renouvellement, haché),
+`startedAt`, `lastActivityAt`, `endedAt?`, `endReason?` (`locked`/`expired`/`revoked`/`replaced`).
+**Index** : `by_device ["deviceId"]` · `by_member ["memberId"]` · `by_secret ["secretHash"]`
+**Cycle** : close au verrouillage, à la révocation de l'appareil, après 12 heures, ou après 3 minutes
+sans geste sur un appareil partagé (30 minutes sur un téléphone personnel).
 
 ### `platformAdmins`
 **Objectif.** L'équipe Joliba. **Table à part, garde à part** : aucun chemin de code ne doit
@@ -454,8 +508,8 @@ l'installation à la clôture. Ni la table, ni la commande, ni l'addition.
 | `status` | `open`/`ordering`/`billing`/`settling`/`closed`/`closed_with_debt`/`abandoned` | machine §4 d'ARCHITECTURE.md |
 | `originType` | `qr_scan`/`staff`/`reservation` | **ancrage** des réservations |
 | `guestCount?` | number | déclaré, sert au revenu par couvert |
-| `assignedWaiterUserId?` | Id<"users"> | attribution du service et du pourboire *(A2)* |
-| `openedByUserId?`, `openedAt`, `closedAt?`, `closedByUserId?` | | |
+| `assignedWaiterMemberId?` | Id<"organizationMembers"> | attribution du service et du pourboire *(A2)* ; un **membre**, pour qu'un serveur sans compte puisse tenir une table (D-060) |
+| `openedByMemberId?`, `openedAt`, `closedAt?`, `closedByMemberId?` | | |
 | `closeReason?` | string | **obligatoire** si `closed_with_debt` |
 | `currency` | string | figé à l'ouverture |
 | `activationCode?` | string | mode « code de présence » (§9) |
@@ -490,7 +544,7 @@ prénom donné), `colorKey`, `deviceFingerprintHash?`, `joinedAt`, `lastSeenAt`,
 **Objectif.** Un appel du client (serveur, eau, couverts, addition).
 **Champs** : `organizationId`, `venueId`, `tableSessionId`, `guestSessionId?`, `type`, `note?`,
 `status` (`open`/`acknowledged`/`resolved`/`cancelled`), `createdAt`, `acknowledgedAt?`,
-`acknowledgedByUserId?`, `resolvedAt?`, `resolvedByUserId?`.
+`acknowledgedByMemberId?`, `resolvedAt?`, `resolvedByMemberId?`.
 **Index** : `by_venue_status_created ["venueId","status","createdAt"]` (file du serveur, triée) ·
 `by_session ["tableSessionId"]`
 **Permissions** : création par la session invité ; `service_request.handle` pour le reste.
@@ -533,8 +587,8 @@ accepté.
 | `reference` | string | `A-042`, dit à voix haute |
 | `status` | machine §5 d'ARCHITECTURE.md | |
 | `channel` | `guest`/`staff` | qui a saisi |
-| `placedByGuestSessionId?`, `placedByUserId?` | | |
-| `acceptedByUserId?`, `acceptedAt?`, `rejectedReason?` | | |
+| `placedByGuestSessionId?`, `placedByMemberId?` | | |
+| `acceptedByMemberId?`, `acceptedAt?`, `rejectedReason?` | | |
 | `submittedAt`, `readyAt?`, `servedAt?`, `closedAt?` | | jalons pour les délais de service |
 | `totals` | `{subtotal, discounts, tax, serviceCharge, total}` | calculé serveur |
 | `currency` | string | |
@@ -561,7 +615,7 @@ accepté.
 | `courseNumber` | number | 1 = boissons, 2 = entrée… |
 | `prepStationId?` | Id | figé : changer la station d'un produit ne rejoue pas le passé |
 | `status` | `ordered`/`preparing`/`ready`/`served`/`cancelled` | état **par ligne** |
-| `cancelledReason?`, `cancelledByUserId?` | | |
+| `cancelledReason?`, `cancelledByMemberId?` | | |
 | `assignedGuestSessionIds` | Id[] | à qui l'article est attribué, pour le partage (§11) |
 
 **Index** : `by_order ["orderId"]` · `by_session_status ["tableSessionId","status"]` ·
@@ -573,7 +627,8 @@ accepté.
 service hier soir ? » (§34) n'a aucune réponse possible, et l'IA n'aurait rien à lire.
 **Champs** : `organizationId`, `venueId`, `orderId`, `type` (`submitted`, `accepted`, `rejected`,
 `fired`, `item_ready`, `served`, `cancelled`, `modified`, `recalled`…), `actorType`
-(`guest`/`staff`/`system`/`ai`), `actorUserId?`, `payload?`, `at`.
+(`guest`/`staff`/`device`/`system`/`ai`), `actorMemberId?`, `actorDeviceId?`,
+`actorOperatorSessionId?` (qui, sur quel appareil, dans quelle session — D-060), `payload?`, `at`.
 **Index** : `by_order_at ["orderId","at"]` · `by_venue_type_at ["venueId","type","at"]` (analytics de
 délais)
 **Cycle** : **append-only**. Jamais modifié, jamais supprimé.
@@ -621,7 +676,7 @@ cuisine voit ; elle ne voit jamais la commande entière.
 | `courseNumber` | number | |
 | `priority` | number | |
 | `queuedAt?`, `startedAt?`, `readyAt?`, `recalledAt?` | number | quatre champs, pas quatre lignes |
-| `startedByUserId?`, `readyByUserId?`, `servedAt?`, `servedByUserId?` | | |
+| `startedByMemberId?`, `readyByMemberId?`, `servedAt?`, `servedByMemberId?` | | absents quand l'écran de cuisine agit seul : l'appareil est alors dans `orderEvents` |
 | `allergyFlags` | string[] | **remonté au niveau du bon** : une allergie ne doit pas se lire en petit dans une ligne |
 | `itemCount` | number | |
 
@@ -848,7 +903,8 @@ annulation) déclenche la reconstruction du jour concerné, ce que `sourceVersio
 
 ### `auditLogs`
 **Objectif.** Qui a fait quoi, quand, et sur quoi.
-**Champs** : `organizationId`, `venueId?`, `actorType` (`user`/`system`/`ai`/`platform`), `actorUserId?`,
+**Champs** : `organizationId`, `venueId?`, `actorType` (`staff`/`device`/`guest`/`system`/`ai`/`platform`), `actorUserId?`,
+`actorMemberId?`, `actorDeviceId?` (un geste sous PIN n'a pas de compte : c'est le membre et l'appareil qui répondent),
 `action`, `resourceType`, `resourceId?`, `before?`, `after?`, `reason?`, `source` (`web`/`api`/`ai`/`support`),
 `ipHash?`, `at`.
 **Index** : `by_org_at ["organizationId","at"]` · `by_venue_at ["venueId","at"]` ·

@@ -12,7 +12,11 @@ import type { MutationCtx } from "./guards";
 export type AuditEntry = {
   organizationId: Id<"organizations">;
   venueId?: Id<"venues">;
-  actorUserId: Id<"users">;
+  /** Un compte ; absent quand le geste vient d'un PIN ou d'un appareil (D-060). */
+  actorUserId?: Id<"users">;
+  actorMemberId?: Id<"organizationMembers">;
+  actorDeviceId?: Id<"trustedDevices">;
+  actorType?: "staff" | "device";
   action: string;
   resourceType: string;
   resourceId?: string;
@@ -25,8 +29,10 @@ export async function writeAudit(ctx: MutationCtx, entry: AuditEntry): Promise<v
   await ctx.db.insert("auditLogs", {
     organizationId: entry.organizationId,
     ...(entry.venueId !== undefined ? { venueId: entry.venueId } : {}),
-    actorType: "staff",
-    actorUserId: entry.actorUserId,
+    actorType: entry.actorType ?? "staff",
+    ...(entry.actorUserId !== undefined ? { actorUserId: entry.actorUserId } : {}),
+    ...(entry.actorMemberId !== undefined ? { actorMemberId: entry.actorMemberId } : {}),
+    ...(entry.actorDeviceId !== undefined ? { actorDeviceId: entry.actorDeviceId } : {}),
     action: entry.action,
     resourceType: entry.resourceType,
     ...(entry.resourceId !== undefined ? { resourceId: entry.resourceId } : {}),

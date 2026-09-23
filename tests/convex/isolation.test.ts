@@ -875,8 +875,11 @@ const CASES: Record<string, (w: Awaited<ReturnType<typeof twoTenants>>) => Promi
     );
     // Sa propre table confiée au serveur de B : ce membre n'existe pas chez A.
     const mine = await openA(w);
+    const memberB = await w.t.run(async (ctx) =>
+      (await ctx.db.query("organizationMembers").withIndex("by_user", (q) => q.eq("userId", w.waiterB.userId)).unique())!,
+    );
     await expectCode(
-      w.a.owner.as.mutation(api.sessions.assignWaiter, { venueId: w.a.venueId, sessionId: mine, userId: w.waiterB.userId }),
+      w.a.owner.as.mutation(api.sessions.assignWaiter, { venueId: w.a.venueId, sessionId: mine, memberId: memberB._id }),
       "NOT_FOUND",
     );
   },

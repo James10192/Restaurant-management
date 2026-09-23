@@ -17,9 +17,10 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { writeAudit } from "./lib/audit";
 import { getInVenue } from "./lib/catalogAccess";
 import { conflict, invalid, notFound } from "./lib/errors";
-import { requirePermission, type ReadCtx } from "./lib/guards";
+import { memberCoversVenue, type ReadCtx } from "./lib/guards";
+import { requireServiceActor, requireServiceMutation } from "./lib/serviceActor";
 import { ACTIVE_ORDER, type OrderStatus } from "./lib/ordering";
-import { activeSessionOf, isOpenSession, nextCounter, OPEN_SESSION, settingsOf } from "./lib/service";
+import { activeSessionOf, isOpenSession, memberName, nextCounter, OPEN_SESSION, settingsOf } from "./lib/service";
 
 /** « TS-2026-000123 » : l'année de l'établissement, puis le rang dans l'année. */
 async function sessionReference(ctx: Parameters<typeof nextCounter>[0], venue: Doc<"venues">, now: number): Promise<string> {
@@ -35,12 +36,6 @@ async function ordersOf(ctx: ReadCtx, sessionId: Id<"tableSessions">) {
     .collect();
 }
 
-async function userName(ctx: ReadCtx, userId: Id<"users"> | undefined): Promise<string | null> {
-  if (!userId) return null;
-  const user = await ctx.db.get(userId);
-  return user ? (user.name ?? user.email) : null;
-}
-
 /**
  * Ouvrir une table. Le serveur qui l'ouvre en devient responsable, sauf s'il en désigne un autre
  * plus tard. Refusé si la table est déjà ouverte : deux serveurs qui ouvrent la même table en même
@@ -49,7 +44,7 @@ async function userName(ctx: ReadCtx, userId: Id<"users"> | undefined): Promise<
 export const open = mutation({
   args: { venueId: v.id("venues"), tableId: v.id("restaurantTables"), guestCount: v.optional(v.number()) },
   handler: async (ctx, args) => {
-    const actor = await requirePermission(ctx, "table.session.open", { venueId: args.venueId });
+    const actor = await requireServiceMutation(ctx, "table.session.open", { venueId: args.venueId });
     const table = await getInVenue(ctx, args.tableId, actor.venue._id, "Cette table");
     if (!table.isActive || table.status === "out_of_service") throw conflict("Cette table est hors service.");
     if (args.guestCount !== undefined && (!Number.isInteger(args.guestCount) || args.guestCount < 1 || args.guestCount > 40)) {
@@ -66,8 +61,7 @@ export const open = mutation({
       status: "open",
       originType: "staff",
       ...(args.guestCount !== undefined ? { guestCount: args.guestCount } : {}),
-      assignedWaiterUserId: actor.user._id,
-      openedByUserId: actor.user._id,
+      ...(actor.member ? { assignedWaiterMemberId: actor.member._id, openedByMemberId: actor.member._id } : {}),
       openedAt: now,
       currency: actor.venue.currency,
       lastActivityAt: now,
@@ -82,23 +76,26 @@ export const open = mutation({
 
 /** Prendre une table à son nom, ou (avec `table.session.transfer`) la confier à un collègue. */
 export const assignWaiter = mutation({
-  args: { venueId: v.id("venues"), sessionId: v.id("tableSessions"), userId: v.optional(v.id("users")) },
+  args: { venueId: v.id("venues"), sessionId: v.id("tableSessions"), memberId: v.optional(v.id("organizationMembers")) },
   handler: async (ctx, args) => {
-    const actor = await requirePermission(ctx, "table.session.open", { venueId: args.venueId });
+    const actor = await requireServiceMutation(ctx, "table.session.open", { venueId: args.venueId });
     const session = await getInVenue(ctx, args.sessionId, actor.venue._id, "Cette table");
     if (!isOpenSession(session)) throw conflict("Cette table est clôturée.");
-    const target = args.userId ?? actor.user._id;
-    if (target !== actor.user._id) {
+    const target = args.memberId ?? actor.member?._id;
+    if (!target) throw invalid("Désignez le serveur.");
+    if (target !== actor.member?._id) {
       if (!actor.permissions.has("table.session.transfer")) {
         throw conflict("Confier une table à un collègue demande le droit de transférer les tables.");
       }
-      const member = await ctx.db
-        .query("organizationMembers")
-        .withIndex("by_org_user", (q) => q.eq("organizationId", actor.organization._id).eq("userId", target))
-        .unique();
-      if (!member || member.status !== "active") throw notFound("Ce membre de l'équipe");
+      const member = await ctx.db.get(target);
+      const covers =
+        member !== null &&
+        member.organizationId === actor.organization._id &&
+        member.status === "active" &&
+        (await memberCoversVenue(ctx, member, actor.venue, member.userId !== undefined && member.userId === actor.organization.ownerUserId));
+      if (!covers) throw notFound("Ce membre de l'équipe");
     }
-    await ctx.db.patch(session._id, { assignedWaiterUserId: target, lastActivityAt: Date.now() });
+    await ctx.db.patch(session._id, { assignedWaiterMemberId: target, lastActivityAt: Date.now() });
   },
 });
 
@@ -109,7 +106,7 @@ export const assignWaiter = mutation({
 export const close = mutation({
   args: { venueId: v.id("venues"), sessionId: v.id("tableSessions") },
   handler: async (ctx, args) => {
-    const actor = await requirePermission(ctx, "table.session.close", { venueId: args.venueId });
+    const actor = await requireServiceMutation(ctx, "table.session.close", { venueId: args.venueId });
     const session = await getInVenue(ctx, args.sessionId, actor.venue._id, "Cette table");
     if (!isOpenSession(session)) return; // déjà clôturée : rejouer ne fait rien
     const orders = await ordersOf(ctx, session._id);
@@ -123,7 +120,7 @@ export const close = mutation({
     await ctx.db.patch(session._id, {
       status: orders.length === 0 ? "abandoned" : "closed",
       closedAt: now,
-      closedByUserId: actor.user._id,
+      ...(actor.member ? { closedByMemberId: actor.member._id } : {}),
       lastActivityAt: now,
     });
     const table = await ctx.db.get(session.tableId);
@@ -133,7 +130,7 @@ export const close = mutation({
     await writeAudit(ctx, {
       organizationId: actor.organization._id,
       venueId: actor.venue._id,
-      actorUserId: actor.user._id,
+      ...actor.audit,
       action: "table.session.close",
       resourceType: "tableSession",
       resourceId: session._id,
@@ -172,7 +169,7 @@ export const abandonIfIdle = internalMutation({
 export const floor = query({
   args: { venueId: v.id("venues") },
   handler: async (ctx, args) => {
-    const actor = await requirePermission(ctx, "table.read", { venueId: args.venueId });
+    const actor = await requireServiceActor(ctx, "table.read", { venueId: args.venueId });
     const venueId = actor.venue._id;
     const areas = (
       await ctx.db
@@ -202,10 +199,10 @@ export const floor = query({
       .withIndex("by_venue_status_submitted", (q) => q.eq("venueId", venueId).eq("status", "pending_acceptance"))
       .collect();
     const bySession = new Map(sessions.map((s) => [s._id, s]));
-    const names = new Map<Id<"users">, string | null>();
-    const nameOf = async (id: Id<"users"> | undefined) => {
+    const names = new Map<Id<"organizationMembers">, string | null>();
+    const nameOf = async (id: Id<"organizationMembers"> | undefined) => {
       if (!id) return null;
-      if (!names.has(id)) names.set(id, await userName(ctx, id));
+      if (!names.has(id)) names.set(id, await memberName(ctx, id));
       return names.get(id)!;
     };
     const result = [];
@@ -232,9 +229,9 @@ export const floor = query({
                 status: session.status,
                 guestCount: session.guestCount ?? null,
                 openedAt: session.openedAt,
-                waiterUserId: session.assignedWaiterUserId ?? null,
-                waiterName: await nameOf(session.assignedWaiterUserId),
-                isMine: session.assignedWaiterUserId === actor.user._id,
+                waiterMemberId: session.assignedWaiterMemberId ?? null,
+                waiterName: await nameOf(session.assignedWaiterMemberId),
+                isMine: actor.member !== null && session.assignedWaiterMemberId === actor.member._id,
                 readyCount: readyTickets.filter((t) => t.tableSessionId === session._id).length,
                 requestCount: openRequests.filter((r) => r.tableSessionId === session._id).length,
                 pendingCount: pendingOrders.filter((o) => o.tableSessionId === session._id).length,
@@ -246,7 +243,7 @@ export const floor = query({
     }
     return {
       areas: result,
-      me: actor.user._id,
+      me: actor.member?._id ?? null,
       can: {
         open: actor.permissions.has("table.session.open"),
         close: actor.permissions.has("table.session.close"),
@@ -262,7 +259,7 @@ export const floor = query({
 export const detail = query({
   args: { venueId: v.id("venues"), sessionId: v.id("tableSessions") },
   handler: async (ctx, args) => {
-    const actor = await requirePermission(ctx, "order.read", { venueId: args.venueId });
+    const actor = await requireServiceActor(ctx, "order.read", { venueId: args.venueId });
     const session = await getInVenue(ctx, args.sessionId, actor.venue._id, "Cette table");
     const table = await ctx.db.get(session.tableId);
     const orders = (await ordersOf(ctx, session._id)).sort((a, b) => a.submittedAt - b.submittedAt);
@@ -286,7 +283,7 @@ export const detail = query({
         status: order.status,
         channel: order.channel,
         submittedAt: order.submittedAt,
-        placedBy: await userName(ctx, order.placedByUserId),
+        placedBy: await memberName(ctx, order.placedByMemberId),
         total: order.totals.total,
         notes: order.notes ?? null,
         rejectedReason: order.rejectedReason ?? null,
@@ -321,8 +318,8 @@ export const detail = query({
       tableNumber: table?.number ?? "?",
       guestCount: session.guestCount ?? null,
       openedAt: session.openedAt,
-      waiterName: await userName(ctx, session.assignedWaiterUserId),
-      isMine: session.assignedWaiterUserId === actor.user._id,
+      waiterName: await memberName(ctx, session.assignedWaiterMemberId),
+      isMine: actor.member !== null && session.assignedWaiterMemberId === actor.member._id,
       currency: session.currency,
       /** Indicatif : l'addition, avec remises et paiements, est la tranche T3. */
       runningTotal: live.reduce((s, i) => s + i.lineTotal, 0),

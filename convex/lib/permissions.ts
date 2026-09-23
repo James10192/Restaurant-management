@@ -34,6 +34,12 @@ export type PermissionMeta = {
   audited?: boolean;
   /** Exige un motif écrit de la part de l'acteur. */
   requiresReason?: boolean;
+  /**
+   * Utilisable sous PIN, sur un appareil enrôlé (D-060). Plafond et non octroi : sous PIN,
+   * les droits sont ceux du rôle ∩ ces permissions-là. Jamais une permission sensible, de
+   * portée organisation, d'équipe ou de réglage (vérifié par un test).
+   */
+  pin?: boolean;
 };
 
 export const PERMISSIONS = {
@@ -44,56 +50,56 @@ export const PERMISSIONS = {
   "venue.create": { label: "Créer un établissement", group: "Organisation", scope: "organization", audited: true },
 
   /* ── Établissement ───────────────────────────────────────────────────── */
-  "venue.read": { label: "Voir l'établissement", group: "Établissement", scope: "venue" },
+  "venue.read": { label: "Voir l'établissement", group: "Établissement", scope: "venue", pin: true },
   "venue.manage": { label: "Configurer l'établissement", group: "Établissement", scope: "venue", audited: true },
   // Séparée de `venue.manage` : changer le mode de service change le fonctionnement
   // de tout le restaurant (qui commande, quand on paie, où l'on paie).
   "venue.settings.service": { label: "Changer le mode de service", group: "Établissement", scope: "venue", sensitive: true, audited: true },
 
   /* ── Carte ───────────────────────────────────────────────────────────── */
-  "menu.read": { label: "Voir la carte", group: "Carte", scope: "venue" },
+  "menu.read": { label: "Voir la carte", group: "Carte", scope: "venue", pin: true },
   "menu.edit": { label: "Modifier la carte", group: "Carte", scope: "venue" },
   "menu.publish": { label: "Publier la carte", group: "Carte", scope: "venue", audited: true },
   // Séparée de `menu.edit` : changer un prix est un acte financier.
   "menu.price.edit": { label: "Modifier les prix", group: "Carte", scope: "venue", sensitive: true, audited: true },
   // Séparée des deux précédentes : c'est un GESTE DE SERVICE. Un chef de rang doit
   // pouvoir signaler une rupture sans pouvoir toucher aux prix.
-  "menu.availability.toggle": { label: "Rendre un plat disponible ou non", group: "Carte", scope: "venue" },
+  "menu.availability.toggle": { label: "Rendre un plat disponible ou non", group: "Carte", scope: "venue", pin: true },
 
   /* ── Salle et tables ─────────────────────────────────────────────────── */
-  "table.read": { label: "Voir les tables", group: "Salle", scope: "venue" },
+  "table.read": { label: "Voir les tables", group: "Salle", scope: "venue", pin: true },
   "table.manage": { label: "Gérer les tables et le plan de salle", group: "Salle", scope: "venue" },
-  "table.session.open": { label: "Ouvrir une table", group: "Salle", scope: "venue" },
-  "table.session.close": { label: "Clôturer une table", group: "Salle", scope: "venue", audited: true },
+  "table.session.open": { label: "Ouvrir une table", group: "Salle", scope: "venue", pin: true },
+  "table.session.close": { label: "Clôturer une table", group: "Salle", scope: "venue", audited: true, pin: true },
   // Séparée de `table.session.close` : clôturer une table SUR LAQUELLE IL RESTE UN DÛ,
   // c'est renoncer à de l'argent. R2 exigeait « permission + motif » sans qu'aucune
   // permission de ce nom existe — tout serveur aurait pu le faire. (Manque G3.)
   "table.session.close_with_debt": { label: "Clôturer une table avec un impayé", group: "Salle", scope: "venue", sensitive: true, audited: true, requiresReason: true },
-  "table.session.transfer": { label: "Déplacer, fusionner ou scinder des tables", group: "Salle", scope: "venue", audited: true },
+  "table.session.transfer": { label: "Déplacer, fusionner ou scinder des tables", group: "Salle", scope: "venue", audited: true, pin: true },
   "table.qr.manage": { label: "Gérer les QR codes", group: "Salle", scope: "venue", audited: true },
 
   /* ── Commandes ───────────────────────────────────────────────────────── */
-  "order.read": { label: "Voir les commandes", group: "Commandes", scope: "venue" },
-  "order.create": { label: "Créer une commande", group: "Commandes", scope: "venue" },
-  "order.accept": { label: "Accepter une commande client", group: "Commandes", scope: "venue" },
-  "order.modify": { label: "Modifier une commande avant production", group: "Commandes", scope: "venue" },
+  "order.read": { label: "Voir les commandes", group: "Commandes", scope: "venue", pin: true },
+  "order.create": { label: "Créer une commande", group: "Commandes", scope: "venue", pin: true },
+  "order.accept": { label: "Accepter une commande client", group: "Commandes", scope: "venue", pin: true },
+  "order.modify": { label: "Modifier une commande avant production", group: "Commandes", scope: "venue", pin: true },
   // Séparée : modifier après départ en production coûte des denrées déjà engagées.
   "order.modify.after_fire": { label: "Modifier une commande après envoi en production", group: "Commandes", scope: "venue", sensitive: true, audited: true, requiresReason: true },
   "order.cancel": { label: "Annuler une commande", group: "Commandes", scope: "venue", sensitive: true, audited: true, requiresReason: true },
   "order.discount.apply": { label: "Appliquer une remise", group: "Commandes", scope: "venue", sensitive: true, audited: true, requiresReason: true },
-  "order.course.fire": { label: "Déclencher un service en attente", group: "Commandes", scope: "venue" },
+  "order.course.fire": { label: "Déclencher un service en attente", group: "Commandes", scope: "venue", pin: true },
   // Porter à table est un geste distinct de la saisie : un commis de salle sert sans prendre
   // de commande. Séparée de `order.modify`, qui ne concerne que l'avant-production.
-  "order.serve": { label: "Marquer des plats servis", group: "Commandes", scope: "venue" },
+  "order.serve": { label: "Marquer des plats servis", group: "Commandes", scope: "venue", pin: true },
 
   /* ── Production ──────────────────────────────────────────────────────── */
-  "kitchen.read": { label: "Voir l'écran de production", group: "Production", scope: "venue" },
-  "kitchen.ticket.update": { label: "Démarrer, marquer prêt, rappeler un bon", group: "Production", scope: "venue" },
+  "kitchen.read": { label: "Voir l'écran de production", group: "Production", scope: "venue", pin: true },
+  "kitchen.ticket.update": { label: "Démarrer, marquer prêt, rappeler un bon", group: "Production", scope: "venue", pin: true },
   "kitchen.manage": { label: "Configurer les stations", group: "Production", scope: "venue" },
 
   /* ── Service ─────────────────────────────────────────────────────────── */
-  "service_request.read": { label: "Voir les demandes clients", group: "Service", scope: "venue" },
-  "service_request.handle": { label: "Prendre en charge une demande client", group: "Service", scope: "venue" },
+  "service_request.read": { label: "Voir les demandes clients", group: "Service", scope: "venue", pin: true },
+  "service_request.handle": { label: "Prendre en charge une demande client", group: "Service", scope: "venue", pin: true },
 
   /* ── Encaissement ────────────────────────────────────────────────────── */
   "payment.read": { label: "Voir les paiements", group: "Encaissement", scope: "venue" },
@@ -182,6 +188,11 @@ export function isPlatformPermission(value: string): boolean {
  * lire un champ optionnel — sans perdre le typage strict des CLÉS, qui est ce qui
  * compte ici.
  */
+/** Les permissions utilisables sous PIN (D-060). */
+export const PIN_PERMISSIONS: ReadonlySet<Permission> = new Set(
+  (Object.entries(PERMISSIONS) as [Permission, PermissionMeta][]).filter(([, m]) => m.pin === true).map(([p]) => p),
+);
+
 export function permissionMeta(p: Permission): PermissionMeta {
   return PERMISSIONS[p] as PermissionMeta;
 }

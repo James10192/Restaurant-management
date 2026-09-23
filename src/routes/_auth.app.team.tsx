@@ -179,7 +179,7 @@ function TeamView({
           {members.map((m) => (
             <Item key={m.memberId} variant="outline" role="listitem" className="items-start">
               <ItemMedia>
-                <MemberAvatar name={m.name ?? m.email} />
+                <MemberAvatar name={m.name ?? m.email ?? "Membre"} />
               </ItemMedia>
               <ItemContent className="min-w-0">
                 <MemberIdentity member={m} />
@@ -209,7 +209,7 @@ function TeamView({
                 <TableRow key={m.memberId}>
                   <TableCell>
                     <div className="flex min-w-0 items-center gap-3">
-                      <MemberAvatar name={m.name ?? m.email} />
+                      <MemberAvatar name={m.name ?? m.email ?? "Membre"} />
                       <div className="flex min-w-0 flex-col">
                         <MemberIdentity member={m} />
                       </div>
@@ -281,7 +281,7 @@ function TeamView({
 
       <InviteDialog open={inviteOpen} onOpenChange={setInviteOpen} scope={scope} organizationId={organizationId} scopeLabel={scopeLabel} />
       <MemberRolesDialog
-        member={editing ? { memberId: editing.memberId, displayName: editing.name ?? editing.email, roleIds: scopedRoleIds(editing) } : null}
+        member={editing ? { memberId: editing.memberId, displayName: editing.name ?? editing.email ?? "Membre", roleIds: scopedRoleIds(editing) } : null}
         scope={scope}
         scopeLabel={scopeLabel}
         onClose={() => setEditing(null)}
@@ -346,7 +346,7 @@ function MemberIdentity({ member: m }: { member: Member }) {
   return (
     <>
       <span className="truncate font-medium">
-        {m.name ?? m.email}
+        {m.name ?? m.email ?? "Membre"}
         {m.isSelf ? <span className="font-normal text-muted-foreground"> (vous)</span> : null}
       </span>
       {m.name ? <span className="truncate text-sm text-muted-foreground">{m.email}</span> : null}
@@ -382,7 +382,7 @@ function MemberActions({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label={`Actions pour ${m.name ?? m.email}`}>
+        <Button variant="ghost" size="icon" aria-label={`Actions pour ${m.name ?? m.email ?? "Membre"}`}>
           <MoreHorizontal aria-hidden="true" />
         </Button>
       </DropdownMenuTrigger>

@@ -11,8 +11,9 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
 import { getInVenue } from "./lib/catalogAccess";
-import { invalid } from "./lib/errors";
-import { requirePermission, type ReadCtx } from "./lib/guards";
+import { invalid, notFound } from "./lib/errors";
+import type { ReadCtx } from "./lib/guards";
+import { requireServiceActor, requireServiceMutation } from "./lib/serviceActor";
 import type { TicketStatus } from "./lib/ordering";
 import { advanceTicket } from "./lib/service";
 
@@ -54,8 +55,10 @@ async function linesOf(ctx: ReadCtx, ticket: Doc<"kitchenTickets">) {
 export const board = query({
   args: { venueId: v.id("venues"), stationId: v.id("prepStations") },
   handler: async (ctx, args) => {
-    const actor = await requirePermission(ctx, "kitchen.read", { venueId: args.venueId });
+    const actor = await requireServiceActor(ctx, "kitchen.read", { venueId: args.venueId });
     const station = await getInVenue(ctx, args.stationId, actor.venue._id, "Ce poste");
+    // Un écran de cuisine enrôlé pour un poste ne lit que ce poste.
+    if (actor.device?.stationId !== undefined && actor.device.stationId !== station._id) throw notFound("Ce poste");
     const active: Doc<"kitchenTickets">[] = [];
     for (const status of IN_KITCHEN) active.push(...(await ticketsIn(ctx, station, status)));
     const rank = (t: Doc<"kitchenTickets">) => (t.status === "recalled" ? 0 : 1);
@@ -114,10 +117,11 @@ export const advance = mutation({
     action: v.union(v.literal("start"), v.literal("ready"), v.literal("recall")),
   },
   handler: async (ctx, args) => {
-    const actor = await requirePermission(ctx, "kitchen.ticket.update", { venueId: args.venueId });
+    const actor = await requireServiceMutation(ctx, "kitchen.ticket.update", { venueId: args.venueId });
     const ticket = await getInVenue(ctx, args.ticketId, actor.venue._id, "Ce bon");
+    if (actor.device?.stationId !== undefined && actor.device.stationId !== ticket.prepStationId) throw notFound("Ce bon");
     if (ticket.status === "held") throw invalid("Ce service n'a pas encore été envoyé en cuisine.");
-    const { changed } = await advanceTicket(ctx, ticket, args.action, { type: "staff", userId: actor.user._id });
+    const { changed } = await advanceTicket(ctx, ticket, args.action, actor.event);
     return { changed };
   },
 });

@@ -23,6 +23,10 @@ export const modules = import.meta.glob("../../convex/**/*.ts");
 // Le secret de signature des laissez-passer de table (convex/lib/guestPass.ts). En test, une
 // valeur fixe ; en déploiement, `pnpm exec convex env set GUEST_PASS_SECRET …`.
 process.env.GUEST_PASS_SECRET ??= "secret-de-test-pour-les-laissez-passer-de-table";
+// L'émetteur des jetons d'appareil et de PIN (convex/lib/operatorJwt.ts) se déduit de l'URL du site.
+process.env.CONVEX_SITE_URL ??= "http://127.0.0.1:3211";
+// Le secret sous lequel les PIN sont hachés (convex/lib/pin.ts).
+process.env.PIN_PEPPER ??= "poivre-de-test-pour-les-pin-de-service";
 
 export function setup() {
   const t = convexTest(schema, modules);

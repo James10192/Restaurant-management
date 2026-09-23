@@ -27,6 +27,7 @@ import type { GenericMutationCtx, GenericQueryCtx } from "convex/server";
 import type { DataModel, Doc, Id } from "../_generated/dataModel";
 import { applyEntitlements } from "./entitlements";
 import { forbidden, notFound, unauthenticated } from "./errors";
+import { isOperatorIssuer } from "./operatorJwt";
 import {
   ALL_PERMISSIONS,
   isPermission,
@@ -73,6 +74,9 @@ export type Actor = OrganizationActor & {
 export async function getCurrentUser(ctx: ReadCtx): Promise<Doc<"users"> | null> {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) return null;
+  // Un jeton d'appareil ou de PIN n'est jamais un compte (D-060) : défense en profondeur, son
+  // sujet (`op:…`, `dev:…`) ne correspondrait de toute façon à aucun `authId`.
+  if (isOperatorIssuer(identity.issuer)) return null;
   const user = await ctx.db
     .query("users")
     .withIndex("by_auth", (q) => q.eq("authId", identity.subject))
@@ -129,6 +133,33 @@ async function assignmentsOf(ctx: ReadCtx, memberId: Id<"organizationMembers">) 
 }
 
 /**
+ * Ce membre travaille-t-il dans cet établissement ? Propriétaire, affectation au niveau de
+ * l'organisation, ou affectation sur CET établissement.
+ */
+export async function memberCoversVenue(
+  ctx: ReadCtx,
+  member: Doc<"organizationMembers">,
+  venue: Doc<"venues">,
+  isOwner: boolean,
+): Promise<boolean> {
+  if (isOwner) return true;
+  const assignments = await assignmentsOf(ctx, member._id);
+  return assignments.some((a) => a.scopeType === "organization" || a.venueId === venue._id);
+}
+
+/** L'établissement et son organisation, tous deux en service ; sinon NOT_FOUND. */
+export async function loadActiveVenue(
+  ctx: ReadCtx,
+  venueId: Id<"venues">,
+): Promise<{ venue: Doc<"venues">; organization: Doc<"organizations"> }> {
+  const venue = await ctx.db.get(venueId);
+  if (!venue || venue.status === "archived") throw notFound("Cet établissement");
+  const organization = await ctx.db.get(venue.organizationId);
+  if (!organization || organization.status !== "active") throw notFound("Cet établissement");
+  return { venue, organization };
+}
+
+/**
  * L'appelant a-t-il accès à cet établissement ? Il faut être membre actif de
  * l'organisation qui le possède ET avoir au moins une affectation qui le couvre
  * (organisation entière, ou cet établissement). Sinon NOT_FOUND.
@@ -138,20 +169,11 @@ export async function requireVenueAccess(
   venueId: Id<"venues">,
 ): Promise<OrganizationActor & { venue: Doc<"venues"> }> {
   const user = await requireUser(ctx);
-  const venue = await ctx.db.get(venueId);
-  if (!venue || venue.status === "archived") throw notFound("Cet établissement");
-  const organization = await ctx.db.get(venue.organizationId);
-  if (!organization || organization.status !== "active") throw notFound("Cet établissement");
+  const { venue, organization } = await loadActiveVenue(ctx, venueId);
   const member = await activeMembership(ctx, organization._id, user._id);
   if (!member) throw notFound("Cet établissement");
   const isOwner = organization.ownerUserId === user._id;
-  if (!isOwner) {
-    const assignments = await assignmentsOf(ctx, member._id);
-    const covered = assignments.some(
-      (a) => a.scopeType === "organization" || a.venueId === venue._id,
-    );
-    if (!covered) throw notFound("Cet établissement");
-  }
+  if (!(await memberCoversVenue(ctx, member, venue, isOwner))) throw notFound("Cet établissement");
   return { user, organization, member, isOwner, venue };
 }
 
@@ -159,7 +181,7 @@ export async function requireVenueAccess(
  * Résolution des permissions
  * ──────────────────────────────────────────────────────────────────────────── */
 
-async function effectiveEntitlements(
+export async function effectiveEntitlements(
   ctx: ReadCtx,
   organizationId: Id<"organizations">,
 ): Promise<Record<string, boolean> | undefined> {
@@ -198,7 +220,7 @@ async function effectiveEntitlements(
  */
 export async function resolvePermissionSets(
   ctx: ReadCtx,
-  actor: OrganizationActor,
+  actor: Pick<OrganizationActor, "organization" | "member" | "isOwner">,
   venue: Doc<"venues"> | null,
 ): Promise<{ granted: Set<Permission>; effective: Set<Permission> }> {
   let granted: Set<Permission>;

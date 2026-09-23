@@ -51,7 +51,7 @@ function normalizeEmail(value: string): string {
   return email;
 }
 
-async function loadOrgRole(ctx: MutationCtx, organizationId: Id<"organizations">, roleId: Id<"roles">) {
+export async function loadOrgRole(ctx: MutationCtx, organizationId: Id<"organizations">, roleId: Id<"roles">) {
   const role = await ctx.db.get(roleId);
   if (!role || role.organizationId !== organizationId || role.archivedAt !== undefined) {
     throw notFound("Ce rôle");
@@ -93,10 +93,15 @@ export const listMembers = query({
       const visible = assignments.filter(
         (a) => a.scopeType === "organization" || venueId === null || a.venueId === venueId,
       );
-      const isOwner = member.userId === actor.organization.ownerUserId;
+      const isOwner = member.userId !== undefined && member.userId === actor.organization.ownerUserId;
       if (venueId !== null && visible.length === 0 && !isOwner) continue;
-      const user = await ctx.db.get(member.userId);
-      if (!user) continue;
+      // Un membre sans compte (PIN seulement, D-060) n'a ni adresse ni nom de compte.
+      const user = member.userId ? await ctx.db.get(member.userId) : null;
+      if (!user && member.kind !== "pin_only") continue;
+      const credential = await ctx.db
+        .query("staffCredentials")
+        .withIndex("by_member", (q) => q.eq("memberId", member._id))
+        .unique();
       const roles = [];
       for (const a of visible) {
         if (!roleCache.has(a.roleId)) roleCache.set(a.roleId, await ctx.db.get(a.roleId));
@@ -111,19 +116,21 @@ export const listMembers = query({
       }
       result.push({
         memberId: member._id,
-        userId: user._id,
-        name: user.name ?? null,
-        email: user.email,
+        userId: user?._id ?? null,
+        kind: member.kind ?? ("account" as const),
+        name: user?.name ?? member.displayName ?? null,
+        email: user?.email ?? null,
+        pin: credential?.status ?? null,
         status: member.status,
         isOwner,
-        isSelf: member.userId === actor.user._id,
+        isSelf: member.userId !== undefined && member.userId === actor.user._id,
         // Même calcul que `setMemberStatus` : l'écran ne propose pas ce que le serveur refusera.
         canChangeStatus: await hasAuthorityOverMember(ctx, actor, member),
         joinedAt: member.joinedAt ?? null,
         roles,
       });
     }
-    return result.sort((a, b) => (a.name ?? a.email).localeCompare(b.name ?? b.email, "fr"));
+    return result.sort((a, b) => (a.name ?? a.email ?? "").localeCompare(b.name ?? b.email ?? "", "fr"));
   },
 });
 
@@ -165,7 +172,7 @@ export const listInvitations = query({
  * Vérifie que l'acteur peut proposer ce rôle dans ces portées, et renvoie son identité.
  * Vide = portée organisation. Sinon, `team.manage` ET verrou 1 dans CHAQUE établissement.
  */
-async function authorizeGrant(
+export async function authorizeGrant(
   ctx: MutationCtx,
   organizationId: Id<"organizations">,
   role: Doc<"roles">,
@@ -615,7 +622,7 @@ export const setMemberRoles = mutation({
  * L'acteur a-t-il autorité sur TOUTES les affectations de ce membre ? Pour suspendre ou
  * retirer quelqu'un, il faut pouvoir gérer chacun de ses rôles, là où il les tient.
  */
-async function hasAuthorityOverMember(
+export async function hasAuthorityOverMember(
   ctx: ReadCtx,
   base: OrganizationActor,
   member: Doc<"organizationMembers">,
@@ -640,7 +647,7 @@ async function hasAuthorityOverMember(
   return true;
 }
 
-async function assertAuthorityOverMember(
+export async function assertAuthorityOverMember(
   ctx: MutationCtx,
   base: OrganizationActor,
   member: Doc<"organizationMembers">,

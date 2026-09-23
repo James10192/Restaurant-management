@@ -6,7 +6,8 @@
  * `convex/lib`, `convex/_generated` et des fichiers d'infrastructure :
  *
  *  1. le corps appelle une garde (`requireUser`, `requireOrganizationMember`,
- *     `requireVenueAccess`, `requirePermission`, `requirePlatformAdmin`, `getCurrentUser`) ;
+ *     `requireVenueAccess`, `requirePermission`, `requirePlatformAdmin`, `getCurrentUser`,
+ *     et pour le service `requireServiceActor`, `requireServiceMutation`, `requireDevice`) ;
  *  2. cette garde intervient AVANT le premier accès `ctx.db` — lire puis vérifier, c'est
  *     avoir déjà lu ;
  *  3. seule exception admise : un commentaire `// garde : <raison>` qui dit pourquoi la
@@ -40,6 +41,9 @@ const GUARDS = [
   "requirePermission(",
   "requirePlatformAdmin(",
   "getCurrentUser(",
+  "requireServiceActor(",
+  "requireServiceMutation(",
+  "requireDevice(",
 ];
 const PUBLIC = /export const (\w+)\s*=\s*(query|mutation|action)\(/g;
 

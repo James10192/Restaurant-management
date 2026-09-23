@@ -78,6 +78,8 @@ const paymentMethod = v.union(
 const actorType = v.union(
   v.literal("guest"),
   v.literal("staff"),
+  /** Un appareil sans humain identifié : l'écran de cuisine (D-060). */
+  v.literal("device"),
   v.literal("system"),
   v.literal("ai"),
   v.literal("platform"),
@@ -140,7 +142,17 @@ export default defineSchema({
   /** Le pivot du contrôle d'accès : sans ligne ici, aucun accès. */
   organizationMembers: defineTable({
     organizationId: v.id("organizations"),
-    userId: v.id("users"),
+    /**
+     * Absent pour un membre SANS COMPTE (`kind: "pin_only"`, D-060) : un serveur qui n'a pas
+     * d'adresse e-mail réellement consultée travaille avec son PIN, sur un appareil enrôlé.
+     * Aucun compte Better Auth n'est créé pour lui : D-043 tient toujours.
+     */
+    userId: v.optional(v.id("users")),
+    /** Absent = `account` (les membres d'avant D-060). */
+    kind: v.optional(v.union(v.literal("account"), v.literal("pin_only"))),
+    /** Le nom affiché d'un membre sans compte ; un membre avec compte prend celui du compte. */
+    displayName: v.optional(v.string()),
+    createdByUserId: v.optional(v.id("users")),
     status: v.union(
       v.literal("invited"),
       v.literal("active"),
@@ -355,25 +367,104 @@ export default defineSchema({
   }).index("by_venue", ["venueId"]),
 
   /** Une tablette de cuisine n'est pas une personne : elle s'enrôle, elle ne se connecte pas. */
+  /**
+   * Un appareil ENRÔLÉ par un gérant (D-060). Trois sortes : `kds` (écran de production, aucun
+   * humain, rattaché à un poste), `shared` (tablette de salle ou caisse, PIN), `personal`
+   * (téléphone d'un employé, lié à ce membre). Le jeton d'appareil n'est jamais stocké en
+   * clair ; le révoquer coupe tout, immédiatement.
+   */
   trustedDevices: defineTable({
     venueId: v.id("venues"),
     label: v.string(),
-    deviceType: v.union(
-      v.literal("kds"),
-      v.literal("cashier"),
-      v.literal("waiter"),
-      v.literal("display"),
-    ),
-    /** Jamais le jeton en clair. */
+    deviceType: v.union(v.literal("kds"), v.literal("shared"), v.literal("personal")),
+    /** SHA-256 du jeton d'appareil. */
     tokenHash: v.string(),
     stationId: v.optional(v.id("prepStations")),
-    enrolledByUserId: v.id("users"),
+    /** Le propriétaire d'un appareil `personal` : seul lui peut s'y identifier. */
+    memberId: v.optional(v.id("organizationMembers")),
+    enrolledByMemberId: v.id("organizationMembers"),
+    enrolledAt: v.number(),
     lastSeenAt: v.optional(v.number()),
     revokedAt: v.optional(v.number()),
+    revokedByMemberId: v.optional(v.id("organizationMembers")),
+    /** Échecs de PIN récents sur cet appareil, tous membres confondus (fenêtre d'une heure). */
+    recentPinFailures: v.array(v.number()),
+    /** Au-delà de 15 échecs en une heure : plus aucun PIN sur cet appareil jusqu'à cette heure. */
+    pinSuspendedUntil: v.optional(v.number()),
   })
     .index("by_venue", ["venueId"])
-    .index("by_token", ["tokenHash"]) // le hachage EST la clé d'authentification
-    .index("by_venue_type", ["venueId", "deviceType"]),
+    .index("by_token", ["tokenHash"]), // le hachage EST la clé d'authentification
+
+  /** Code à usage unique qui enrôle un appareil (8 caractères, 10 minutes). */
+  deviceEnrollmentCodes: defineTable({
+    venueId: v.id("venues"),
+    codeHash: v.string(),
+    deviceType: v.union(v.literal("kds"), v.literal("shared"), v.literal("personal")),
+    label: v.string(),
+    stationId: v.optional(v.id("prepStations")),
+    memberId: v.optional(v.id("organizationMembers")),
+    createdByMemberId: v.id("organizationMembers"),
+    expiresAt: v.number(),
+    usedAt: v.optional(v.number()),
+    deviceId: v.optional(v.id("trustedDevices")),
+  })
+    .index("by_code", ["codeHash"])
+    .index("by_venue", ["venueId"]),
+
+  /**
+   * Le PIN d'un membre (D-060). Jamais le PIN : son HMAC-SHA256 sous un secret serveur
+   * (`PIN_PEPPER`), sans quoi les 10 000 codes possibles se testeraient instantanément sur une
+   * base volée. Un seul PIN par membre, valable sur tous les appareils enrôlés où il travaille.
+   */
+  staffCredentials: defineTable({
+    organizationId: v.id("organizations"),
+    memberId: v.id("organizationMembers"),
+    /** Absent tant que l'employé n'a pas choisi son PIN, ou après une remise à zéro. */
+    pinHash: v.optional(v.string()),
+    status: v.union(
+      v.literal("pending"), // en attente d'activation
+      v.literal("active"),
+      v.literal("disabled"), // 10 échecs depuis la dernière réussite, ou retiré par un gérant
+    ),
+    /** Échecs récents (fenêtre de 15 minutes), tous appareils confondus. */
+    recentFailures: v.array(v.number()),
+    failuresSinceSuccess: v.number(),
+    lockedUntil: v.optional(v.number()),
+    pinSetAt: v.optional(v.number()),
+    lastUnlockAt: v.optional(v.number()),
+  }).index("by_member", ["memberId"]),
+
+  /** Code d'activation remis par un gérant : l'employé choisit ensuite son PIN lui-même. */
+  activationCodes: defineTable({
+    organizationId: v.id("organizations"),
+    memberId: v.id("organizationMembers"),
+    codeHash: v.string(),
+    createdByMemberId: v.id("organizationMembers"),
+    expiresAt: v.number(),
+    usedAt: v.optional(v.number()),
+    revokedAt: v.optional(v.number()),
+  })
+    .index("by_code", ["codeHash"])
+    .index("by_member", ["memberId"]),
+
+  /**
+   * Une personne identifiée par son PIN sur un appareil, du déverrouillage au verrouillage.
+   * Le jeton d'opérateur (10 min) désigne cette ligne ; chaque appel la revérifie. Le secret
+   * de renouvellement n'est stocké que haché.
+   */
+  operatorSessions: defineTable({
+    venueId: v.id("venues"),
+    deviceId: v.id("trustedDevices"),
+    memberId: v.id("organizationMembers"),
+    secretHash: v.string(),
+    startedAt: v.number(),
+    lastActivityAt: v.number(),
+    endedAt: v.optional(v.number()),
+    endReason: v.optional(v.union(v.literal("locked"), v.literal("expired"), v.literal("revoked"), v.literal("replaced"))),
+  })
+    .index("by_device", ["deviceId"])
+    .index("by_member", ["memberId"])
+    .index("by_secret", ["secretHash"]),
 
   /** Équipe plateforme. Table à part, garde à part : jamais attribuable par un client. */
   platformAdmins: defineTable({
@@ -690,11 +781,11 @@ export default defineSchema({
     ),
     originType: v.union(v.literal("qr_scan"), v.literal("staff"), v.literal("reservation")),
     guestCount: v.optional(v.number()),
-    assignedWaiterUserId: v.optional(v.id("users")),
-    openedByUserId: v.optional(v.id("users")),
+    assignedWaiterMemberId: v.optional(v.id("organizationMembers")),
+    openedByMemberId: v.optional(v.id("organizationMembers")),
     openedAt: v.number(),
     closedAt: v.optional(v.number()),
-    closedByUserId: v.optional(v.id("users")),
+    closedByMemberId: v.optional(v.id("organizationMembers")),
     /** Obligatoire si `closed_with_debt` — vérifié dans la mutation, pas ici. */
     closeReason: v.optional(v.string()),
     /**
@@ -722,7 +813,7 @@ export default defineSchema({
     .index("by_venue_status", ["venueId", "status"])
     .index("by_table_status", ["tableId", "status"]) // garantit R1
     .index("by_venue_openedAt", ["venueId", "openedAt"])
-    .index("by_waiter", ["assignedWaiterUserId"]),
+    .index("by_waiter", ["assignedWaiterMemberId"]),
 
   /** Identité légère qui rend la commande collaborative possible SANS compte. */
   guestSessions: defineTable({
@@ -754,9 +845,9 @@ export default defineSchema({
     ),
     createdAt: v.number(),
     acknowledgedAt: v.optional(v.number()),
-    acknowledgedByUserId: v.optional(v.id("users")),
+    acknowledgedByMemberId: v.optional(v.id("organizationMembers")),
     resolvedAt: v.optional(v.number()),
-    resolvedByUserId: v.optional(v.id("users")),
+    resolvedByMemberId: v.optional(v.id("organizationMembers")),
   })
     .index("by_venue_status_created", ["venueId", "status", "createdAt"])
     .index("by_session", ["tableSessionId"]),
@@ -814,8 +905,8 @@ export default defineSchema({
     ),
     channel: v.union(v.literal("guest"), v.literal("staff")),
     placedByGuestSessionId: v.optional(v.id("guestSessions")),
-    placedByUserId: v.optional(v.id("users")),
-    acceptedByUserId: v.optional(v.id("users")),
+    placedByMemberId: v.optional(v.id("organizationMembers")),
+    acceptedByMemberId: v.optional(v.id("organizationMembers")),
     acceptedAt: v.optional(v.number()),
     rejectedReason: v.optional(v.string()),
     submittedAt: v.number(),
@@ -868,7 +959,7 @@ export default defineSchema({
       v.literal("cancelled"),
     ),
     cancelledReason: v.optional(v.string()),
-    cancelledByUserId: v.optional(v.id("users")),
+    cancelledByMemberId: v.optional(v.id("organizationMembers")),
     /** À qui l'article est attribué, pour le partage d'addition (§11). */
     assignedGuestSessionIds: v.array(v.id("guestSessions")),
   })
@@ -882,7 +973,10 @@ export default defineSchema({
     orderId: v.id("orders"),
     type: v.string(),
     actorType,
-    actorUserId: v.optional(v.id("users")),
+    /** Qui, sur quel appareil, dans quelle session d'opérateur (D-060). */
+    actorMemberId: v.optional(v.id("organizationMembers")),
+    actorDeviceId: v.optional(v.id("trustedDevices")),
+    actorOperatorSessionId: v.optional(v.id("operatorSessions")),
     payload: v.optional(v.any()),
     at: v.number(),
   })
@@ -974,10 +1068,10 @@ export default defineSchema({
     startedAt: v.optional(v.number()),
     readyAt: v.optional(v.number()),
     recalledAt: v.optional(v.number()),
-    startedByUserId: v.optional(v.id("users")),
-    readyByUserId: v.optional(v.id("users")),
+    startedByMemberId: v.optional(v.id("organizationMembers")),
+    readyByMemberId: v.optional(v.id("organizationMembers")),
     servedAt: v.optional(v.number()),
-    servedByUserId: v.optional(v.id("users")),
+    servedByMemberId: v.optional(v.id("organizationMembers")),
     /** Remonté au niveau du bon : une allergie ne se lit pas en petit dans une ligne. */
     allergyFlags: v.array(v.string()),
     itemCount: v.number(),
@@ -1393,6 +1487,9 @@ export default defineSchema({
     venueId: v.optional(v.id("venues")),
     actorType,
     actorUserId: v.optional(v.id("users")),
+    /** Renseignés quand le geste vient d'un PIN ou d'un appareil (D-060). */
+    actorMemberId: v.optional(v.id("organizationMembers")),
+    actorDeviceId: v.optional(v.id("trustedDevices")),
     action: v.string(),
     resourceType: v.string(),
     resourceId: v.optional(v.string()),

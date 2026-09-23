@@ -19,7 +19,8 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { writeAudit } from "./lib/audit";
 import { getInVenue } from "./lib/catalogAccess";
 import { conflict, forbidden, invalid } from "./lib/errors";
-import { requirePermission, type MutationCtx, type VenueActor } from "./lib/guards";
+import type { MutationCtx } from "./lib/guards";
+import { requireServiceActor, requireServiceMutation, type ServiceActor } from "./lib/serviceActor";
 import { loadLiveAvailability } from "./lib/guestMenu";
 import {
   ORDER_LIMITS,
@@ -79,7 +80,7 @@ function assertIdempotencyKey(key: string) {
 export const menu = query({
   args: { venueId: v.id("venues") },
   handler: async (ctx, args) => {
-    const actor = await requirePermission(ctx, "order.create", { venueId: args.venueId });
+    const actor = await requireServiceActor(ctx, "order.create", { venueId: args.venueId });
     return {
       currency: actor.venue.currency,
       timezone: actor.venue.timezone,
@@ -119,7 +120,9 @@ export async function createOrder(
     notes?: string;
     idempotencyKey: string;
     channel: "staff" | "guest";
-    placedByUserId?: Id<"users">;
+    placedByMemberId?: Id<"organizationMembers">;
+    /** Qui l'écrit dans le journal : le membre, son appareil, sa session — ou le client. */
+    actor: EventActor;
     placedByGuestSessionId?: Id<"guestSessions">;
     accepted: boolean;
     now: number;
@@ -141,9 +144,9 @@ export async function createOrder(
     reference,
     status: params.accepted ? "accepted" : "pending_acceptance",
     channel: params.channel,
-    ...(params.placedByUserId ? { placedByUserId: params.placedByUserId } : {}),
+    ...(params.placedByMemberId ? { placedByMemberId: params.placedByMemberId } : {}),
     ...(params.placedByGuestSessionId ? { placedByGuestSessionId: params.placedByGuestSessionId } : {}),
-    ...(params.accepted && params.placedByUserId ? { acceptedByUserId: params.placedByUserId, acceptedAt: now } : {}),
+    ...(params.accepted && params.placedByMemberId ? { acceptedByMemberId: params.placedByMemberId, acceptedAt: now } : {}),
     submittedAt: now,
     totals: orderTotals(lines, settings.tax.pricesIncludeTax),
     currency: venue.currency,
@@ -173,7 +176,7 @@ export async function createOrder(
       }),
     );
   }
-  const actor: EventActor = params.channel === "staff" && params.placedByUserId ? { type: "staff", userId: params.placedByUserId } : { type: "guest" };
+  const actor = params.actor;
   await writeOrderEvent(ctx, { _id: orderId, venueId: venue._id }, "submitted", actor, { lines: lines.length });
   if (params.accepted) {
     await writeOrderEvent(ctx, { _id: orderId, venueId: venue._id }, "accepted", actor);
@@ -183,7 +186,7 @@ export async function createOrder(
   if (venue.currencyLockedAt === undefined) await ctx.db.patch(venue._id, { currencyLockedAt: now });
   const sessionPatch: Partial<Doc<"tableSessions">> = { lastActivityAt: now };
   if (session.status === "open" || session.status === "billing") sessionPatch.status = "ordering";
-  if (params.placedByUserId && session.assignedWaiterUserId === undefined) sessionPatch.assignedWaiterUserId = params.placedByUserId;
+  if (params.placedByMemberId && session.assignedWaiterMemberId === undefined) sessionPatch.assignedWaiterMemberId = params.placedByMemberId;
   await ctx.db.patch(session._id, sessionPatch);
   return { orderId, reference };
 }
@@ -275,7 +278,7 @@ export const submit = mutation({
     ctx,
     args,
   ): Promise<{ ok: true; orderId: Id<"orders">; reference: string; replayed: boolean } | { ok: false; problems: LineProblem[] }> => {
-    const actor = await requirePermission(ctx, "order.create", { venueId: args.venueId });
+    const actor = await requireServiceMutation(ctx, "order.create", { venueId: args.venueId });
     assertIdempotencyKey(args.idempotencyKey);
     // Rejouée (double appui, file hors ligne) : on renvoie la commande déjà créée.
     const previous = await ctx.db
@@ -304,7 +307,8 @@ export const submit = mutation({
       ...(notes ? { notes } : {}),
       idempotencyKey: args.idempotencyKey,
       channel: "staff",
-      placedByUserId: actor.user._id,
+      ...(actor.member ? { placedByMemberId: actor.member._id } : {}),
+      actor: actor.event,
       accepted: true,
       now,
     });
@@ -316,7 +320,7 @@ export const submit = mutation({
 export const fireCourse = mutation({
   args: { venueId: v.id("venues"), sessionId: v.id("tableSessions"), courseNumber: v.number() },
   handler: async (ctx, args) => {
-    const actor = await requirePermission(ctx, "order.course.fire", { venueId: args.venueId });
+    const actor = await requireServiceMutation(ctx, "order.course.fire", { venueId: args.venueId });
     const session = await getInVenue(ctx, args.sessionId, actor.venue._id, "Cette table");
     const held = (
       await ctx.db
@@ -324,7 +328,7 @@ export const fireCourse = mutation({
         .withIndex("by_session", (q) => q.eq("tableSessionId", session._id))
         .collect()
     ).filter((t) => t.status === "held" && t.courseNumber === args.courseNumber);
-    for (const ticket of held) await advanceTicket(ctx, ticket, "fire", { type: "staff", userId: actor.user._id });
+    for (const ticket of held) await advanceTicket(ctx, ticket, "fire", actor.event);
     return held.length;
   },
 });
@@ -333,9 +337,9 @@ export const fireCourse = mutation({
 export const serveTicket = mutation({
   args: { venueId: v.id("venues"), ticketId: v.id("kitchenTickets") },
   handler: async (ctx, args) => {
-    const actor = await requirePermission(ctx, "order.serve", { venueId: args.venueId });
+    const actor = await requireServiceMutation(ctx, "order.serve", { venueId: args.venueId });
     const ticket = await getInVenue(ctx, args.ticketId, actor.venue._id, "Ce bon");
-    await advanceTicket(ctx, ticket, "serve", { type: "staff", userId: actor.user._id });
+    await advanceTicket(ctx, ticket, "serve", actor.event);
   },
 });
 
@@ -343,7 +347,7 @@ export const serveTicket = mutation({
 export const readyToServe = query({
   args: { venueId: v.id("venues") },
   handler: async (ctx, args) => {
-    const actor = await requirePermission(ctx, "order.read", { venueId: args.venueId });
+    const actor = await requireServiceActor(ctx, "order.read", { venueId: args.venueId });
     const tickets = await ctx.db
       .query("kitchenTickets")
       .withIndex("by_venue_status", (q) => q.eq("venueId", actor.venue._id).eq("status", "ready"))
@@ -364,7 +368,7 @@ export const readyToServe = query({
         sessionId: t.tableSessionId,
         station: (await ctx.db.get(t.prepStationId))?.name ?? "Poste",
         readyAt: t.readyAt ?? null,
-        isMine: session?.assignedWaiterUserId === actor.user._id,
+        isMine: actor.member !== null && session?.assignedWaiterMemberId === actor.member._id,
         items: items.map((i) => ({ name: i.nameSnapshot, variantName: i.variantNameSnapshot ?? null, quantity: i.quantity })),
       });
     }
@@ -380,7 +384,7 @@ export const readyToServe = query({
 export const cancelItem = mutation({
   args: { venueId: v.id("venues"), itemId: v.id("orderItems"), reason: v.optional(v.string()) },
   handler: async (ctx, args) => {
-    const actor = await requirePermission(ctx, "order.read", { venueId: args.venueId });
+    const actor = await requireServiceMutation(ctx, "order.read", { venueId: args.venueId });
     const item = await getInVenue(ctx, args.itemId, actor.venue._id, "Cette ligne");
     if (item.status === "cancelled") return;
     if (item.status === "served") throw conflict("Ce plat est déjà servi : un geste commercial se fait sur l'addition.");
@@ -396,14 +400,14 @@ export const cancelItem = mutation({
     }
     const reason = cleanReason(args.reason, inProduction);
     await cancelLine(ctx, actor, item, ticketItem, ticket, reason, inProduction);
-    await refreshOrder(ctx, item.orderId, { type: "staff", userId: actor.user._id });
+    await refreshOrder(ctx, item.orderId, actor.event);
     await touchSession(ctx, item.tableSessionId);
   },
 });
 
 async function cancelLine(
   ctx: MutationCtx,
-  actor: VenueActor,
+  actor: ServiceActor,
   item: Doc<"orderItems">,
   ticketItem: Doc<"kitchenTicketItems"> | null,
   ticket: Doc<"kitchenTickets"> | null,
@@ -412,14 +416,14 @@ async function cancelLine(
 ) {
   await ctx.db.patch(item._id, {
     status: "cancelled",
-    cancelledByUserId: actor.user._id,
+    ...(actor.member ? { cancelledByMemberId: actor.member._id } : {}),
     ...(reason ? { cancelledReason: reason } : {}),
   });
   if (ticketItem) await ctx.db.patch(ticketItem._id, { status: "cancelled" });
   if (ticket) {
     const remaining = await recountTicket(ctx, ticket);
     if (remaining === 0 && !["served", "cancelled"].includes(ticket.status)) {
-      await advanceTicket(ctx, ticket, "cancel", { type: "staff", userId: actor.user._id });
+      await advanceTicket(ctx, ticket, "cancel", actor.event);
     }
   }
   const order = (await ctx.db.get(item.orderId))!;
@@ -429,7 +433,7 @@ async function cancelLine(
   totals.tax -= itemTax;
   totals.total -= item.lineTotal + (totals.total === totals.subtotal + item.lineTotal ? 0 : itemTax);
   await ctx.db.patch(order._id, { totals });
-  await writeOrderEvent(ctx, order, "item_cancelled", { type: "staff", userId: actor.user._id }, {
+  await writeOrderEvent(ctx, order, "item_cancelled", actor.event, {
     item: item.nameSnapshot,
     quantity: item.quantity,
     ...(reason ? { reason } : {}),
@@ -438,7 +442,7 @@ async function cancelLine(
     await writeAudit(ctx, {
       organizationId: actor.organization._id,
       venueId: actor.venue._id,
-      actorUserId: actor.user._id,
+      ...actor.audit,
       action: "order.item.cancel_after_fire",
       resourceType: "orderItem",
       resourceId: item._id,
@@ -452,7 +456,7 @@ async function cancelLine(
 export const cancelOrder = mutation({
   args: { venueId: v.id("venues"), orderId: v.id("orders"), reason: v.string() },
   handler: async (ctx, args) => {
-    const actor = await requirePermission(ctx, "order.cancel", { venueId: args.venueId });
+    const actor = await requireServiceMutation(ctx, "order.cancel", { venueId: args.venueId });
     const order = await getInVenue(ctx, args.orderId, actor.venue._id, "Cette commande");
     if (["cancelled", "rejected", "closed"].includes(order.status)) return;
     const reason = cleanReason(args.reason, true)!;
@@ -471,11 +475,11 @@ export const cancelOrder = mutation({
     }
     // Une commande en attente de validation n'a pas de lignes à dériver : on la clôt directement.
     if (order.status === "pending_acceptance") await ctx.db.patch(order._id, { status: "cancelled" });
-    await refreshOrder(ctx, order._id, { type: "staff", userId: actor.user._id });
+    await refreshOrder(ctx, order._id, actor.event);
     await writeAudit(ctx, {
       organizationId: actor.organization._id,
       venueId: actor.venue._id,
-      actorUserId: actor.user._id,
+      ...actor.audit,
       action: "order.cancel",
       resourceType: "order",
       resourceId: order._id,
@@ -489,7 +493,7 @@ export const cancelOrder = mutation({
 export const accept = mutation({
   args: { venueId: v.id("venues"), orderId: v.id("orders") },
   handler: async (ctx, args) => {
-    const actor = await requirePermission(ctx, "order.accept", { venueId: args.venueId });
+    const actor = await requireServiceMutation(ctx, "order.accept", { venueId: args.venueId });
     const order = await getInVenue(ctx, args.orderId, actor.venue._id, "Cette commande");
     if (order.status !== "pending_acceptance") {
       if (order.status === "rejected" || order.status === "cancelled") throw conflict("Cette commande a déjà été refusée.");
@@ -498,11 +502,11 @@ export const accept = mutation({
     const session = (await ctx.db.get(order.tableSessionId))!;
     if (!isOpenSession(session)) throw conflict("Cette table est clôturée.");
     const now = Date.now();
-    await ctx.db.patch(order._id, { status: "accepted", acceptedByUserId: actor.user._id, acceptedAt: now });
-    await writeOrderEvent(ctx, order, "accepted", { type: "staff", userId: actor.user._id });
+    await ctx.db.patch(order._id, { status: "accepted", ...(actor.member ? { acceptedByMemberId: actor.member._id } : {}), acceptedAt: now });
+    await writeOrderEvent(ctx, order, "accepted", actor.event);
     await createTickets(ctx, actor.venue, session, order._id, order.reference, [], now);
     const patch: Partial<Doc<"tableSessions">> = { lastActivityAt: now };
-    if (session.assignedWaiterUserId === undefined) patch.assignedWaiterUserId = actor.user._id;
+    if (session.assignedWaiterMemberId === undefined && actor.member) patch.assignedWaiterMemberId = actor.member._id;
     await ctx.db.patch(session._id, patch);
   },
 });
@@ -511,7 +515,7 @@ export const accept = mutation({
 export const reject = mutation({
   args: { venueId: v.id("venues"), orderId: v.id("orders"), reason: v.string() },
   handler: async (ctx, args) => {
-    const actor = await requirePermission(ctx, "order.accept", { venueId: args.venueId });
+    const actor = await requireServiceMutation(ctx, "order.accept", { venueId: args.venueId });
     const order = await getInVenue(ctx, args.orderId, actor.venue._id, "Cette commande");
     if (order.status === "rejected") return;
     if (order.status !== "pending_acceptance") throw conflict("Cette commande est déjà acceptée : annulez-la plutôt.");
@@ -521,8 +525,8 @@ export const reject = mutation({
       .query("orderItems")
       .withIndex("by_order", (q) => q.eq("orderId", order._id))
       .collect();
-    for (const item of items) await ctx.db.patch(item._id, { status: "cancelled", cancelledReason: reason, cancelledByUserId: actor.user._id });
-    await writeOrderEvent(ctx, order, "rejected", { type: "staff", userId: actor.user._id }, { reason });
+    for (const item of items) await ctx.db.patch(item._id, { status: "cancelled", cancelledReason: reason, ...(actor.member ? { cancelledByMemberId: actor.member._id } : {}) });
+    await writeOrderEvent(ctx, order, "rejected", actor.event, { reason });
   },
 });
 
@@ -530,7 +534,7 @@ export const reject = mutation({
 export const pendingAcceptance = query({
   args: { venueId: v.id("venues") },
   handler: async (ctx, args) => {
-    const actor = await requirePermission(ctx, "order.accept", { venueId: args.venueId });
+    const actor = await requireServiceActor(ctx, "order.accept", { venueId: args.venueId });
     const orders = await ctx.db
       .query("orders")
       .withIndex("by_venue_status_submitted", (q) => q.eq("venueId", actor.venue._id).eq("status", "pending_acceptance"))
