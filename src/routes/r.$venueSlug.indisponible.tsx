@@ -1,4 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { QrCodeIcon } from "lucide-react";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "~/components/ui/empty";
 
 /**
  * L'échec d'un scan — Joliba (IA §3, « Échange du jeton »)
@@ -40,9 +42,18 @@ function Unavailable() {
   const { raison } = Route.useSearch();
   const message = MESSAGES[raison];
   return (
-    <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center gap-3 px-6 text-center">
-      <h1 className="text-title-xl text-ink">{message.title}</h1>
-      <p className="text-body text-ink-2">{message.body}</p>
+    <main className="flex min-h-dvh bg-background px-4">
+      <Empty>
+        <EmptyHeader>
+          <EmptyMedia variant="icon">
+            <QrCodeIcon />
+          </EmptyMedia>
+          <EmptyTitle>
+            <h1 className="text-xl font-semibold tracking-tight">{message.title}</h1>
+          </EmptyTitle>
+          <EmptyDescription>{message.body}</EmptyDescription>
+        </EmptyHeader>
+      </Empty>
     </main>
   );
 }

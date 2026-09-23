@@ -3,7 +3,11 @@ import { localTime } from "../../convex/lib/availability";
 import type { PublicVenue } from "../../convex/lib/guestMenu";
 import { isIndexable } from "../../convex/lib/indexability";
 import { VENUE_TYPE_LABELS } from "../../convex/lib/validators";
+import { MapPinIcon, PhoneIcon, UtensilsCrossedIcon } from "lucide-react";
 import { MenuView } from "~/components/guest/menu-view";
+import { Badge } from "~/components/ui/badge";
+import { Button } from "~/components/ui/button";
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "~/components/ui/empty";
 import { formatMinute } from "~/lib/guest/availability";
 import { loadPublicMenu, SLUG_PATTERN } from "~/lib/guest/server";
 import { useServiceWorker } from "~/lib/guest/sw";
@@ -125,29 +129,37 @@ function PublicMenu() {
       selectedProductId={plat ?? null}
       onSelectProduct={(id) => void navigate({ search: id ? { plat: id } : {}, replace: !id, resetScroll: false })}
       header={
-        <header className="bg-surface px-4 pb-5 pt-6">
+        <header className="border-b bg-background px-4 pt-6 pb-5">
           <div className="mx-auto max-w-[960px]">
-            <p className="text-label text-ink-3">{VENUE_TYPE_LABELS[venue.venueType]}</p>
-            <h1 className="text-title-2xl text-ink">{venue.name}</h1>
-            {address ? <p className="mt-1 text-body text-ink-2">{address}</p> : null}
+            <p className="text-sm text-muted-foreground">{VENUE_TYPE_LABELS[venue.venueType]}</p>
+            <h1 className="text-2xl font-semibold tracking-tight">{venue.name}</h1>
+            {address ? (
+              <p className="mt-1 flex items-start gap-1.5 text-sm text-muted-foreground">
+                <MapPinIcon aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+                <span>{address}</span>
+              </p>
+            ) : null}
             <div className="mt-3 flex flex-wrap items-center gap-3">
-              {open !== null ? (
-                <span className="rounded-full bg-surface-2 px-3 py-1 text-label text-ink">{open ? "Ouvert" : "Fermé"}</span>
-              ) : null}
+              {open !== null ? <Badge variant={open ? "default" : "secondary"}>{open ? "Ouvert" : "Fermé"}</Badge> : null}
               {venue.phone ? (
-                <a href={`tel:${venue.phone.replace(/\s+/g, "")}`} className="inline-flex h-11 items-center rounded-sm bg-accent-600 px-5 text-label text-on-fill">
-                  Appeler
-                </a>
+                <Button asChild size="lg" className="h-11 px-5">
+                  <a href={`tel:${venue.phone.replace(/\s+/g, "")}`}>
+                    <PhoneIcon data-icon="inline-start" />
+                    Appeler
+                  </a>
+                </Button>
               ) : null}
             </div>
-            {venue.description ? <p className="mt-4 max-w-2xl text-body text-ink-2">{venue.description}</p> : null}
+            {venue.description ? <p className="mt-4 max-w-2xl text-sm text-muted-foreground">{venue.description}</p> : null}
           </div>
         </header>
       }
       footer={
-        <a href="/" rel="nofollow" className="text-label text-ink-3">
-          Carte propulsée par Joliba
-        </a>
+        <Button asChild variant="link" size="sm" className="px-0 text-muted-foreground">
+          <a href="/" rel="nofollow">
+            Carte propulsée par Joliba
+          </a>
+        </Button>
       }
     />
   );
@@ -155,12 +167,23 @@ function PublicMenu() {
 
 function MenuNotFound() {
   return (
-    <main className="mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center gap-3 px-4 text-center">
-      <h1 className="text-title-xl text-ink">Cette carte n'est pas en ligne</h1>
-      <p className="text-body text-ink-2">L'adresse est peut-être incomplète, ou l'établissement ne publie pas sa carte ici.</p>
-      <a href="/" className="text-body text-accent-700 underline underline-offset-4">
-        Revenir à l'accueil
-      </a>
+    <main className="flex min-h-dvh bg-background px-4">
+      <Empty>
+        <EmptyHeader>
+          <EmptyMedia variant="icon">
+            <UtensilsCrossedIcon />
+          </EmptyMedia>
+          <EmptyTitle>
+            <h1 className="text-xl font-semibold tracking-tight">Cette carte n'est pas en ligne</h1>
+          </EmptyTitle>
+          <EmptyDescription>L'adresse est peut-être incomplète, ou l'établissement ne publie pas sa carte ici.</EmptyDescription>
+        </EmptyHeader>
+        <EmptyContent>
+          <Button asChild variant="outline" size="lg">
+            <a href="/">Revenir à l'accueil</a>
+          </Button>
+        </EmptyContent>
+      </Empty>
     </main>
   );
 }

@@ -17,7 +17,7 @@ import { Input } from "~/components/ui/input";
 import { NativeSelect } from "~/components/ui/native-select";
 import { EmptyState, LoadingState, PermissionDeniedState } from "~/components/ui/states";
 import { describeError } from "~/lib/errors";
-import { cn } from "~/lib/cn";
+import { cn } from "~/lib/utils";
 
 export const Route = createFileRoute("/_auth/app/menu/availability")({
   head: () => ({ meta: [{ title: "Disponibilité — Joliba" }] }),

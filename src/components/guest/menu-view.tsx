@@ -4,24 +4,34 @@
  * Partagée par la carte de table (`/r/…/table`) et la carte publique (`/menu/…`).
  *
  * Contraintes qui gouvernent ce fichier :
- *  - AUCUNE dépendance au kit d'interface du personnel : tout ce qui est importé ici est
- *    téléchargé sur une 4G bridée, par un téléphone d'entrée de gamme. React, et c'est tout ;
+ *  - tout ce qui est importé ici est téléchargé sur une 4G bridée, par un téléphone d'entrée de
+ *    gamme. Seuls des composants shadcn/ui légers sont chargés au premier affichage ; la fiche
+ *    d'un plat (Drawer, donc vaul et le Dialog de Radix) arrive À PART, au premier appui ;
+ *  - le rendu serveur porte déjà toute la carte : rien d'utile n'attend l'hydratation ;
  *  - un plat épuisé est GRISÉ, jamais masqué : un plat qui disparaît donne une carte pauvre ;
  *  - la place de chaque photo est réservée avant son arrivée : rien ne bouge au chargement ;
  *  - rien n'est déduit : un allergène, un régime, un piment ne s'affichent que déclarés (R28).
  */
 
-import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { ClockIcon, InfoIcon, SearchIcon, UtensilsCrossedIcon, WifiOffIcon } from "lucide-react";
+import { createContext, lazy, Suspense, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { ALLERGENS } from "../../../convex/lib/allergens";
 import type { GuestMenu, GuestProduct, LiveAvailability, PublicVenue } from "../../../convex/lib/guestMenu";
 import { formatMoney, type CurrencyCode } from "../../../convex/lib/money";
+import { Alert, AlertDescription } from "~/components/ui/alert";
+import { Badge } from "~/components/ui/badge";
+import { Button } from "~/components/ui/button";
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/ui/card";
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "~/components/ui/empty";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "~/components/ui/input-group";
+import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "~/components/ui/item";
+import { Toggle } from "~/components/ui/toggle";
 import { availabilityIndex, formatMinute, type AvailabilityIndex } from "~/lib/guest/availability";
 import { GUEST_TEXT, localized, type GuestLocale, type GuestText } from "~/lib/guest/i18n";
+import { cn } from "~/lib/utils";
 
 /** Devise et heure, lues une fois au plus haut : chaque carte n'a pas à les recevoir. */
 const GuestContext = createContext<{ currency: string; now: number }>({ currency: "XOF", now: 0 });
-
-const cx = (...parts: Array<string | false | null | undefined>) => parts.filter(Boolean).join(" ");
 
 /** Une section bascule en liste sans photo sous 40 % de plats photographiés (R-D7). */
 const PHOTO_GRID_THRESHOLD = 0.4;
@@ -119,6 +129,9 @@ export function useGuestLocale(): [GuestLocale, (l: GuestLocale) => void] {
 }
 
 type Filter = "vegetarian" | "vegan" | "halal" | "spicy";
+const FILTERS: readonly Filter[] = ["vegetarian", "vegan", "halal", "spicy"];
+
+type DishSelection = { menu: GuestMenu; sectionId: string; product: GuestProduct };
 
 export function MenuView(props: MenuViewProps) {
   const { venue, menus, renderedAt } = props;
@@ -159,7 +172,7 @@ export function MenuView(props: MenuViewProps) {
     }))
     .filter((m) => m.sections.length > 0);
 
-  const selected = useMemo(() => {
+  const selected = useMemo<DishSelection | null>(() => {
     if (!props.selectedProductId) return null;
     for (const menu of menus) {
       for (const section of menu.sections) {
@@ -170,6 +183,14 @@ export function MenuView(props: MenuViewProps) {
     return null;
   }, [menus, props.selectedProductId]);
 
+  // La fiche n'est montée qu'au premier plat ouvert, et jamais au rendu serveur (un effet n'y
+  // tourne pas) : vaul reste hors du premier paquet. Une fois montée, elle le reste, pour que
+  // la fermeture s'anime au lieu de disparaître.
+  const [sheetMounted, setSheetMounted] = useState(false);
+  useEffect(() => {
+    if (selected) setSheetMounted(true);
+  }, [selected]);
+
   const timeFormat = useMemo(
     () => new Intl.DateTimeFormat(locale === "fr" ? "fr-FR" : "en-GB", { timeZone: venue.timezone, hour: "2-digit", minute: "2-digit" }),
     [locale, venue.timezone],
@@ -177,117 +198,141 @@ export function MenuView(props: MenuViewProps) {
 
   return (
     <GuestContext.Provider value={{ currency: venue.currency, now }}>
-    <div lang={locale} className="min-h-dvh bg-bg pb-16">
-      {!online ? (
-        <p role="status" className="sticky top-0 z-30 bg-warning-50 px-4 py-2 text-center text-label text-warning-700">
-          {t.offline(timeFormat.format(renderedAt))}
-        </p>
-      ) : null}
-      {props.header}
+      <div lang={locale} className="min-h-dvh bg-background pb-16 text-foreground">
+        {!online ? (
+          <Alert role="status" className="sticky top-0 z-30 rounded-none border-x-0 border-t-0">
+            <WifiOffIcon />
+            <AlertDescription>{t.offline(timeFormat.format(renderedAt))}</AlertDescription>
+          </Alert>
+        ) : null}
+        {props.header}
 
-      {menus.length === 0 ? (
-        <div className="mx-auto max-w-[960px] px-4 py-12 text-center">
-          <p className="text-title-lg text-ink">{t.empty}</p>
-          <p className="mt-2 text-body text-ink-2">{t.askWaiter}</p>
-        </div>
-      ) : (
-        <>
-          <SectionNav menus={visibleMenus} locale={locale} label={t.sections} />
-          <div className="mx-auto max-w-[960px] px-4">
-            <div className="mt-4 flex flex-col gap-3">
-              <label className="sr-only" htmlFor="guest-search">
-                {t.search}
-              </label>
-              <div className="flex gap-2">
-                <input
-                  id="guest-search"
-                  type="search"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder={t.search}
-                  autoComplete="off"
-                  className="h-12 min-w-0 flex-1 rounded-md border border-line-control bg-surface px-4 text-body text-ink placeholder:text-ink-3"
-                />
-                {/* En haut, là où on la cherche : un client anglophone ne descend pas jusqu'au pied de page. */}
-                <button
-                  type="button"
-                  onClick={() => setLocale(locale === "fr" ? "en" : "fr")}
-                  className="h-12 shrink-0 rounded-md border border-line-2 bg-surface px-3 text-label text-ink"
-                  lang={locale === "fr" ? "en" : "fr"}
-                  aria-label={t.language}
-                >
-                  {locale === "fr" ? "EN" : "FR"}
-                </button>
-              </div>
-              {availableFilters.length > 0 ? (
-                <div className="flex flex-wrap gap-2" role="group" aria-label={t.filters}>
-                  {availableFilters.map((f) => {
-                    const on = filters.includes(f);
-                    return (
-                      <button
+        {menus.length === 0 ? (
+          <Empty className="mx-auto max-w-[960px] px-4 py-12">
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <UtensilsCrossedIcon />
+              </EmptyMedia>
+              <EmptyTitle className="text-lg">{t.empty}</EmptyTitle>
+              <EmptyDescription>{t.askWaiter}</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        ) : (
+          <>
+            <SectionNav menus={visibleMenus} locale={locale} label={t.sections} />
+            <div className="mx-auto max-w-[960px] px-4">
+              <div className="mt-4 flex flex-col gap-3">
+                <label className="sr-only" htmlFor="guest-search">
+                  {t.search}
+                </label>
+                <div className="flex gap-2">
+                  <InputGroup className="h-11 flex-1">
+                    <InputGroupInput
+                      id="guest-search"
+                      type="search"
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                      placeholder={t.search}
+                      autoComplete="off"
+                    />
+                    <InputGroupAddon>
+                      <SearchIcon />
+                    </InputGroupAddon>
+                  </InputGroup>
+                  {/* En haut, là où on la cherche : un client anglophone ne descend pas jusqu'au pied de page. */}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="lg"
+                    className="h-11 min-w-11"
+                    onClick={() => setLocale(locale === "fr" ? "en" : "fr")}
+                    lang={locale === "fr" ? "en" : "fr"}
+                    aria-label={t.language}
+                  >
+                    {locale === "fr" ? "EN" : "FR"}
+                  </Button>
+                </div>
+                {availableFilters.length > 0 ? (
+                  // Des Toggle indépendants, et non un ToggleGroup : même rendu, même annonce (bouton
+                  // « pressé »), mais sans la navigation au clavier du groupe — plusieurs Ko de moins
+                  // sur la 4G du client, pour quatre boutons au plus.
+                  <div role="group" aria-label={t.filters} className="flex flex-wrap gap-2">
+                    {availableFilters.map((f) => (
+                      <Toggle
                         key={f}
-                        type="button"
-                        aria-pressed={on}
-                        onClick={() => setFilters(on ? filters.filter((x) => x !== f) : [...filters, f])}
-                        className={cx(
-                          "h-11 rounded-full border px-4 text-label",
-                          on ? "border-accent-600 bg-accent-50 text-accent-700" : "border-line-2 bg-surface text-ink-2",
-                        )}
+                        variant="outline"
+                        size="lg"
+                        pressed={filters.includes(f)}
+                        onPressedChange={(on) => setFilters(FILTERS.filter((x) => (x === f ? on : filters.includes(x))))}
                       >
                         {t[f]}
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : null}
-            </div>
-
-            {visibleMenus.length === 0 ? (
-              <div className="py-10 text-center">
-                <p className="text-body text-ink-2">{t.noResult}</p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setQuery("");
-                    setFilters([]);
-                  }}
-                  className="mt-3 h-11 rounded-sm px-4 text-label text-accent-700 underline underline-offset-4"
-                >
-                  {t.clearFilters}
-                </button>
+                      </Toggle>
+                    ))}
+                  </div>
+                ) : null}
               </div>
-            ) : (
-              visibleMenus.map(({ menu, sections }) => (
-                <MenuBlock
-                  key={menu.publicationId}
-                  menu={menu}
-                  sections={sections}
-                  index={index}
-                  locale={locale}
-                  t={t}
-                  showMenuTitle={menus.length > 1}
-                  onSelect={props.onSelectProduct}
-                  priorityImages={menu === visibleMenus[0]?.menu}
-                />
-              ))
-            )}
 
-            <p className="mt-10 rounded-md bg-surface-2 px-4 py-3 text-label text-ink-2">{t.noAllergenInfo}</p>
-            {props.footer ? <div className="mt-6">{props.footer}</div> : null}
-          </div>
-        </>
-      )}
+              {visibleMenus.length === 0 ? (
+                <Empty className="py-10">
+                  <EmptyHeader>
+                    <EmptyMedia variant="icon">
+                      <SearchIcon />
+                    </EmptyMedia>
+                    <EmptyTitle>{t.noResult}</EmptyTitle>
+                  </EmptyHeader>
+                  <EmptyContent>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="lg"
+                      onClick={() => {
+                        setQuery("");
+                        setFilters([]);
+                      }}
+                    >
+                      {t.clearFilters}
+                    </Button>
+                  </EmptyContent>
+                </Empty>
+              ) : (
+                visibleMenus.map(({ menu, sections }) => (
+                  <MenuBlock
+                    key={menu.publicationId}
+                    menu={menu}
+                    sections={sections}
+                    index={index}
+                    locale={locale}
+                    t={t}
+                    showMenuTitle={menus.length > 1}
+                    onSelect={props.onSelectProduct}
+                    priorityImages={menu === visibleMenus[0]?.menu}
+                  />
+                ))
+              )}
 
-      <DishSheet
-        selection={selected}
-        index={index}
-        locale={locale}
-        t={t}
-        currency={venue.currency}
-        now={now}
-        onClose={() => props.onSelectProduct(null)}
-      />
-    </div>
+              <Alert role="note" className="mt-10">
+                <InfoIcon />
+                <AlertDescription>{t.noAllergenInfo}</AlertDescription>
+              </Alert>
+              {props.footer ? <div className="mt-6">{props.footer}</div> : null}
+            </div>
+          </>
+        )}
+
+        {sheetMounted ? (
+          <Suspense fallback={null}>
+            <DishSheet
+              selection={selected}
+              index={index}
+              locale={locale}
+              t={t}
+              currency={venue.currency}
+              now={now}
+              onClose={() => props.onSelectProduct(null)}
+            />
+          </Suspense>
+        ) : null}
+      </div>
     </GuestContext.Provider>
   );
 }
@@ -298,6 +343,10 @@ function sectionAnchor(menu: GuestMenu, section: { id: string }) {
   return `s-${menu.menu.id.slice(-6)}-${section.id.slice(-8)}`;
 }
 
+/**
+ * Des liens d'ancre, et non des onglets : ils défilent jusqu'à la section avant même que le
+ * JavaScript soit arrivé, et chaque section reste dans la page (rien n'est masqué).
+ */
 function SectionNav({ menus, locale, label }: { menus: { menu: GuestMenu; sections: SectionView[] }[]; locale: GuestLocale; label: string }) {
   const links = menus.flatMap(({ menu, sections }) => sections.map((s) => ({ href: `#${sectionAnchor(menu, s)}`, name: localized(s, locale).name })));
   const [active, setActive] = useState<string | null>(null);
@@ -317,20 +366,15 @@ function SectionNav({ menus, locale, label }: { menus: { menu: GuestMenu; sectio
   }, [links.map((l) => l.href).join("|")]);
   if (links.length < 2) return null;
   return (
-    <nav aria-label={label} className="sticky top-0 z-20 border-b border-line bg-surface/95 backdrop-blur">
-      <ul className="mx-auto flex max-w-[960px] gap-1 overflow-x-auto px-2 [scrollbar-width:none]">
+    <nav aria-label={label} className="sticky top-0 z-20 border-b bg-background/95 backdrop-blur">
+      <ul className="mx-auto flex max-w-[960px] gap-1 overflow-x-auto px-2 py-2 [scrollbar-width:none]">
         {links.map((l) => (
           <li key={l.href} className="shrink-0">
-            <a
-              href={l.href}
-              aria-current={active === l.href ? "true" : undefined}
-              className={cx(
-                "inline-flex h-12 items-center border-b-2 px-3 text-label",
-                active === l.href ? "border-accent-600 text-ink" : "border-transparent text-ink-2",
-              )}
-            >
-              {l.name}
-            </a>
+            <Button asChild variant={active === l.href ? "secondary" : "ghost"} size="lg">
+              <a href={l.href} aria-current={active === l.href ? "true" : undefined}>
+                {l.name}
+              </a>
+            </Button>
           </li>
         ))}
       </ul>
@@ -353,38 +397,51 @@ function MenuBlock(props: {
   const active = props.index.menuActive(menu);
   return (
     <section className="mt-8">
-      {props.showMenuTitle ? <h2 className="text-title-xl text-ink">{menu.menu.name}</h2> : null}
+      {props.showMenuTitle ? <h2 className="text-xl font-semibold tracking-tight">{menu.menu.name}</h2> : null}
       {schedule && !active ? (
-        <p className="mt-2 rounded-md bg-surface-2 px-4 py-2 text-label text-ink-2">
+        <Badge variant="secondary" className="mt-2">
+          <ClockIcon data-icon="inline-start" />
           {t.servedFrom(formatMinute(schedule.startMinute), formatMinute(schedule.endMinute))}
-        </p>
+        </Badge>
       ) : null}
       {props.sections.map((section, sectionIndex) => {
         const text = localized(section, props.locale);
         const withPhotos = section.products.filter((p) => p.images.length > 0).length;
         const grid = section.products.length > 0 && withPhotos / section.products.length >= PHOTO_GRID_THRESHOLD;
+        const anchor = sectionAnchor(menu, section);
+        const card = (product: GuestProduct, productIndex: number) => (
+          <DishCard
+            product={product}
+            form={grid ? "grid" : "list"}
+            unavailable={props.index.product(menu, section.id, product.id)}
+            locale={props.locale}
+            t={t}
+            onSelect={props.onSelect}
+            // Les premières photos portent l'affichage utile : chargées tout de suite, les autres à l'approche.
+            eager={props.priorityImages && sectionIndex === 0 && productIndex < 2}
+          />
+        );
         return (
-          <section key={section.id} id={sectionAnchor(menu, section)} className="scroll-mt-16 pt-6" aria-labelledby={`${sectionAnchor(menu, section)}-t`}>
-            <h3 id={`${sectionAnchor(menu, section)}-t`} className="text-title-lg text-ink">
+          <section key={section.id} id={anchor} className="scroll-mt-16 pt-6" aria-labelledby={`${anchor}-t`}>
+            <h3 id={`${anchor}-t`} className="text-lg font-semibold tracking-tight">
               {text.name}
             </h3>
-            {text.description ? <p className="mt-1 text-body text-ink-2">{text.description}</p> : null}
-            <ul className={cx("mt-3", grid ? "grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3" : "divide-y divide-line rounded-lg border border-line bg-surface")}>
-              {section.products.map((product, productIndex) => (
-                <li key={product.id}>
-                  <DishCard
-                    product={product}
-                    form={grid ? "grid" : "list"}
-                    unavailable={props.index.product(menu, section.id, product.id)}
-                    locale={props.locale}
-                    t={t}
-                    onSelect={props.onSelect}
-                    // Les premières photos portent l'affichage utile : chargées tout de suite, les autres à l'approche.
-                    eager={props.priorityImages && sectionIndex === 0 && productIndex < 2}
-                  />
-                </li>
-              ))}
-            </ul>
+            {text.description ? <p className="mt-1 text-sm text-muted-foreground">{text.description}</p> : null}
+            {grid ? (
+              <ul className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+                {section.products.map((product, productIndex) => (
+                  <li key={product.id}>{card(product, productIndex)}</li>
+                ))}
+              </ul>
+            ) : (
+              <ItemGroup className="mt-3 gap-2">
+                {section.products.map((product, productIndex) => (
+                  <div key={product.id} role="listitem">
+                    {card(product, productIndex)}
+                  </div>
+                ))}
+              </ItemGroup>
+            )}
           </section>
         );
       })}
@@ -403,23 +460,31 @@ function priceLabel(product: GuestProduct, currency: string, t: GuestText, now: 
   return { main: money(product.basePrice, currency), old: null };
 }
 
-function DietaryMarks({ product, t }: { product: GuestProduct; t: GuestText }) {
+function dietaryMarks(product: GuestProduct, t: GuestText): string[] {
   const marks: string[] = [];
   if (product.dietary.vegan) marks.push(t.vegan);
   else if (product.dietary.vegetarian) marks.push(t.vegetarian);
   if (product.dietary.halal) marks.push(t.halal);
   if ((product.dietary.spicyLevel ?? 0) > 0) marks.push(`${t.spicy} ${"●".repeat(product.dietary.spicyLevel ?? 0)}`);
+  return marks;
+}
+
+function DietaryMarks({ marks }: { marks: string[] }) {
   if (marks.length === 0) return null;
   return (
-    <ul className="mt-2 flex flex-wrap gap-1.5">
+    <ul className="flex flex-wrap gap-1.5">
       {marks.map((m) => (
-        <li key={m} className="rounded-full bg-surface-2 px-2.5 py-0.5 text-label text-ink-2">
-          {m}
+        <li key={m}>
+          <Badge variant="outline">{m}</Badge>
         </li>
       ))}
     </ul>
   );
 }
+
+/** La fiche se prépare dès que le doigt touche un plat : le téléchargement part avant le relâchement. */
+const loadDrawer = () => import("~/components/ui/drawer");
+const prefetchDishSheet = () => void loadDrawer();
 
 function DishCard(props: {
   product: GuestProduct;
@@ -437,223 +502,261 @@ function DishCard(props: {
   const { currency, now } = useContext(GuestContext);
   const price = priceLabel(product, currency, t, now);
   const status = props.unavailable === "schedule" ? t.notServedNow : t.soldOut;
+  const statusId = `${product.id}-status`;
+
+  const priceBlock = (
+    <>
+      <span className={cn("block font-medium tabular-nums", soldOut && "text-muted-foreground")}>{price.main}</span>
+      {price.old ? <span className="block text-xs text-muted-foreground tabular-nums line-through">{price.old}</span> : null}
+    </>
+  );
 
   if (props.form === "list") {
     return (
-      <button
-        type="button"
-        onClick={() => props.onSelect(product.id)}
-        className="flex min-h-18 w-full items-center gap-3 px-3 py-3 text-left"
-        aria-describedby={soldOut ? `${product.id}-status` : undefined}
-      >
-        {image?.thumbUrl ? (
-          <img
-            src={image.thumbUrl}
-            crossOrigin="anonymous"
-            alt=""
-            width={56}
-            height={56}
-            loading={props.eager ? "eager" : "lazy"}
-            decoding="async"
-            className={cx("size-14 shrink-0 rounded-sm object-cover", soldOut && "opacity-55")}
-          />
-        ) : null}
-        <span className="min-w-0 flex-1">
-          <span className={cx("block text-title-md", soldOut ? "text-ink-3" : "text-ink")}>{text.name}</span>
-          {text.description ? <span className="block truncate text-body text-ink-2">{text.description}</span> : null}
-        </span>
-        <span className="shrink-0 text-right">
-          {soldOut ? (
-            <span id={`${product.id}-status`} className="block text-label text-ink-3">
-              {status}
-            </span>
+      <Item asChild variant="outline" className="min-h-18 text-left">
+        <button
+          type="button"
+          onClick={() => props.onSelect(product.id)}
+          onPointerDown={prefetchDishSheet}
+          aria-describedby={soldOut ? statusId : undefined}
+        >
+          {image?.thumbUrl ? (
+            <ItemMedia variant="image" className="size-14">
+              <img
+                src={image.thumbUrl}
+                crossOrigin="anonymous"
+                alt=""
+                width={56}
+                height={56}
+                loading={props.eager ? "eager" : "lazy"}
+                decoding="async"
+                className={cn(soldOut && "opacity-50")}
+              />
+            </ItemMedia>
           ) : null}
-          <span className={cx("block text-title-md tabular-nums", soldOut ? "text-ink-3" : "text-ink")}>{price.main}</span>
-          {price.old ? <span className="block text-label text-ink-3 line-through tabular-nums">{price.old}</span> : null}
-        </span>
-      </button>
+          <ItemContent className="min-w-0">
+            <ItemTitle className={cn("line-clamp-2 text-base", soldOut && "text-muted-foreground")}>{text.name}</ItemTitle>
+            {text.description ? <ItemDescription className="line-clamp-1">{text.description}</ItemDescription> : null}
+          </ItemContent>
+          <ItemActions className="flex-col items-end gap-1 text-right">
+            {soldOut ? (
+              <Badge id={statusId} variant="secondary">
+                {status}
+              </Badge>
+            ) : null}
+            <span>{priceBlock}</span>
+          </ItemActions>
+        </button>
+      </Item>
     );
   }
 
+  const marks = dietaryMarks(product, t);
   return (
     <button
       type="button"
       onClick={() => props.onSelect(product.id)}
-      className="flex h-full w-full flex-col overflow-hidden rounded-lg border border-line bg-surface text-left shadow-e1"
-      aria-describedby={soldOut ? `${product.id}-status` : undefined}
+      onPointerDown={prefetchDishSheet}
+      className="block h-full w-full rounded-xl text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+      aria-describedby={soldOut ? statusId : undefined}
     >
-      <span className="relative block aspect-[4/3] w-full bg-surface-2">
-        {image?.thumbUrl ? (
-          <img
-            src={image.thumbUrl}
-            crossOrigin="anonymous"
-            alt=""
-            width={image.width}
-            height={image.height}
-            loading={props.eager ? "eager" : "lazy"}
-            {...(props.eager ? { fetchPriority: "high" as const } : {})}
-            decoding="async"
-            className={cx("absolute inset-0 size-full object-cover", soldOut && "opacity-55")}
-          />
-        ) : (
-          // Repli dessiné : l'initiale du plat, jamais une photo d'illustration (R-D7).
-          <span aria-hidden="true" className="absolute inset-0 flex items-center justify-center text-display text-ink-4">
-            {text.name.slice(0, 1).toUpperCase()}
-          </span>
-        )}
-        {soldOut ? (
-          <span id={`${product.id}-status`} className="absolute inset-x-0 top-1/2 -translate-y-1/2 bg-surface-2 py-1 text-center text-title-md text-ink">
-            {status}
-          </span>
-        ) : null}
-      </span>
-      <span className="flex flex-1 flex-col p-4">
-        <span className="flex items-start justify-between gap-3">
-          <span className={cx("text-title-md", soldOut ? "text-ink-3" : "text-ink")}>{text.name}</span>
-          <span className="shrink-0 text-right">
-            <span className={cx("block text-title-md tabular-nums", soldOut ? "text-ink-3" : "text-ink")}>{price.main}</span>
-            {price.old ? <span className="block text-label text-ink-3 line-through tabular-nums">{price.old}</span> : null}
-          </span>
+      <Card className="h-full pt-0">
+        <span className="relative block aspect-[4/3] w-full bg-muted">
+          {image?.thumbUrl ? (
+            <img
+              src={image.thumbUrl}
+              crossOrigin="anonymous"
+              alt=""
+              width={image.width}
+              height={image.height}
+              loading={props.eager ? "eager" : "lazy"}
+              {...(props.eager ? { fetchPriority: "high" as const } : {})}
+              decoding="async"
+              className={cn("absolute inset-0 size-full object-cover", soldOut && "opacity-50")}
+            />
+          ) : (
+            // Repli dessiné : l'initiale du plat, jamais une photo d'illustration (R-D7).
+            <span aria-hidden="true" className="absolute inset-0 flex items-center justify-center text-4xl font-semibold text-muted-foreground">
+              {text.name.slice(0, 1).toUpperCase()}
+            </span>
+          )}
+          {soldOut ? (
+            <Badge id={statusId} variant="secondary" className="absolute top-3 left-3">
+              {status}
+            </Badge>
+          ) : null}
         </span>
-        {text.description ? <span className="mt-1 line-clamp-2 text-body text-ink-2">{text.description}</span> : null}
-        <DietaryMarks product={product} t={t} />
-      </span>
+        <CardHeader>
+          <CardTitle className={cn(soldOut && "text-muted-foreground")}>{text.name}</CardTitle>
+          <CardAction className="text-right">{priceBlock}</CardAction>
+          {text.description ? <CardDescription className="line-clamp-2">{text.description}</CardDescription> : null}
+        </CardHeader>
+        {marks.length > 0 ? (
+          <CardContent className="mt-auto">
+            <DietaryMarks marks={marks} />
+          </CardContent>
+        ) : null}
+      </Card>
     </button>
   );
 }
 
-
-function DishSheet(props: {
-  selection: { menu: GuestMenu; sectionId: string; product: GuestProduct } | null;
+type DishSheetProps = {
+  selection: DishSelection | null;
   index: AvailabilityIndex;
   locale: GuestLocale;
   t: GuestText;
   currency: string;
   now: number;
   onClose: () => void;
-}) {
-  const ref = useRef<HTMLDialogElement>(null);
-  const { selection, t } = props;
-  useEffect(() => {
-    const dialog = ref.current;
-    if (!dialog) return;
-    // Le `<dialog>` natif piège le focus, ferme à Échap et rend le focus à son origine.
-    if (selection && !dialog.open) dialog.showModal();
-    if (!selection && dialog.open) dialog.close();
-  }, [selection]);
+};
 
-  const product = selection?.product;
-  const text = product ? localized(product, props.locale) : null;
-  const unavailable = selection ? props.index.product(selection.menu, selection.sectionId, selection.product.id) : null;
-  const image = product?.images[0];
-  const price = product ? priceLabel(product, props.currency, t, props.now) : null;
+/**
+ * La fiche d'un plat, dans un Drawer (tiroir du bas). Chargée à part : vaul et le Dialog de
+ * Radix n'entrent pas dans le paquet du premier affichage. Le Drawer piège le focus, ferme à
+ * Échap ou d'un glissement, et rend le focus au plat qui l'a ouvert.
+ */
+const DishSheet = lazy(async () => {
+  const { Drawer, DrawerClose, DrawerContent, DrawerDescription, DrawerFooter, DrawerTitle } = await loadDrawer();
 
-  return (
-    <dialog
-      ref={ref}
-      aria-labelledby="dish-title"
-      onClose={props.onClose}
-      onClick={(e) => {
-        // Un appui sur le voile ferme la feuille.
-        if (e.target === e.currentTarget) props.onClose();
-      }}
-      className="fixed inset-x-0 bottom-0 top-auto m-0 mx-auto max-h-[85vh] w-full max-w-[640px] overflow-y-auto rounded-t-lg bg-surface p-0 text-ink shadow-e2 backdrop:bg-ink/40"
-    >
-      {product && text ? (
-        <div>
-          <div className="sticky top-0 z-10 flex justify-end bg-surface/0 p-2">
-            <button type="button" onClick={props.onClose} aria-label={t.close} className="flex size-11 items-center justify-center rounded-full bg-surface text-title-lg text-ink shadow-e1">
-              <span aria-hidden="true">×</span>
-            </button>
-          </div>
-          {image?.url ? (
-            <img src={image.url} crossOrigin="anonymous" alt={text.name} width={image.width} height={image.height} className="-mt-15 block h-auto w-full" />
-          ) : null}
-          <div className="px-5 pb-8 pt-4">
-            <div className="flex items-start justify-between gap-4">
-              <h2 id="dish-title" className="text-title-xl text-ink">
-                {text.name}
-              </h2>
-              {price ? (
-                <p className="shrink-0 text-right text-title-lg tabular-nums">
-                  {price.main}
-                  {price.old ? <span className="block text-label text-ink-3 line-through">{price.old}</span> : null}
-                </p>
-              ) : null}
-            </div>
-            {unavailable ? (
-              <p className="mt-2 inline-block rounded-full bg-surface-2 px-3 py-1 text-label text-ink">
-                {unavailable === "schedule" ? t.notServedNow : t.soldOut}
-              </p>
-            ) : null}
-            {text.description ? <p className="mt-3 text-body text-ink-2">{text.description}</p> : null}
-            <DietaryMarks product={product} t={t} />
+  function DishSheetContent(props: DishSheetProps) {
+    // Garde le dernier plat pendant l'animation de fermeture : le tiroir ne se vide pas en descendant.
+    const [shown, setShown] = useState(props.selection);
+    if (props.selection && props.selection !== shown) setShown(props.selection);
 
-            {product.variants.length > 1 ? (
-              <ul className="mt-5 divide-y divide-line rounded-md border border-line">
-                {product.variants.map((v) => {
-                  const vt = localized(v, props.locale);
-                  const ok = props.index.variant(v.id);
-                  return (
-                    <li key={v.id} className="flex min-h-13 items-center justify-between px-4">
-                      <span className={ok ? "text-body text-ink" : "text-body text-ink-3"}>
-                        {vt.name}
-                        {ok ? null : ` — ${t.soldOut}`}
-                      </span>
-                      <span className="text-body tabular-nums text-ink-2">{money(v.price, props.currency)}</span>
-                    </li>
-                  );
-                })}
-              </ul>
-            ) : null}
+    const { t } = props;
+    const product = shown?.product;
+    const text = product ? localized(product, props.locale) : null;
+    const unavailable = shown ? props.index.product(shown.menu, shown.sectionId, shown.product.id) : null;
+    const image = product?.images[0];
+    const price = product ? priceLabel(product, props.currency, t, props.now) : null;
+    const promo = price?.old !== null && price?.old !== undefined;
 
-            {product.modifierGroups.map((group) => {
-              const gt = localized(group, props.locale);
-              return (
-                <section key={group.id} className="mt-5">
-                  <h3 className="text-title-md text-ink">
-                    {gt.name}
-                    <span className="ml-2 text-label text-ink-3">
-                      {group.isRequired ? `${t.required} · ` : ""}
-                      {t.chooseUpTo(group.maxSelect)}
-                    </span>
-                  </h3>
-                  <ul className="mt-2 divide-y divide-line rounded-md border border-line">
-                    {group.options.map((o) => {
-                      const ok = props.index.option(o.id);
+    return (
+      <Drawer
+        open={props.selection !== null}
+        onOpenChange={(open) => {
+          if (!open) props.onClose();
+        }}
+      >
+        <DrawerContent className="mx-auto max-w-2xl" {...(text?.description ? {} : { "aria-describedby": undefined })}>
+          {product && text ? (
+            <>
+              <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-4">
+                {image?.url ? (
+                  <img
+                    src={image.url}
+                    crossOrigin="anonymous"
+                    alt={text.name}
+                    width={image.width}
+                    height={image.height}
+                    className="block aspect-[4/3] w-full rounded-lg object-cover"
+                  />
+                ) : null}
+                <div className="mt-4 flex items-start justify-between gap-4">
+                  <DrawerTitle className="text-xl font-semibold tracking-tight">{text.name}</DrawerTitle>
+                  {price ? (
+                    <p className="shrink-0 text-right text-lg font-semibold tabular-nums">
+                      {price.main}
+                      {price.old ? <span className="block text-xs font-normal text-muted-foreground line-through">{price.old}</span> : null}
+                    </p>
+                  ) : null}
+                </div>
+                {unavailable || promo ? (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {unavailable ? <Badge variant="secondary">{unavailable === "schedule" ? t.notServedNow : t.soldOut}</Badge> : null}
+                    {promo ? <Badge>{t.promo}</Badge> : null}
+                  </div>
+                ) : null}
+                {text.description ? <DrawerDescription className="mt-3 text-base">{text.description}</DrawerDescription> : null}
+                <div className="mt-3">
+                  <DietaryMarks marks={dietaryMarks(product, t)} />
+                </div>
+
+                {product.variants.length > 1 ? (
+                  <ItemGroup className="mt-5 gap-2">
+                    {product.variants.map((v) => {
+                      const vt = localized(v, props.locale);
+                      const ok = props.index.variant(v.id);
                       return (
-                        <li key={o.id} className="flex min-h-13 items-center justify-between px-4">
-                          <span className={ok ? "text-body text-ink" : "text-body text-ink-3"}>
-                            {localized(o, props.locale).name}
-                            {ok ? null : ` — ${t.soldOut}`}
-                          </span>
-                          {/* Un supplément à 0 F n'affiche rien — pas « + 0 F ». */}
-                          {o.priceDelta !== 0 ? (
-                            <span className="text-body tabular-nums text-ink-2">
-                              {o.priceDelta > 0 ? "+ " : "− "}
-                              {money(Math.abs(o.priceDelta), props.currency)}
-                            </span>
-                          ) : null}
-                        </li>
+                        <Item key={v.id} role="listitem" variant="outline" size="sm">
+                          <ItemContent>
+                            <ItemTitle className={cn(!ok && "text-muted-foreground")}>
+                              {vt.name}
+                              {ok ? null : ` — ${t.soldOut}`}
+                            </ItemTitle>
+                          </ItemContent>
+                          <ItemActions className="tabular-nums text-muted-foreground">{money(v.price, props.currency)}</ItemActions>
+                        </Item>
                       );
                     })}
-                  </ul>
-                </section>
-              );
-            })}
+                  </ItemGroup>
+                ) : null}
 
-            <section className="mt-6">
-              <h3 className="text-label text-ink-3">{t.allergens}</h3>
-              {product.allergens.length > 0 ? (
-                <p className="mt-1 text-body text-ink">
-                  {product.allergens.map((a) => ALLERGENS[a as keyof typeof ALLERGENS]?.[props.locale] ?? a).join(" · ")}
-                </p>
-              ) : null}
-              <p className="mt-1 text-label text-ink-2">{t.noAllergenInfo}</p>
-            </section>
-          </div>
-        </div>
-      ) : null}
-    </dialog>
-  );
-}
+                {product.modifierGroups.map((group) => {
+                  const gt = localized(group, props.locale);
+                  return (
+                    <section key={group.id} className="mt-5">
+                      <h3 className="text-sm font-medium">
+                        {gt.name}
+                        <span className="ml-2 font-normal text-muted-foreground">
+                          {group.isRequired ? `${t.required} · ` : ""}
+                          {t.chooseUpTo(group.maxSelect)}
+                        </span>
+                      </h3>
+                      <ItemGroup className="mt-2 gap-2">
+                        {group.options.map((o) => {
+                          const ok = props.index.option(o.id);
+                          return (
+                            <Item key={o.id} role="listitem" variant="outline" size="sm">
+                              <ItemContent>
+                                <ItemTitle className={cn(!ok && "text-muted-foreground")}>
+                                  {localized(o, props.locale).name}
+                                  {ok ? null : ` — ${t.soldOut}`}
+                                </ItemTitle>
+                              </ItemContent>
+                              {/* Un supplément à 0 F n'affiche rien — pas « + 0 F ». */}
+                              {o.priceDelta !== 0 ? (
+                                <ItemActions className="tabular-nums text-muted-foreground">
+                                  {o.priceDelta > 0 ? "+ " : "− "}
+                                  {money(Math.abs(o.priceDelta), props.currency)}
+                                </ItemActions>
+                              ) : null}
+                            </Item>
+                          );
+                        })}
+                      </ItemGroup>
+                    </section>
+                  );
+                })}
+
+                <section className="mt-6">
+                  <h3 className="text-sm font-medium text-muted-foreground">{t.allergens}</h3>
+                  {product.allergens.length > 0 ? (
+                    <ul className="mt-2 flex flex-wrap gap-1.5">
+                      {product.allergens.map((a) => (
+                        <li key={a}>
+                          <Badge variant="outline">{ALLERGENS[a as keyof typeof ALLERGENS]?.[props.locale] ?? a}</Badge>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  <p className="mt-2 text-sm text-muted-foreground">{t.noAllergenInfo}</p>
+                </section>
+              </div>
+              <DrawerFooter>
+                <DrawerClose asChild>
+                  <Button type="button" variant="outline" size="lg" className="h-11">
+                    {t.close}
+                  </Button>
+                </DrawerClose>
+              </DrawerFooter>
+            </>
+          ) : null}
+        </DrawerContent>
+      </Drawer>
+    );
+  }
+
+  return { default: DishSheetContent };
+});

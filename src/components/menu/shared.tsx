@@ -1,14 +1,25 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Link } from "@tanstack/react-router";
+import { Link, useLocation } from "@tanstack/react-router";
+import { CircleAlert } from "lucide-react";
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { formatMoney, type CurrencyCode } from "../../../convex/lib/money";
 import { parsePrice } from "../../../convex/lib/menuImport";
 import { useWorkspace } from "~/components/app/workspace";
-import { Button } from "~/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "~/components/ui/dialog";
-import { Input } from "~/components/ui/input";
+import { PendingButton } from "~/components/app/pending-button";
+import { Alert, AlertDescription } from "~/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "~/components/ui/alert-dialog";
+import { InputGroup, InputGroupAddon, InputGroupInput, InputGroupText } from "~/components/ui/input-group";
+import { Tabs, TabsList, TabsTrigger } from "~/components/ui/tabs";
 import { describeError } from "~/lib/errors";
 
 /**
@@ -47,9 +58,15 @@ export function useSelectedMenu(venueId: Id<"venues"> | undefined, enabled = tru
   return { menus, selected, select };
 }
 
-/** Les écrans enfants de la carte, montrés selon les droits. */
+/**
+ * Les écrans enfants de la carte, montrés selon les droits. L'aspect est celui des `Tabs`
+ * officiels (variante « line ») mais chaque onglet est un vrai lien du routeur : l'écran actif
+ * vient de l'adresse, et on rend aux éléments leur sémantique de navigation (des liens dans un
+ * `nav`, `aria-current` posé par le routeur) plutôt que des onglets sans panneau.
+ */
 export function MenuTabs() {
   const w = useWorkspace();
+  const pathname = useLocation({ select: (l) => l.pathname });
   const read = w.canInVenue("menu.read");
   const tabs = [
     { to: "/app/menu", label: "Carte", show: read, exact: true },
@@ -60,18 +77,30 @@ export function MenuTabs() {
   ] as const;
   const visible = tabs.filter((t) => t.show);
   if (visible.length < 2) return null;
+  const path = pathname.replace(/\/+$/, "") || "/";
+  const active = visible.find((t) => (t.exact ? path === t.to : path === t.to || path.startsWith(`${t.to}/`)))?.to ?? "";
   return (
-    <nav aria-label="Carte" className="-mx-1 mb-6 flex gap-1 overflow-x-auto border-b border-line">
-      {visible.map((tab) => (
-        <Link
-          key={tab.to}
-          to={tab.to}
-          activeOptions={{ exact: tab.exact }}
-          className="inline-flex h-11 shrink-0 items-center border-b-2 border-transparent px-3 text-label text-ink-2 hover:text-ink data-[status=active]:border-accent-600 data-[status=active]:text-ink"
-        >
-          {tab.label}
-        </Link>
-      ))}
+    <nav aria-label="Carte" className="-mx-1 mb-6 overflow-x-auto px-1 pb-1.5">
+      <Tabs value={active} activationMode="manual">
+        <TabsList variant="line" role={undefined} aria-orientation={undefined}>
+          {visible.map((tab) => (
+            <TabsTrigger
+              key={tab.to}
+              value={tab.to}
+              asChild
+              role={undefined}
+              type={undefined}
+              aria-selected={undefined}
+              aria-controls={undefined}
+              className="flex-none px-2.5"
+            >
+              <Link to={tab.to} activeOptions={{ exact: tab.exact }}>
+                {tab.label}
+              </Link>
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
     </nav>
   );
 }
@@ -79,9 +108,9 @@ export function MenuTabs() {
 export function PageHeader({ title, description, actions }: { title: string; description?: ReactNode; actions?: ReactNode }) {
   return (
     <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
-      <div className="min-w-0">
-        <h1 className="text-title-xl text-ink">{title}</h1>
-        {description ? <p className="text-body text-ink-2">{description}</p> : null}
+      <div className="flex min-w-0 flex-col gap-1">
+        <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
+        {description ? <p className="text-muted-foreground">{description}</p> : null}
       </div>
       {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
     </div>
@@ -117,8 +146,8 @@ export function PriceInput({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value, currency]);
   return (
-    <div className="relative">
-      <Input
+    <InputGroup>
+      <InputGroupInput
         {...props}
         inputMode="decimal"
         autoComplete="off"
@@ -127,12 +156,12 @@ export function PriceInput({
           setText(e.target.value);
           onChange(parseSigned(e.target.value, currency, allowNegative));
         }}
-        className="pr-16 tabular-nums"
+        className="tabular-nums"
       />
-      <span aria-hidden="true" className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-label text-ink-3">
-        {currency === "XOF" || currency === "XAF" ? "FCFA" : currency}
-      </span>
-    </div>
+      <InputGroupAddon align="inline-end" aria-hidden="true">
+        <InputGroupText>{currency === "XOF" || currency === "XAF" ? "FCFA" : currency}</InputGroupText>
+      </InputGroupAddon>
+    </InputGroup>
   );
 }
 
@@ -177,7 +206,7 @@ export function ConfirmDialog({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   return (
-    <Dialog
+    <AlertDialog
       open={open}
       onOpenChange={(next) => {
         if (busy) return;
@@ -185,24 +214,26 @@ export function ConfirmDialog({
         onOpenChange(next);
       }}
     >
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>{description}</DialogDescription>
-        </DialogHeader>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{title}</AlertDialogTitle>
+          <AlertDialogDescription>{description}</AlertDialogDescription>
+        </AlertDialogHeader>
         {error ? (
-          <p role="alert" className="mt-4 text-body text-danger-700">
-            {error}
-          </p>
+          <Alert variant="destructive">
+            <CircleAlert />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
         ) : null}
-        <DialogFooter>
-          <Button variant="quiet" onClick={() => onOpenChange(false)} disabled={busy}>
+        <AlertDialogFooter>
+          <AlertDialogCancel variant="ghost" disabled={busy}>
             Annuler
-          </Button>
-          <Button
-            variant={danger ? "danger-solid" : "primary"}
-            loading={busy}
-            loadingText="Un instant…"
+          </AlertDialogCancel>
+          {/* Pas d'`AlertDialogAction` : elle fermerait la fenêtre avant la réponse du serveur. */}
+          <PendingButton
+            variant={danger ? "destructive" : "default"}
+            pending={busy}
+            pendingText="Un instant…"
             onClick={async () => {
               setBusy(true);
               setError(null);
@@ -217,10 +248,10 @@ export function ConfirmDialog({
             }}
           >
             {confirmLabel}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          </PendingButton>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
 

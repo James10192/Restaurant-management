@@ -1,5 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { QrCodeIcon } from "lucide-react";
 import { MenuView } from "~/components/guest/menu-view";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "~/components/ui/empty";
 import { loadTableMenu, SLUG_PATTERN } from "~/lib/guest/server";
 import { useServiceWorker } from "~/lib/guest/sw";
 
@@ -47,11 +49,11 @@ function TableMenu() {
       selectedProductId={plat ?? null}
       onSelectProduct={(id) => void navigate({ search: id ? { plat: id } : {}, replace: !id, resetScroll: false })}
       header={
-        <header className="bg-surface px-4 pb-4 pt-5">
+        <header className="border-b bg-background px-4 pt-5 pb-4">
           <div className="mx-auto flex max-w-[960px] items-baseline justify-between gap-4">
-            <h1 className="text-title-xl text-ink">{menu.venue.name}</h1>
-            <p className="shrink-0 text-title-md text-ink-2">
-              Table <span className="tabular-nums text-ink">{menu.table.number}</span>
+            <h1 className="min-w-0 text-2xl font-semibold tracking-tight">{menu.venue.name}</h1>
+            <p className="shrink-0 text-muted-foreground">
+              Table <span className="font-semibold tabular-nums text-foreground">{menu.table.number}</span>
             </p>
           </div>
         </header>
@@ -63,11 +65,20 @@ function TableMenu() {
 /** Pas de laissez-passer, ou plus valable (QR révoqué, délai écoulé) : on ne montre rien d'autre. */
 function ScanAgain() {
   return (
-    <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center gap-3 px-6 text-center">
-      <h1 className="text-title-xl text-ink">Scannez le QR code de votre table</h1>
-      <p className="text-body text-ink-2">
-        La carte s'ouvre depuis le QR code posé sur la table. S'il ne fonctionne pas, demandez la carte à votre serveur.
-      </p>
+    <main className="flex min-h-dvh bg-background px-4">
+      <Empty>
+        <EmptyHeader>
+          <EmptyMedia variant="icon">
+            <QrCodeIcon />
+          </EmptyMedia>
+          <EmptyTitle>
+            <h1 className="text-xl font-semibold tracking-tight">Scannez le QR code de votre table</h1>
+          </EmptyTitle>
+          <EmptyDescription>
+            La carte s'ouvre depuis le QR code posé sur la table. S'il ne fonctionne pas, demandez la carte à votre serveur.
+          </EmptyDescription>
+        </EmptyHeader>
+      </Empty>
     </main>
   );
 }
