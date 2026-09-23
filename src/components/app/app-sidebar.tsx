@@ -2,12 +2,16 @@ import { Link, useLocation, useNavigate, useRouter } from "@tanstack/react-route
 import { useQuery } from "convex/react";
 import {
   Building2,
+  ChefHat,
   ChevronsUpDown,
+  ConciergeBell,
+  Flame,
   House,
   LayoutGrid,
   LogOut,
   Settings,
   ShieldCheck,
+  TabletSmartphone,
   UserRound,
   Users,
   UtensilsCrossed,
@@ -48,6 +52,8 @@ export function useNavItems(): NavItem[] {
   const w = useWorkspace();
   return [
     { to: "/app", label: "Accueil", icon: House, show: true, exact: true },
+    { to: "/app/service", label: "Service", icon: ConciergeBell, show: w.canInVenue("table.read") },
+    { to: "/app/cuisine", label: "Cuisine", icon: ChefHat, show: w.canInVenue("kitchen.read") },
     { to: "/app/team", label: "Équipe", icon: Users, show: w.canInVenue("team.read") || w.canInOrganization("team.read") },
     {
       to: "/app/menu",
@@ -55,8 +61,10 @@ export function useNavItems(): NavItem[] {
       icon: UtensilsCrossed,
       show: w.canInVenue("menu.read") || w.canInVenue("menu.availability.toggle"),
     },
-    { to: "/app/floor", label: "Salle", icon: LayoutGrid, show: w.canInVenue("table.read") },
+    { to: "/app/floor", label: "Plan de salle", icon: LayoutGrid, show: w.canInVenue("table.read") },
     { to: "/app/roles", label: "Rôles", icon: ShieldCheck, show: w.canInOrganization("permissions.manage") },
+    { to: "/app/settings/stations", label: "Postes de préparation", icon: Flame, show: w.canInVenue("kitchen.manage") },
+    { to: "/app/settings/devices", label: "Appareils", icon: TabletSmartphone, show: w.canInVenue("device.manage") || w.canInVenue("venue.settings.service") },
     { to: "/app/settings/venue", label: "Établissement", icon: Settings, show: w.canInVenue("venue.manage") },
   ].filter((item) => item.show);
 }

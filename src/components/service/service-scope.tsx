@@ -24,23 +24,28 @@ export type ServiceScope = {
   name: string | null;
   stationId: Id<"prepStations"> | null;
   can: (permission: Permission) => boolean;
-  /** Où vivent les écrans : `/app/service` ou `/appareil`. */
-  basePath: "/app/service" | "/appareil";
+  /** Aller d'un écran de service à l'autre, quelle que soit la route qui les héberge. */
+  nav: ServiceNav;
   /** Sur un appareil partagé : rendre la main (écran de verrouillage). */
   lock?: () => void;
+};
+
+export type ServiceNav = {
+  board: () => void;
+  table: (tableId: Id<"restaurantTables">) => void;
 };
 
 const ServiceScopeContext = createContext<ServiceScope | null>(null);
 
 export function ServiceScopeProvider({
   venueId,
-  basePath,
+  nav,
   lock,
   children,
   fallback,
 }: {
   venueId: Id<"venues">;
-  basePath: ServiceScope["basePath"];
+  nav: ServiceNav;
   lock?: () => void;
   children: ReactNode;
   fallback: ReactNode;
@@ -60,10 +65,10 @@ export function ServiceScopeProvider({
       name: me.name,
       stationId: me.stationId,
       can: (p) => permissions.has(p),
-      basePath,
+      nav,
       ...(lock ? { lock } : {}),
     };
-  }, [me, venueId, basePath, lock]);
+  }, [me, venueId, nav, lock]);
   if (!scope) return <>{fallback}</>;
   return <ServiceScopeContext.Provider value={scope}>{children}</ServiceScopeContext.Provider>;
 }

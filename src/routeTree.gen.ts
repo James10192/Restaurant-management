@@ -11,21 +11,25 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthRouteImport } from './routes/_auth'
+import { Route as AppareilRouteImport } from './routes/appareil'
 import { Route as RobotsDottxtRouteImport } from './routes/robots[.]txt'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as AuthAppRouteImport } from './routes/_auth.app'
 import { Route as AuthConnexionRouteImport } from './routes/_auth.connexion'
 import { Route as ApiClientErrorsRouteImport } from './routes/api/client-errors'
 import { Route as ApiHealthRouteImport } from './routes/api/health'
+import { Route as AppareilIndexRouteImport } from './routes/appareil.index'
 import { Route as MenuVenueSlugRouteImport } from './routes/menu.$venueSlug'
 import { Route as AuthAppIndexRouteImport } from './routes/_auth.app.index'
 import { Route as AuthAppAccountRouteImport } from './routes/_auth.app.account'
+import { Route as AuthAppCuisineRouteImport } from './routes/_auth.app.cuisine'
 import { Route as AuthAppMenuRouteImport } from './routes/_auth.app.menu'
 import { Route as AuthAppOnboardingRouteImport } from './routes/_auth.app.onboarding'
 import { Route as AuthAppTeamRouteImport } from './routes/_auth.app.team'
 import { Route as AuthAuthOtpRouteImport } from './routes/_auth.auth.otp'
 import { Route as AuthInvitationTokenRouteImport } from './routes/_auth.invitation.$token'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth.$'
+import { Route as AppareilTableTableIdRouteImport } from './routes/appareil.table.$tableId'
 import { Route as RVenueSlugIndisponibleRouteImport } from './routes/r.$venueSlug.indisponible'
 import { Route as RVenueSlugTableRouteImport } from './routes/r.$venueSlug.table'
 import { Route as AuthAppFloorIndexRouteImport } from './routes/_auth.app.floor.index'
@@ -36,10 +40,14 @@ import { Route as AuthAppMenuCategoriesRouteImport } from './routes/_auth.app.me
 import { Route as AuthAppMenuOptionsRouteImport } from './routes/_auth.app.menu.options'
 import { Route as AuthAppRolesIndexRouteImport } from './routes/_auth.app.roles.index'
 import { Route as AuthAppRolesRoleIdRouteImport } from './routes/_auth.app.roles.$roleId'
+import { Route as AuthAppServiceIndexRouteImport } from './routes/_auth.app.service.index'
+import { Route as AuthAppSettingsDevicesRouteImport } from './routes/_auth.app.settings.devices'
+import { Route as AuthAppSettingsStationsRouteImport } from './routes/_auth.app.settings.stations'
 import { Route as AuthAppSettingsVenueRouteImport } from './routes/_auth.app.settings.venue'
 import { Route as RVenueSlugTTokenRouteImport } from './routes/r.$venueSlug.t.$token'
 import { Route as AuthAppMenuProductsIndexRouteImport } from './routes/_auth.app.menu.products.index'
 import { Route as AuthAppMenuProductsProductIdRouteImport } from './routes/_auth.app.menu.products.$productId'
+import { Route as AuthAppServiceTableTableIdRouteImport } from './routes/_auth.app.service.table.$tableId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -48,6 +56,11 @@ const IndexRoute = IndexRouteImport.update({
 } as any)
 const AuthRoute = AuthRouteImport.update({
   id: '/_auth',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AppareilRoute = AppareilRouteImport.update({
+  id: '/appareil',
+  path: '/appareil',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RobotsDottxtRoute = RobotsDottxtRouteImport.update({
@@ -80,6 +93,11 @@ const ApiHealthRoute = ApiHealthRouteImport.update({
   path: '/api/health',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AppareilIndexRoute = AppareilIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AppareilRoute,
+} as any)
 const MenuVenueSlugRoute = MenuVenueSlugRouteImport.update({
   id: '/menu/$venueSlug',
   path: '/menu/$venueSlug',
@@ -93,6 +111,11 @@ const AuthAppIndexRoute = AuthAppIndexRouteImport.update({
 const AuthAppAccountRoute = AuthAppAccountRouteImport.update({
   id: '/account',
   path: '/account',
+  getParentRoute: () => AuthAppRoute,
+} as any)
+const AuthAppCuisineRoute = AuthAppCuisineRouteImport.update({
+  id: '/cuisine',
+  path: '/cuisine',
   getParentRoute: () => AuthAppRoute,
 } as any)
 const AuthAppMenuRoute = AuthAppMenuRouteImport.update({
@@ -124,6 +147,11 @@ const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   id: '/api/auth/$',
   path: '/api/auth/$',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AppareilTableTableIdRoute = AppareilTableTableIdRouteImport.update({
+  id: '/table/$tableId',
+  path: '/table/$tableId',
+  getParentRoute: () => AppareilRoute,
 } as any)
 const RVenueSlugIndisponibleRoute = RVenueSlugIndisponibleRouteImport.update({
   id: '/r/$venueSlug/indisponible',
@@ -175,6 +203,21 @@ const AuthAppRolesRoleIdRoute = AuthAppRolesRoleIdRouteImport.update({
   path: '/roles/$roleId',
   getParentRoute: () => AuthAppRoute,
 } as any)
+const AuthAppServiceIndexRoute = AuthAppServiceIndexRouteImport.update({
+  id: '/service/',
+  path: '/service/',
+  getParentRoute: () => AuthAppRoute,
+} as any)
+const AuthAppSettingsDevicesRoute = AuthAppSettingsDevicesRouteImport.update({
+  id: '/settings/devices',
+  path: '/settings/devices',
+  getParentRoute: () => AuthAppRoute,
+} as any)
+const AuthAppSettingsStationsRoute = AuthAppSettingsStationsRouteImport.update({
+  id: '/settings/stations',
+  path: '/settings/stations',
+  getParentRoute: () => AuthAppRoute,
+} as any)
 const AuthAppSettingsVenueRoute = AuthAppSettingsVenueRouteImport.update({
   id: '/settings/venue',
   path: '/settings/venue',
@@ -197,9 +240,16 @@ const AuthAppMenuProductsProductIdRoute =
     path: '/products/$productId',
     getParentRoute: () => AuthAppMenuRoute,
   } as any)
+const AuthAppServiceTableTableIdRoute =
+  AuthAppServiceTableTableIdRouteImport.update({
+    id: '/service/table/$tableId',
+    path: '/service/table/$tableId',
+    getParentRoute: () => AuthAppRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/appareil': typeof AppareilRouteWithChildren
   '/robots.txt': typeof RobotsDottxtRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/app': typeof AuthAppRouteWithChildren
@@ -207,13 +257,16 @@ export interface FileRoutesByFullPath {
   '/api/client-errors': typeof ApiClientErrorsRoute
   '/api/health': typeof ApiHealthRoute
   '/menu/$venueSlug': typeof MenuVenueSlugRoute
+  '/appareil/': typeof AppareilIndexRoute
   '/app/account': typeof AuthAppAccountRoute
+  '/app/cuisine': typeof AuthAppCuisineRoute
   '/app/menu': typeof AuthAppMenuRouteWithChildren
   '/app/onboarding': typeof AuthAppOnboardingRoute
   '/app/team': typeof AuthAppTeamRoute
   '/auth/otp': typeof AuthAuthOtpRoute
   '/invitation/$token': typeof AuthInvitationTokenRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/appareil/table/$tableId': typeof AppareilTableTableIdRoute
   '/r/$venueSlug/indisponible': typeof RVenueSlugIndisponibleRoute
   '/r/$venueSlug/table': typeof RVenueSlugTableRoute
   '/app/': typeof AuthAppIndexRoute
@@ -222,12 +275,16 @@ export interface FileRoutesByFullPath {
   '/app/menu/categories': typeof AuthAppMenuCategoriesRoute
   '/app/menu/options': typeof AuthAppMenuOptionsRoute
   '/app/roles/$roleId': typeof AuthAppRolesRoleIdRoute
+  '/app/settings/devices': typeof AuthAppSettingsDevicesRoute
+  '/app/settings/stations': typeof AuthAppSettingsStationsRoute
   '/app/settings/venue': typeof AuthAppSettingsVenueRoute
   '/r/$venueSlug/t/$token': typeof RVenueSlugTTokenRoute
   '/app/floor/': typeof AuthAppFloorIndexRoute
   '/app/menu/': typeof AuthAppMenuIndexRoute
   '/app/roles/': typeof AuthAppRolesIndexRoute
+  '/app/service/': typeof AuthAppServiceIndexRoute
   '/app/menu/products/$productId': typeof AuthAppMenuProductsProductIdRoute
+  '/app/service/table/$tableId': typeof AuthAppServiceTableTableIdRoute
   '/app/menu/products/': typeof AuthAppMenuProductsIndexRoute
 }
 export interface FileRoutesByTo {
@@ -238,12 +295,15 @@ export interface FileRoutesByTo {
   '/api/client-errors': typeof ApiClientErrorsRoute
   '/api/health': typeof ApiHealthRoute
   '/menu/$venueSlug': typeof MenuVenueSlugRoute
+  '/appareil': typeof AppareilIndexRoute
   '/app/account': typeof AuthAppAccountRoute
+  '/app/cuisine': typeof AuthAppCuisineRoute
   '/app/onboarding': typeof AuthAppOnboardingRoute
   '/app/team': typeof AuthAppTeamRoute
   '/auth/otp': typeof AuthAuthOtpRoute
   '/invitation/$token': typeof AuthInvitationTokenRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/appareil/table/$tableId': typeof AppareilTableTableIdRoute
   '/r/$venueSlug/indisponible': typeof RVenueSlugIndisponibleRoute
   '/r/$venueSlug/table': typeof RVenueSlugTableRoute
   '/app': typeof AuthAppIndexRoute
@@ -252,18 +312,23 @@ export interface FileRoutesByTo {
   '/app/menu/categories': typeof AuthAppMenuCategoriesRoute
   '/app/menu/options': typeof AuthAppMenuOptionsRoute
   '/app/roles/$roleId': typeof AuthAppRolesRoleIdRoute
+  '/app/settings/devices': typeof AuthAppSettingsDevicesRoute
+  '/app/settings/stations': typeof AuthAppSettingsStationsRoute
   '/app/settings/venue': typeof AuthAppSettingsVenueRoute
   '/r/$venueSlug/t/$token': typeof RVenueSlugTTokenRoute
   '/app/floor': typeof AuthAppFloorIndexRoute
   '/app/menu': typeof AuthAppMenuIndexRoute
   '/app/roles': typeof AuthAppRolesIndexRoute
+  '/app/service': typeof AuthAppServiceIndexRoute
   '/app/menu/products/$productId': typeof AuthAppMenuProductsProductIdRoute
+  '/app/service/table/$tableId': typeof AuthAppServiceTableTableIdRoute
   '/app/menu/products': typeof AuthAppMenuProductsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_auth': typeof AuthRouteWithChildren
+  '/appareil': typeof AppareilRouteWithChildren
   '/robots.txt': typeof RobotsDottxtRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/_auth/app': typeof AuthAppRouteWithChildren
@@ -271,13 +336,16 @@ export interface FileRoutesById {
   '/api/client-errors': typeof ApiClientErrorsRoute
   '/api/health': typeof ApiHealthRoute
   '/menu/$venueSlug': typeof MenuVenueSlugRoute
+  '/appareil/': typeof AppareilIndexRoute
   '/_auth/app/account': typeof AuthAppAccountRoute
+  '/_auth/app/cuisine': typeof AuthAppCuisineRoute
   '/_auth/app/menu': typeof AuthAppMenuRouteWithChildren
   '/_auth/app/onboarding': typeof AuthAppOnboardingRoute
   '/_auth/app/team': typeof AuthAppTeamRoute
   '/_auth/auth/otp': typeof AuthAuthOtpRoute
   '/_auth/invitation/$token': typeof AuthInvitationTokenRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/appareil/table/$tableId': typeof AppareilTableTableIdRoute
   '/r/$venueSlug/indisponible': typeof RVenueSlugIndisponibleRoute
   '/r/$venueSlug/table': typeof RVenueSlugTableRoute
   '/_auth/app/': typeof AuthAppIndexRoute
@@ -286,18 +354,23 @@ export interface FileRoutesById {
   '/_auth/app/menu/categories': typeof AuthAppMenuCategoriesRoute
   '/_auth/app/menu/options': typeof AuthAppMenuOptionsRoute
   '/_auth/app/roles/$roleId': typeof AuthAppRolesRoleIdRoute
+  '/_auth/app/settings/devices': typeof AuthAppSettingsDevicesRoute
+  '/_auth/app/settings/stations': typeof AuthAppSettingsStationsRoute
   '/_auth/app/settings/venue': typeof AuthAppSettingsVenueRoute
   '/r/$venueSlug/t/$token': typeof RVenueSlugTTokenRoute
   '/_auth/app/floor/': typeof AuthAppFloorIndexRoute
   '/_auth/app/menu/': typeof AuthAppMenuIndexRoute
   '/_auth/app/roles/': typeof AuthAppRolesIndexRoute
+  '/_auth/app/service/': typeof AuthAppServiceIndexRoute
   '/_auth/app/menu/products/$productId': typeof AuthAppMenuProductsProductIdRoute
+  '/_auth/app/service/table/$tableId': typeof AuthAppServiceTableTableIdRoute
   '/_auth/app/menu/products/': typeof AuthAppMenuProductsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/appareil'
     | '/robots.txt'
     | '/sitemap.xml'
     | '/app'
@@ -305,13 +378,16 @@ export interface FileRouteTypes {
     | '/api/client-errors'
     | '/api/health'
     | '/menu/$venueSlug'
+    | '/appareil/'
     | '/app/account'
+    | '/app/cuisine'
     | '/app/menu'
     | '/app/onboarding'
     | '/app/team'
     | '/auth/otp'
     | '/invitation/$token'
     | '/api/auth/$'
+    | '/appareil/table/$tableId'
     | '/r/$venueSlug/indisponible'
     | '/r/$venueSlug/table'
     | '/app/'
@@ -320,12 +396,16 @@ export interface FileRouteTypes {
     | '/app/menu/categories'
     | '/app/menu/options'
     | '/app/roles/$roleId'
+    | '/app/settings/devices'
+    | '/app/settings/stations'
     | '/app/settings/venue'
     | '/r/$venueSlug/t/$token'
     | '/app/floor/'
     | '/app/menu/'
     | '/app/roles/'
+    | '/app/service/'
     | '/app/menu/products/$productId'
+    | '/app/service/table/$tableId'
     | '/app/menu/products/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -336,12 +416,15 @@ export interface FileRouteTypes {
     | '/api/client-errors'
     | '/api/health'
     | '/menu/$venueSlug'
+    | '/appareil'
     | '/app/account'
+    | '/app/cuisine'
     | '/app/onboarding'
     | '/app/team'
     | '/auth/otp'
     | '/invitation/$token'
     | '/api/auth/$'
+    | '/appareil/table/$tableId'
     | '/r/$venueSlug/indisponible'
     | '/r/$venueSlug/table'
     | '/app'
@@ -350,17 +433,22 @@ export interface FileRouteTypes {
     | '/app/menu/categories'
     | '/app/menu/options'
     | '/app/roles/$roleId'
+    | '/app/settings/devices'
+    | '/app/settings/stations'
     | '/app/settings/venue'
     | '/r/$venueSlug/t/$token'
     | '/app/floor'
     | '/app/menu'
     | '/app/roles'
+    | '/app/service'
     | '/app/menu/products/$productId'
+    | '/app/service/table/$tableId'
     | '/app/menu/products'
   id:
     | '__root__'
     | '/'
     | '/_auth'
+    | '/appareil'
     | '/robots.txt'
     | '/sitemap.xml'
     | '/_auth/app'
@@ -368,13 +456,16 @@ export interface FileRouteTypes {
     | '/api/client-errors'
     | '/api/health'
     | '/menu/$venueSlug'
+    | '/appareil/'
     | '/_auth/app/account'
+    | '/_auth/app/cuisine'
     | '/_auth/app/menu'
     | '/_auth/app/onboarding'
     | '/_auth/app/team'
     | '/_auth/auth/otp'
     | '/_auth/invitation/$token'
     | '/api/auth/$'
+    | '/appareil/table/$tableId'
     | '/r/$venueSlug/indisponible'
     | '/r/$venueSlug/table'
     | '/_auth/app/'
@@ -383,18 +474,23 @@ export interface FileRouteTypes {
     | '/_auth/app/menu/categories'
     | '/_auth/app/menu/options'
     | '/_auth/app/roles/$roleId'
+    | '/_auth/app/settings/devices'
+    | '/_auth/app/settings/stations'
     | '/_auth/app/settings/venue'
     | '/r/$venueSlug/t/$token'
     | '/_auth/app/floor/'
     | '/_auth/app/menu/'
     | '/_auth/app/roles/'
+    | '/_auth/app/service/'
     | '/_auth/app/menu/products/$productId'
+    | '/_auth/app/service/table/$tableId'
     | '/_auth/app/menu/products/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthRoute: typeof AuthRouteWithChildren
+  AppareilRoute: typeof AppareilRouteWithChildren
   RobotsDottxtRoute: typeof RobotsDottxtRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   ApiClientErrorsRoute: typeof ApiClientErrorsRoute
@@ -420,6 +516,13 @@ declare module '@tanstack/react-router' {
       path: ''
       fullPath: '/'
       preLoaderRoute: typeof AuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/appareil': {
+      id: '/appareil'
+      path: '/appareil'
+      fullPath: '/appareil'
+      preLoaderRoute: typeof AppareilRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/robots.txt': {
@@ -464,6 +567,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiHealthRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/appareil/': {
+      id: '/appareil/'
+      path: '/'
+      fullPath: '/appareil/'
+      preLoaderRoute: typeof AppareilIndexRouteImport
+      parentRoute: typeof AppareilRoute
+    }
     '/menu/$venueSlug': {
       id: '/menu/$venueSlug'
       path: '/menu/$venueSlug'
@@ -483,6 +593,13 @@ declare module '@tanstack/react-router' {
       path: '/account'
       fullPath: '/app/account'
       preLoaderRoute: typeof AuthAppAccountRouteImport
+      parentRoute: typeof AuthAppRoute
+    }
+    '/_auth/app/cuisine': {
+      id: '/_auth/app/cuisine'
+      path: '/cuisine'
+      fullPath: '/app/cuisine'
+      preLoaderRoute: typeof AuthAppCuisineRouteImport
       parentRoute: typeof AuthAppRoute
     }
     '/_auth/app/menu': {
@@ -526,6 +643,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/auth/$'
       preLoaderRoute: typeof ApiAuthSplatRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/appareil/table/$tableId': {
+      id: '/appareil/table/$tableId'
+      path: '/table/$tableId'
+      fullPath: '/appareil/table/$tableId'
+      preLoaderRoute: typeof AppareilTableTableIdRouteImport
+      parentRoute: typeof AppareilRoute
     }
     '/r/$venueSlug/indisponible': {
       id: '/r/$venueSlug/indisponible'
@@ -597,6 +721,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthAppRolesRoleIdRouteImport
       parentRoute: typeof AuthAppRoute
     }
+    '/_auth/app/service/': {
+      id: '/_auth/app/service/'
+      path: '/service'
+      fullPath: '/app/service/'
+      preLoaderRoute: typeof AuthAppServiceIndexRouteImport
+      parentRoute: typeof AuthAppRoute
+    }
+    '/_auth/app/settings/devices': {
+      id: '/_auth/app/settings/devices'
+      path: '/settings/devices'
+      fullPath: '/app/settings/devices'
+      preLoaderRoute: typeof AuthAppSettingsDevicesRouteImport
+      parentRoute: typeof AuthAppRoute
+    }
+    '/_auth/app/settings/stations': {
+      id: '/_auth/app/settings/stations'
+      path: '/settings/stations'
+      fullPath: '/app/settings/stations'
+      preLoaderRoute: typeof AuthAppSettingsStationsRouteImport
+      parentRoute: typeof AuthAppRoute
+    }
     '/_auth/app/settings/venue': {
       id: '/_auth/app/settings/venue'
       path: '/settings/venue'
@@ -625,6 +770,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthAppMenuProductsProductIdRouteImport
       parentRoute: typeof AuthAppMenuRoute
     }
+    '/_auth/app/service/table/$tableId': {
+      id: '/_auth/app/service/table/$tableId'
+      path: '/service/table/$tableId'
+      fullPath: '/app/service/table/$tableId'
+      preLoaderRoute: typeof AuthAppServiceTableTableIdRouteImport
+      parentRoute: typeof AuthAppRoute
+    }
   }
 }
 
@@ -652,28 +804,38 @@ const AuthAppMenuRouteWithChildren = AuthAppMenuRoute._addFileChildren(
 
 interface AuthAppRouteChildren {
   AuthAppAccountRoute: typeof AuthAppAccountRoute
+  AuthAppCuisineRoute: typeof AuthAppCuisineRoute
   AuthAppMenuRoute: typeof AuthAppMenuRouteWithChildren
   AuthAppOnboardingRoute: typeof AuthAppOnboardingRoute
   AuthAppTeamRoute: typeof AuthAppTeamRoute
   AuthAppIndexRoute: typeof AuthAppIndexRoute
   AuthAppFloorPrintRoute: typeof AuthAppFloorPrintRoute
   AuthAppRolesRoleIdRoute: typeof AuthAppRolesRoleIdRoute
+  AuthAppSettingsDevicesRoute: typeof AuthAppSettingsDevicesRoute
+  AuthAppSettingsStationsRoute: typeof AuthAppSettingsStationsRoute
   AuthAppSettingsVenueRoute: typeof AuthAppSettingsVenueRoute
   AuthAppFloorIndexRoute: typeof AuthAppFloorIndexRoute
   AuthAppRolesIndexRoute: typeof AuthAppRolesIndexRoute
+  AuthAppServiceIndexRoute: typeof AuthAppServiceIndexRoute
+  AuthAppServiceTableTableIdRoute: typeof AuthAppServiceTableTableIdRoute
 }
 
 const AuthAppRouteChildren: AuthAppRouteChildren = {
   AuthAppAccountRoute: AuthAppAccountRoute,
+  AuthAppCuisineRoute: AuthAppCuisineRoute,
   AuthAppMenuRoute: AuthAppMenuRouteWithChildren,
   AuthAppOnboardingRoute: AuthAppOnboardingRoute,
   AuthAppTeamRoute: AuthAppTeamRoute,
   AuthAppIndexRoute: AuthAppIndexRoute,
   AuthAppFloorPrintRoute: AuthAppFloorPrintRoute,
   AuthAppRolesRoleIdRoute: AuthAppRolesRoleIdRoute,
+  AuthAppSettingsDevicesRoute: AuthAppSettingsDevicesRoute,
+  AuthAppSettingsStationsRoute: AuthAppSettingsStationsRoute,
   AuthAppSettingsVenueRoute: AuthAppSettingsVenueRoute,
   AuthAppFloorIndexRoute: AuthAppFloorIndexRoute,
   AuthAppRolesIndexRoute: AuthAppRolesIndexRoute,
+  AuthAppServiceIndexRoute: AuthAppServiceIndexRoute,
+  AuthAppServiceTableTableIdRoute: AuthAppServiceTableTableIdRoute,
 }
 
 const AuthAppRouteWithChildren =
@@ -695,9 +857,24 @@ const AuthRouteChildren: AuthRouteChildren = {
 
 const AuthRouteWithChildren = AuthRoute._addFileChildren(AuthRouteChildren)
 
+interface AppareilRouteChildren {
+  AppareilIndexRoute: typeof AppareilIndexRoute
+  AppareilTableTableIdRoute: typeof AppareilTableTableIdRoute
+}
+
+const AppareilRouteChildren: AppareilRouteChildren = {
+  AppareilIndexRoute: AppareilIndexRoute,
+  AppareilTableTableIdRoute: AppareilTableTableIdRoute,
+}
+
+const AppareilRouteWithChildren = AppareilRoute._addFileChildren(
+  AppareilRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthRoute: AuthRouteWithChildren,
+  AppareilRoute: AppareilRouteWithChildren,
   RobotsDottxtRoute: RobotsDottxtRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   ApiClientErrorsRoute: ApiClientErrorsRoute,
