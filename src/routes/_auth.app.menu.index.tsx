@@ -74,7 +74,8 @@ function MenuHome() {
         <PageHeader title="Carte" />
         <EmptyState
           className="border"
-          title="Votre carte est vide"
+          // `EmptyTitle` est un simple bloc : on y pose le titre de niveau 2 que la page annonce.
+          title={<h2>Votre carte est vide</h2>}
           description={
             canEdit
               ? "Trois façons de commencer : importer un tableur, reprendre la carte d'un autre de vos établissements, ou partir d'une carte vierge."

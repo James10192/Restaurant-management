@@ -34,7 +34,6 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "~/component
 import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
 import { Item, ItemActions, ItemContent, ItemGroup } from "~/components/ui/item";
-import { Label } from "~/components/ui/label";
 import { NativeSelect, NativeSelectOption } from "~/components/ui/native-select";
 import { Switch } from "~/components/ui/switch";
 import { Textarea } from "~/components/ui/textarea";
@@ -684,7 +683,6 @@ function VariantRow({
 }) {
   const [name, setName] = useState(variant.name);
   const [price, setPrice] = useState<number | null>(variant.price);
-  const switchId = useId();
   return (
     <Item role="listitem" variant="outline" size="sm">
       <ItemContent className="min-w-0 basis-full flex-row flex-wrap items-center gap-2 sm:basis-0">
@@ -712,10 +710,14 @@ function VariantRow({
       <ItemActions className="flex-wrap">
         {onAvailable ? (
           <div className="flex items-center gap-2">
-            <Switch id={switchId} checked={variant.isAvailable} onCheckedChange={(checked) => void onAvailable(checked)} />
-            <Label htmlFor={switchId} className="font-normal">
+            <Switch
+              aria-label={`${variant.name} disponible`}
+              checked={variant.isAvailable}
+              onCheckedChange={(checked) => void onAvailable(checked)}
+            />
+            <span aria-hidden="true" className="text-muted-foreground">
               {variant.isAvailable ? "Disponible" : "Épuisée"}
-            </Label>
+            </span>
           </div>
         ) : !variant.isAvailable ? (
           <Badge variant="destructive">Épuisée</Badge>

@@ -138,7 +138,7 @@ test("T1 — composer, publier, imprimer, scanner, couper un plat", async ({ bro
   await owner.getByRole("button", { name: "Table 7, 4 places" }).click();
   await owner.getByRole("button", { name: "Révoquer et régénérer" }).click();
   await expect(owner.getByText("Les QR imprimés pour cette table ne fonctionneront plus.")).toBeVisible();
-  await owner.getByRole("dialog").getByRole("button", { name: "Révoquer et régénérer" }).click();
+  await owner.getByRole("alertdialog").getByRole("button", { name: "Révoquer et régénérer" }).click();
   await expect(owner.getByText(/Version 2 · créé le/)).toBeVisible();
 
   const stranger = await (await browser.newContext()).newPage();

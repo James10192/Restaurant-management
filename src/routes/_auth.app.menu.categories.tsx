@@ -1,19 +1,22 @@
 import { useState, type FormEvent } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
-import { ArrowDown, ArrowUp, Eye, EyeOff } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronDown, CircleAlert, Eye, EyeOff, LayoutList, Plus } from "lucide-react";
 import type { FunctionReturnType } from "convex/server";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
+import { FormField } from "~/components/app/form-field";
+import { EmptyState, LoadingState, PermissionDeniedState } from "~/components/app/states";
 import { useWorkspace } from "~/components/app/workspace";
 import { moved, PageHeader, useSelectedMenu } from "~/components/menu/shared";
+import { Alert, AlertDescription } from "~/components/ui/alert";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
-import { Card } from "~/components/ui/card";
-import { Field } from "~/components/ui/field";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/ui/card";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "~/components/ui/collapsible";
 import { Input } from "~/components/ui/input";
-import { NativeSelect } from "~/components/ui/native-select";
-import { EmptyState, LoadingState, PermissionDeniedState } from "~/components/ui/states";
+import { Item, ItemActions, ItemContent, ItemFooter, ItemTitle } from "~/components/ui/item";
+import { NativeSelect, NativeSelectOption } from "~/components/ui/native-select";
 import { describeError } from "~/lib/errors";
 
 export const Route = createFileRoute("/_auth/app/menu/categories")({
@@ -42,6 +45,7 @@ function SectionsPage() {
   if (!selected) {
     return (
       <EmptyState
+        className="border"
         title="Aucune carte"
         description="Les sections appartiennent à une carte. Créez-en une depuis l'écran Carte."
         action={
@@ -59,11 +63,11 @@ function SectionsPage() {
         description="Les rubriques de la carte, dans l'ordre où le client les parcourt."
         actions={
           menus.length > 1 ? (
-            <NativeSelect aria-label="Carte" value={selected._id} onChange={(e) => select(e.target.value as Id<"menus">)} className="w-auto">
+            <NativeSelect aria-label="Carte" value={selected._id} onChange={(e) => select(e.target.value as Id<"menus">)}>
               {menus.map((m) => (
-                <option key={m._id} value={m._id}>
+                <NativeSelectOption key={m._id} value={m._id}>
                   {m.name}
-                </option>
+                </NativeSelectOption>
               ))}
             </NativeSelect>
           ) : null
@@ -106,13 +110,20 @@ function SectionsEditor({ venueId, menuId }: { venueId: Id<"venues">; menuId: Id
     <div className="flex flex-col gap-6">
       {editor.sections.length === 0 ? (
         <EmptyState
+          className="border"
+          icon={<LayoutList />}
           title="Une carte se range en sections"
           description="Entrées, Grillades, Boissons… Créez-les une par une, ou d'un coup avec un modèle."
           action={
             canEdit ? (
               <div className="flex flex-col gap-2">
                 {TEMPLATES.map((names) => (
-                  <Button key={names.join()} variant="secondary" onClick={() => void run(() => createSections({ venueId, menuId, names }))}>
+                  <Button
+                    key={names.join()}
+                    variant="outline"
+                    className="h-auto min-h-8 whitespace-normal"
+                    onClick={() => void run(() => createSections({ venueId, menuId, names }))}
+                  >
                     {names.join(" · ")}
                   </Button>
                 ))}
@@ -121,40 +132,48 @@ function SectionsEditor({ venueId, menuId }: { venueId: Id<"venues">; menuId: Id
           }
         />
       ) : (
-        <Card>
-          <ol className="divide-y divide-line">
-            {editor.sections.map((section, index) => (
-              <SectionRow
-                key={section._id}
-                venueId={venueId}
-                section={section}
-                canEdit={canEdit}
-                first={index === 0}
-                last={index === editor.sections.length - 1}
-                onMove={(delta) => {
-                  const next = moved(ids, index, delta);
-                  if (next) void run(() => reorderSections({ venueId, menuId, sectionIds: next }));
-                }}
-                onError={setError}
-              />
-            ))}
-          </ol>
-        </Card>
+        <ol className="flex flex-col gap-2">
+          {editor.sections.map((section, index) => (
+            <SectionRow
+              key={section._id}
+              venueId={venueId}
+              section={section}
+              canEdit={canEdit}
+              first={index === 0}
+              last={index === editor.sections.length - 1}
+              onMove={(delta) => {
+                const next = moved(ids, index, delta);
+                if (next) void run(() => reorderSections({ venueId, menuId, sectionIds: next }));
+              }}
+              onError={setError}
+            />
+          ))}
+        </ol>
       )}
-      {canEdit ? (
-        <form onSubmit={add} noValidate className="flex flex-wrap items-end gap-3">
-          <Field label="Nouvelle section" className="max-w-sm">
-            <Input value={name} onChange={(e) => setName(e.target.value)} maxLength={80} />
-          </Field>
-          <Button type="submit" variant="secondary" disabled={!name.trim()}>
-            Ajouter une section
-          </Button>
-        </form>
-      ) : null}
       {error ? (
-        <p role="alert" className="text-label text-danger-700">
-          {error}
-        </p>
+        <Alert variant="destructive">
+          <CircleAlert />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      ) : null}
+      {canEdit ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Ajouter une section</CardTitle>
+            <CardDescription>Elle se place en fin de carte ; les flèches la remontent.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={add} noValidate className="flex flex-wrap items-end gap-3">
+              <FormField label="Nouvelle section" className="min-w-0 flex-1 sm:max-w-sm">
+                <Input value={name} onChange={(e) => setName(e.target.value)} maxLength={80} />
+              </FormField>
+              <Button type="submit" variant="outline" disabled={!name.trim()}>
+                <Plus data-icon="inline-start" />
+                Ajouter une section
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
       ) : null}
     </div>
   );
@@ -218,80 +237,121 @@ function SectionRow({
   };
 
   return (
-    <li className="px-4 py-3">
-      <div className="flex flex-wrap items-center gap-2">
+    <Item asChild variant="outline">
+      <li>
+        <ItemContent className="min-w-0 basis-full flex-row flex-wrap items-center gap-2 sm:basis-0">
+          {canEdit ? (
+            <>
+              <Input
+                aria-label="Nom de la section"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                onBlur={save}
+                className="min-w-0 flex-1 basis-40"
+                maxLength={80}
+              />
+              <Input
+                aria-label="Nom en anglais"
+                lang="en"
+                placeholder="En anglais"
+                value={nameEn}
+                onChange={(e) => setNameEn(e.target.value)}
+                onBlur={save}
+                className="min-w-0 flex-1 basis-32 sm:max-w-40"
+                maxLength={80}
+              />
+            </>
+          ) : (
+            <ItemTitle className={section.isActive ? undefined : "text-muted-foreground"}>{section.name}</ItemTitle>
+          )}
+          {!section.isActive ? <Badge variant="outline">Masquée</Badge> : null}
+        </ItemContent>
         {canEdit ? (
-          <>
-            <Input aria-label="Nom de la section" value={name} onChange={(e) => setName(e.target.value)} onBlur={save} className="min-w-40 flex-1" maxLength={80} />
-            <Input aria-label="Nom en anglais" lang="en" placeholder="En anglais" value={nameEn} onChange={(e) => setNameEn(e.target.value)} onBlur={save} className="w-40" maxLength={80} />
-          </>
-        ) : (
-          <span className="flex-1 text-body text-ink">{section.name}</span>
-        )}
-        {!section.isActive ? <Badge>Masquée</Badge> : null}
-        {canEdit ? (
-          <div className="flex items-center">
-            <Button size="icon" variant="quiet" aria-label={`Monter ${section.name}`} disabled={first} onClick={() => onMove(-1)}>
+          <ItemActions className="gap-0">
+            <Button size="icon" variant="ghost" aria-label={`Monter ${section.name}`} disabled={first} onClick={() => onMove(-1)}>
               <ArrowUp aria-hidden="true" />
             </Button>
-            <Button size="icon" variant="quiet" aria-label={`Descendre ${section.name}`} disabled={last} onClick={() => onMove(1)}>
+            <Button size="icon" variant="ghost" aria-label={`Descendre ${section.name}`} disabled={last} onClick={() => onMove(1)}>
               <ArrowDown aria-hidden="true" />
             </Button>
             <Button
               size="icon"
-              variant="quiet"
+              variant="ghost"
               aria-label={section.isActive ? `Masquer ${section.name}` : `Afficher ${section.name}`}
               aria-pressed={!section.isActive}
               onClick={() => void run(() => update({ venueId, sectionId: section._id, isActive: !section.isActive }))}
             >
               {section.isActive ? <Eye aria-hidden="true" /> : <EyeOff aria-hidden="true" />}
             </Button>
-          </div>
+          </ItemActions>
         ) : null}
-      </div>
-      <details className="mt-2">
-        <summary className="min-h-11 cursor-pointer content-center text-label text-ink-2">
-          {products.length} produit{products.length > 1 ? "s" : ""} — ordre dans la section
-        </summary>
-        <ol className="mt-1 flex flex-col">
-          {products.map((p, index) => (
-            <li key={p._id} className="flex min-h-11 items-center gap-2 pl-4">
-              <Link to="/app/menu/products/$productId" params={{ productId: p._id }} className={p.isActive ? "flex-1 text-body text-ink" : "flex-1 text-body text-ink-3"}>
-                {p.name}
-                {!p.isActive ? " (archivé)" : ""}
-              </Link>
-              {canEdit ? (
-                <>
-                  <Button
-                    size="icon"
-                    variant="quiet"
-                    aria-label={`Monter ${p.name}`}
-                    disabled={index === 0}
-                    onClick={() => {
-                      const next = moved(products.map((x) => x._id), index, -1);
-                      if (next) void run(() => reorderProducts({ venueId, menuSectionId: section._id, productIds: next }));
-                    }}
-                  >
-                    <ArrowUp aria-hidden="true" />
-                  </Button>
-                  <Button
-                    size="icon"
-                    variant="quiet"
-                    aria-label={`Descendre ${p.name}`}
-                    disabled={index === products.length - 1}
-                    onClick={() => {
-                      const next = moved(products.map((x) => x._id), index, 1);
-                      if (next) void run(() => reorderProducts({ venueId, menuSectionId: section._id, productIds: next }));
-                    }}
-                  >
-                    <ArrowDown aria-hidden="true" />
-                  </Button>
-                </>
-              ) : null}
-            </li>
-          ))}
-        </ol>
-      </details>
-    </li>
+        <ItemFooter>
+          <Collapsible className="w-full">
+            <CollapsibleTrigger asChild>
+              <Button variant="ghost" size="sm" className="group/trigger -ml-2 text-muted-foreground">
+                <ChevronDown data-icon="inline-start" className="transition-transform group-data-[state=open]/trigger:rotate-180" />
+                {products.length} produit{products.length > 1 ? "s" : ""} — ordre dans la section
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <ol className="mt-1 flex flex-col">
+                {products.map((p, index) => (
+                  <li key={p._id} className="flex min-h-9 items-center gap-1 border-t pl-2 first:border-t-0">
+                    <Link
+                      to="/app/menu/products/$productId"
+                      params={{ productId: p._id }}
+                      className={
+                        p.isActive
+                          ? "min-w-0 flex-1 truncate hover:underline"
+                          : "min-w-0 flex-1 truncate text-muted-foreground hover:underline"
+                      }
+                    >
+                      {p.name}
+                      {!p.isActive ? " (archivé)" : ""}
+                    </Link>
+                    {canEdit ? (
+                      <>
+                        <Button
+                          size="icon-sm"
+                          variant="ghost"
+                          aria-label={`Monter ${p.name}`}
+                          disabled={index === 0}
+                          onClick={() => {
+                            const next = moved(
+                              products.map((x) => x._id),
+                              index,
+                              -1,
+                            );
+                            if (next) void run(() => reorderProducts({ venueId, menuSectionId: section._id, productIds: next }));
+                          }}
+                        >
+                          <ArrowUp aria-hidden="true" />
+                        </Button>
+                        <Button
+                          size="icon-sm"
+                          variant="ghost"
+                          aria-label={`Descendre ${p.name}`}
+                          disabled={index === products.length - 1}
+                          onClick={() => {
+                            const next = moved(
+                              products.map((x) => x._id),
+                              index,
+                              1,
+                            );
+                            if (next) void run(() => reorderProducts({ venueId, menuSectionId: section._id, productIds: next }));
+                          }}
+                        >
+                          <ArrowDown aria-hidden="true" />
+                        </Button>
+                      </>
+                    ) : null}
+                  </li>
+                ))}
+              </ol>
+            </CollapsibleContent>
+          </Collapsible>
+        </ItemFooter>
+      </li>
+    </Item>
   );
 }
