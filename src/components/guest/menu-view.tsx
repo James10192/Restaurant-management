@@ -13,7 +13,7 @@
  *  - rien n'est déduit : un allergène, un régime, un piment ne s'affichent que déclarés (R28).
  */
 
-import { ClockIcon, InfoIcon, SearchIcon, UtensilsCrossedIcon, WifiOffIcon } from "lucide-react";
+import { ClockIcon, InfoIcon, PlusIcon, SearchIcon, UtensilsCrossedIcon, WifiOffIcon } from "lucide-react";
 import { createContext, lazy, Suspense, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { ALLERGENS } from "../../../convex/lib/allergens";
 import type { GuestMenu, GuestProduct, LiveAvailability, PublicVenue } from "../../../convex/lib/guestMenu";
@@ -27,11 +27,12 @@ import { InputGroup, InputGroupAddon, InputGroupInput } from "~/components/ui/in
 import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "~/components/ui/item";
 import { Toggle } from "~/components/ui/toggle";
 import { availabilityIndex, formatMinute, type AvailabilityIndex } from "~/lib/guest/availability";
+import type { DishChoice } from "~/lib/guest/cart";
 import { GUEST_TEXT, localized, type GuestLocale, type GuestText } from "~/lib/guest/i18n";
 import { cn } from "~/lib/utils";
 
 /** Devise et heure, lues une fois au plus haut : chaque carte n'a pas à les recevoir. */
-const GuestContext = createContext<{ currency: string; now: number }>({ currency: "XOF", now: 0 });
+const GuestContext = createContext<{ currency: string; now: number; orderable: boolean }>({ currency: "XOF", now: 0, orderable: false });
 
 /** Une section bascule en liste sans photo sous 40 % de plats photographiés (R-D7). */
 const PHOTO_GRID_THRESHOLD = 0.4;
@@ -45,6 +46,21 @@ export type MenuViewProps = {
   footer?: ReactNode;
   selectedProductId: string | null;
   onSelectProduct: (productId: string | null) => void;
+  /**
+   * Commande à table. Absent sur la carte publique : aucun bouton d'ajout, et rien de la
+   * composition d'un plat n'est téléchargé.
+   */
+  ordering?: MenuOrdering;
+};
+
+/** Ce que la carte partage avec la commande : la langue choisie, la disponibilité en direct, l'heure. */
+export type MenuOrderingContext = { locale: GuestLocale; live: LiveAvailability; now: number; online: boolean };
+
+export type MenuOrdering = {
+  /** Ajoute un plat composé dans sa fiche ; `false` si le panier ne peut plus rien recevoir. */
+  onAdd: (choice: DishChoice, productName: string) => boolean;
+  /** La barre du panier et ses tiroirs, rendus dans le contexte de la carte. */
+  render: (context: MenuOrderingContext) => ReactNode;
 };
 
 function normalize(text: string) {
@@ -197,8 +213,8 @@ export function MenuView(props: MenuViewProps) {
   );
 
   return (
-    <GuestContext.Provider value={{ currency: venue.currency, now }}>
-      <div lang={locale} className="min-h-dvh bg-background pb-16 text-foreground">
+    <GuestContext.Provider value={{ currency: venue.currency, now, orderable: props.ordering !== undefined }}>
+      <div lang={locale} className={cn("min-h-dvh bg-background text-foreground", props.ordering ? "pb-40" : "pb-16")}>
         {!online ? (
           <Alert role="status" className="sticky top-0 z-30 rounded-none border-x-0 border-t-0">
             <WifiOffIcon />
@@ -328,10 +344,14 @@ export function MenuView(props: MenuViewProps) {
               t={t}
               currency={venue.currency}
               now={now}
+              live={live}
+              timeZone={venue.timezone}
+              ordering={props.ordering}
               onClose={() => props.onSelectProduct(null)}
             />
           </Suspense>
         ) : null}
+        {props.ordering ? props.ordering.render({ locale, live, now, online }) : null}
       </div>
     </GuestContext.Provider>
   );
@@ -484,7 +504,14 @@ function DietaryMarks({ marks }: { marks: string[] }) {
 
 /** La fiche se prépare dès que le doigt touche un plat : le téléchargement part avant le relâchement. */
 const loadDrawer = () => import("~/components/ui/drawer");
+const loadOrderForm = () => import("./dish-order-form");
 const prefetchDishSheet = () => void loadDrawer();
+const prefetchOrderSheet = () => {
+  void loadDrawer();
+  void loadOrderForm();
+};
+/** Chargée seulement sur la carte de table, au premier plat ouvert. */
+const DishOrderForm = lazy(loadOrderForm);
 
 function DishCard(props: {
   product: GuestProduct;
@@ -499,8 +526,18 @@ function DishCard(props: {
   const text = localized(product, props.locale);
   const image = product.images[0];
   const soldOut = props.unavailable !== null;
-  const { currency, now } = useContext(GuestContext);
+  const { currency, now, orderable } = useContext(GuestContext);
   const price = priceLabel(product, currency, t, now);
+  const prefetch = orderable ? prefetchOrderSheet : prefetchDishSheet;
+  // Sur la carte de table, chaque plat disponible dit qu'on peut l'ajouter ; l'appui ouvre sa fiche,
+  // où se choisissent variante, options et quantité.
+  const addHint =
+    orderable && !soldOut ? (
+      <Badge variant="secondary" className="h-7 px-2.5">
+        <PlusIcon data-icon="inline-start" />
+        {t.add}
+      </Badge>
+    ) : null;
   const status = props.unavailable === "schedule" ? t.notServedNow : t.soldOut;
   const statusId = `${product.id}-status`;
 
@@ -517,7 +554,7 @@ function DishCard(props: {
         <button
           type="button"
           onClick={() => props.onSelect(product.id)}
-          onPointerDown={prefetchDishSheet}
+          onPointerDown={prefetch}
           aria-describedby={soldOut ? statusId : undefined}
         >
           {image?.thumbUrl ? (
@@ -545,6 +582,7 @@ function DishCard(props: {
               </Badge>
             ) : null}
             <span>{priceBlock}</span>
+            {addHint}
           </ItemActions>
         </button>
       </Item>
@@ -556,7 +594,7 @@ function DishCard(props: {
     <button
       type="button"
       onClick={() => props.onSelect(product.id)}
-      onPointerDown={prefetchDishSheet}
+      onPointerDown={prefetch}
       className="block h-full w-full rounded-xl text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
       aria-describedby={soldOut ? statusId : undefined}
     >
@@ -591,9 +629,10 @@ function DishCard(props: {
           <CardAction className="text-right">{priceBlock}</CardAction>
           {text.description ? <CardDescription className="line-clamp-2">{text.description}</CardDescription> : null}
         </CardHeader>
-        {marks.length > 0 ? (
-          <CardContent className="mt-auto">
+        {marks.length > 0 || addHint ? (
+          <CardContent className="mt-auto flex items-end justify-between gap-2">
             <DietaryMarks marks={marks} />
+            {addHint ? <span className="ml-auto shrink-0">{addHint}</span> : null}
           </CardContent>
         ) : null}
       </Card>
@@ -608,6 +647,9 @@ type DishSheetProps = {
   t: GuestText;
   currency: string;
   now: number;
+  live: LiveAvailability;
+  timeZone: string;
+  ordering: MenuOrdering | undefined;
   onClose: () => void;
 };
 
@@ -632,6 +674,98 @@ const DishSheet = lazy(async () => {
     const price = product ? priceLabel(product, props.currency, t, props.now) : null;
     const promo = price?.old !== null && price?.old !== undefined;
 
+    const top =
+      product && text ? (
+        <>
+          {image?.url ? (
+            <img
+              src={image.url}
+              crossOrigin="anonymous"
+              alt={text.name}
+              width={image.width}
+              height={image.height}
+              // Sur la carte de table, la photo cède de la place aux choix du plat.
+              className={cn("block w-full rounded-lg object-cover", props.ordering ? "aspect-[16/9]" : "aspect-[4/3]")}
+            />
+          ) : null}
+          <div className="mt-4 flex items-start justify-between gap-4">
+            <DrawerTitle className="text-xl font-semibold tracking-tight">{text.name}</DrawerTitle>
+            {price ? (
+              <p className="shrink-0 text-right text-lg font-semibold tabular-nums">
+                {price.main}
+                {price.old ? <span className="block text-xs font-normal text-muted-foreground line-through">{price.old}</span> : null}
+              </p>
+            ) : null}
+          </div>
+          {unavailable || promo ? (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {unavailable ? <Badge variant="secondary">{unavailable === "schedule" ? t.notServedNow : t.soldOut}</Badge> : null}
+              {promo ? <Badge>{t.promo}</Badge> : null}
+            </div>
+          ) : null}
+          {text.description ? <DrawerDescription className="mt-3 text-base">{text.description}</DrawerDescription> : null}
+          <div className="mt-3">
+            <DietaryMarks marks={dietaryMarks(product, t)} />
+          </div>
+        </>
+      ) : null;
+
+    const allergens = product ? (
+      <section className="mt-6 pb-2">
+        <h3 className="text-sm font-medium text-muted-foreground">{t.allergens}</h3>
+        {product.allergens.length > 0 ? (
+          <ul className="mt-2 flex flex-wrap gap-1.5">
+            {product.allergens.map((a) => (
+              <li key={a}>
+                <Badge variant="outline">{ALLERGENS[a as keyof typeof ALLERGENS]?.[props.locale] ?? a}</Badge>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        <p className="mt-2 text-sm text-muted-foreground">{t.noAllergenInfo}</p>
+      </section>
+    ) : null;
+
+    const closeFooter = (
+      <DrawerFooter>
+        <DrawerClose asChild>
+          <Button type="button" variant="outline" size="lg" className="h-11">
+            {t.close}
+          </Button>
+        </DrawerClose>
+      </DrawerFooter>
+    );
+
+    // Carte de table : la fiche compose le plat (variante, options, quantité) et l'ajoute.
+    const orderForm =
+      props.ordering && shown && product ? (
+        <Suspense
+          fallback={
+            <>
+              <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-4">{top}</div>
+              {closeFooter}
+            </>
+          }
+        >
+          <DishOrderForm
+            key={product.id}
+            menu={shown.menu}
+            sectionId={shown.sectionId}
+            product={product}
+            live={props.live}
+            timeZone={props.timeZone}
+            currency={props.currency}
+            now={props.now}
+            locale={props.locale}
+            t={t}
+            top={top}
+            bottom={allergens}
+            onAdd={props.ordering.onAdd}
+            onDone={props.onClose}
+          />
+        </Suspense>
+      ) : null;
+
     return (
       <Drawer
         open={props.selection !== null}
@@ -641,117 +775,73 @@ const DishSheet = lazy(async () => {
       >
         <DrawerContent className="mx-auto max-w-2xl" {...(text?.description ? {} : { "aria-describedby": undefined })}>
           {product && text ? (
-            <>
-              <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-4">
-                {image?.url ? (
-                  <img
-                    src={image.url}
-                    crossOrigin="anonymous"
-                    alt={text.name}
-                    width={image.width}
-                    height={image.height}
-                    className="block aspect-[4/3] w-full rounded-lg object-cover"
-                  />
-                ) : null}
-                <div className="mt-4 flex items-start justify-between gap-4">
-                  <DrawerTitle className="text-xl font-semibold tracking-tight">{text.name}</DrawerTitle>
-                  {price ? (
-                    <p className="shrink-0 text-right text-lg font-semibold tabular-nums">
-                      {price.main}
-                      {price.old ? <span className="block text-xs font-normal text-muted-foreground line-through">{price.old}</span> : null}
-                    </p>
+            orderForm ?? (
+              <>
+                <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-4">
+                  {top}
+
+                  {product.variants.length > 1 ? (
+                    <ItemGroup className="mt-5 gap-2">
+                      {product.variants.map((v) => {
+                        const vt = localized(v, props.locale);
+                        const ok = props.index.variant(v.id);
+                        return (
+                          <Item key={v.id} role="listitem" variant="outline" size="sm">
+                            <ItemContent>
+                              <ItemTitle className={cn(!ok && "text-muted-foreground")}>
+                                {vt.name}
+                                {ok ? null : ` — ${t.soldOut}`}
+                              </ItemTitle>
+                            </ItemContent>
+                            <ItemActions className="tabular-nums text-muted-foreground">{money(v.price, props.currency)}</ItemActions>
+                          </Item>
+                        );
+                      })}
+                    </ItemGroup>
                   ) : null}
+
+                  {product.modifierGroups.map((group) => {
+                    const gt = localized(group, props.locale);
+                    return (
+                      <section key={group.id} className="mt-5">
+                        <h3 className="text-sm font-medium">
+                          {gt.name}
+                          <span className="ml-2 font-normal text-muted-foreground">
+                            {group.isRequired ? `${t.required} · ` : ""}
+                            {t.chooseUpTo(group.maxSelect)}
+                          </span>
+                        </h3>
+                        <ItemGroup className="mt-2 gap-2">
+                          {group.options.map((o) => {
+                            const ok = props.index.option(o.id);
+                            return (
+                              <Item key={o.id} role="listitem" variant="outline" size="sm">
+                                <ItemContent>
+                                  <ItemTitle className={cn(!ok && "text-muted-foreground")}>
+                                    {localized(o, props.locale).name}
+                                    {ok ? null : ` — ${t.soldOut}`}
+                                  </ItemTitle>
+                                </ItemContent>
+                                {/* Un supplément à 0 F n'affiche rien — pas « + 0 F ». */}
+                                {o.priceDelta !== 0 ? (
+                                  <ItemActions className="tabular-nums text-muted-foreground">
+                                    {o.priceDelta > 0 ? "+ " : "− "}
+                                    {money(Math.abs(o.priceDelta), props.currency)}
+                                  </ItemActions>
+                                ) : null}
+                              </Item>
+                            );
+                          })}
+                        </ItemGroup>
+                      </section>
+                    );
+                  })}
+
+                  {allergens}
                 </div>
-                {unavailable || promo ? (
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {unavailable ? <Badge variant="secondary">{unavailable === "schedule" ? t.notServedNow : t.soldOut}</Badge> : null}
-                    {promo ? <Badge>{t.promo}</Badge> : null}
-                  </div>
-                ) : null}
-                {text.description ? <DrawerDescription className="mt-3 text-base">{text.description}</DrawerDescription> : null}
-                <div className="mt-3">
-                  <DietaryMarks marks={dietaryMarks(product, t)} />
-                </div>
-
-                {product.variants.length > 1 ? (
-                  <ItemGroup className="mt-5 gap-2">
-                    {product.variants.map((v) => {
-                      const vt = localized(v, props.locale);
-                      const ok = props.index.variant(v.id);
-                      return (
-                        <Item key={v.id} role="listitem" variant="outline" size="sm">
-                          <ItemContent>
-                            <ItemTitle className={cn(!ok && "text-muted-foreground")}>
-                              {vt.name}
-                              {ok ? null : ` — ${t.soldOut}`}
-                            </ItemTitle>
-                          </ItemContent>
-                          <ItemActions className="tabular-nums text-muted-foreground">{money(v.price, props.currency)}</ItemActions>
-                        </Item>
-                      );
-                    })}
-                  </ItemGroup>
-                ) : null}
-
-                {product.modifierGroups.map((group) => {
-                  const gt = localized(group, props.locale);
-                  return (
-                    <section key={group.id} className="mt-5">
-                      <h3 className="text-sm font-medium">
-                        {gt.name}
-                        <span className="ml-2 font-normal text-muted-foreground">
-                          {group.isRequired ? `${t.required} · ` : ""}
-                          {t.chooseUpTo(group.maxSelect)}
-                        </span>
-                      </h3>
-                      <ItemGroup className="mt-2 gap-2">
-                        {group.options.map((o) => {
-                          const ok = props.index.option(o.id);
-                          return (
-                            <Item key={o.id} role="listitem" variant="outline" size="sm">
-                              <ItemContent>
-                                <ItemTitle className={cn(!ok && "text-muted-foreground")}>
-                                  {localized(o, props.locale).name}
-                                  {ok ? null : ` — ${t.soldOut}`}
-                                </ItemTitle>
-                              </ItemContent>
-                              {/* Un supplément à 0 F n'affiche rien — pas « + 0 F ». */}
-                              {o.priceDelta !== 0 ? (
-                                <ItemActions className="tabular-nums text-muted-foreground">
-                                  {o.priceDelta > 0 ? "+ " : "− "}
-                                  {money(Math.abs(o.priceDelta), props.currency)}
-                                </ItemActions>
-                              ) : null}
-                            </Item>
-                          );
-                        })}
-                      </ItemGroup>
-                    </section>
-                  );
-                })}
-
-                <section className="mt-6">
-                  <h3 className="text-sm font-medium text-muted-foreground">{t.allergens}</h3>
-                  {product.allergens.length > 0 ? (
-                    <ul className="mt-2 flex flex-wrap gap-1.5">
-                      {product.allergens.map((a) => (
-                        <li key={a}>
-                          <Badge variant="outline">{ALLERGENS[a as keyof typeof ALLERGENS]?.[props.locale] ?? a}</Badge>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : null}
-                  <p className="mt-2 text-sm text-muted-foreground">{t.noAllergenInfo}</p>
-                </section>
-              </div>
-              <DrawerFooter>
-                <DrawerClose asChild>
-                  <Button type="button" variant="outline" size="lg" className="h-11">
-                    {t.close}
-                  </Button>
-                </DrawerClose>
-              </DrawerFooter>
-            </>
+                {closeFooter}
+              </>
+            )
           ) : null}
         </DrawerContent>
       </Drawer>

@@ -1,9 +1,17 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { QrCodeIcon } from "lucide-react";
-import { MenuView } from "~/components/guest/menu-view";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { MenuView, type MenuOrdering } from "~/components/guest/menu-view";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "~/components/ui/empty";
+import { bindCart, cart } from "~/lib/guest/cart";
 import { loadTableMenu, SLUG_PATTERN } from "~/lib/guest/server";
 import { useServiceWorker } from "~/lib/guest/sw";
+import { handleTableAction } from "~/lib/guest/table-actions.server";
+
+/** Panier, appel et commandes : chargés après l'affichage de la carte, jamais au rendu serveur. */
+const TableOrdering = lazy(() => import("~/components/guest/table-ordering"));
+/** Même nom que `GUEST_ADDED_EVENT` (table-ordering), recopié ici pour ne pas tirer ce module. */
+const ADDED_EVENT = "joliba:ajout";
 
 /**
  * La carte d'une table — Joliba (IA §3, « La carte »)
@@ -11,6 +19,9 @@ import { useServiceWorker } from "~/lib/guest/sw";
  * Adresse SANS SECRET : le laissez-passer est dans un cookie `httpOnly`, lu par le serveur.
  * Partagée, l'adresse n'ouvre rien ailleurs que dans le navigateur qui a scanné le QR.
  * Le plat ouvert est dans l'adresse (`?plat=`) : un rechargement le garde ouvert.
+ *
+ * Les gestes du client (panier, envoi, appel) sont des POST sur CETTE adresse : c'est la seule
+ * où le cookie du laissez-passer accompagne la requête (`lib/guest/table-actions.server.ts`).
  */
 export const Route = createFileRoute("/r/$venueSlug/table")({
   validateSearch: (search: Record<string, unknown>): { plat?: string } =>
@@ -29,19 +40,53 @@ export const Route = createFileRoute("/r/$venueSlug/table")({
       { name: "referrer", content: "no-referrer" },
     ],
   }),
+  server: {
+    handlers: {
+      // Seul POST est traité ici ; l'affichage de la page (GET) reste celui du routeur.
+      POST: ({ request, params }) => {
+        if (!SLUG_PATTERN.test(params.venueSlug)) return new Response(null, { status: 404 });
+        return handleTableAction(request, params.venueSlug);
+      },
+    },
+  },
   component: TableMenu,
 });
 
 function TableMenu() {
   const { menu, renderedAt } = Route.useLoaderData();
   const { plat } = Route.useSearch();
+  const { venueSlug } = Route.useParams();
   const navigate = useNavigate({ from: Route.fullPath });
   useServiceWorker();
+  // Le panier ne vit que dans le navigateur : rien de tout cela au rendu serveur.
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => {
+    bindCart(venueSlug);
+    setHydrated(true);
+  }, [venueSlug]);
+
+  const ordering = useMemo<MenuOrdering | undefined>(() => {
+    if (!menu) return undefined;
+    return {
+      onAdd: (choice, productName) => {
+        const ok = cart.add(choice);
+        if (ok) window.dispatchEvent(new CustomEvent(ADDED_EVENT, { detail: productName }));
+        return ok;
+      },
+      render: (context) =>
+        hydrated ? (
+          <Suspense fallback={null}>
+            <TableOrdering venueSlug={venueSlug} venue={menu.venue} menus={menu.menus} {...context} />
+          </Suspense>
+        ) : null,
+    };
+  }, [menu, hydrated, venueSlug]);
 
   if (!menu) return <ScanAgain />;
 
   return (
     <MenuView
+      ordering={ordering}
       venue={menu.venue}
       menus={menu.menus}
       live={menu.live}

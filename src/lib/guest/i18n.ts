@@ -39,6 +39,7 @@ export const GUEST_TEXT = {
     sections: "Sections",
     filters: "Filtres",
     promo: "Promotion",
+    add: "Ajouter",
   },
   en: {
     table: "Table",
@@ -70,6 +71,7 @@ export const GUEST_TEXT = {
     sections: "Sections",
     filters: "Filters",
     promo: "Offer",
+    add: "Add",
   },
 } as const;
 

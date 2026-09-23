@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
-import { CircleAlert, MoreHorizontal, UserPlus } from "lucide-react";
+import { CircleAlert, KeyRound, MoreHorizontal, UserPlus } from "lucide-react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { PendingButton } from "~/components/app/pending-button";
@@ -9,6 +9,7 @@ import { EmptyState, LoadingState, PermissionDeniedState } from "~/components/ap
 import { useWorkspace } from "~/components/app/workspace";
 import { InviteDialog } from "~/components/team/invite-dialog";
 import { MemberRolesDialog } from "~/components/team/member-roles-dialog";
+import { ActivationCodeDialog, DisablePinDialog, PinMemberDialog, type PinTarget } from "~/components/team/pin-dialogs";
 import type { TeamScope } from "~/components/team/scope";
 import { Alert, AlertDescription } from "~/components/ui/alert";
 import {
@@ -109,6 +110,9 @@ function TeamView({
   const revoke = useMutation(api.team.revokeInvitation);
   const setStatus = useMutation(api.team.setMemberStatus);
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [pinMemberOpen, setPinMemberOpen] = useState(false);
+  const [codeTarget, setCodeTarget] = useState<PinTarget | null>(null);
+  const [disableTarget, setDisableTarget] = useState<PinTarget | null>(null);
   const [editing, setEditing] = useState<Member | null>(null);
   const [removing, setRemoving] = useState<Member | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -135,15 +139,26 @@ function TeamView({
 
   const others = members?.filter((m) => !m.isSelf) ?? [];
 
+  const pinTarget = (m: Member): PinTarget => ({ memberId: m.memberId, name: displayName(m), pin: m.pin, isSelf: m.isSelf });
+
   const actionsFor = (m: Member) =>
     m.isSelf ? (
-      <p className="text-sm text-muted-foreground">Vous ne pouvez pas modifier vos propres droits.</p>
+      <div className="flex flex-col items-start gap-1 sm:items-end">
+        <p className="text-sm text-muted-foreground">Vous ne pouvez pas modifier vos propres droits.</p>
+        {/* Chacun peut se remettre un code à lui-même, pour la tablette partagée. */}
+        <Button variant="ghost" size="sm" onClick={() => setCodeTarget(pinTarget(m))}>
+          <KeyRound data-icon="inline-start" aria-hidden="true" />
+          {m.pin === "active" ? "Changer mon PIN" : "Obtenir mon code PIN"}
+        </Button>
+      </div>
     ) : canManage && !m.isOwner ? (
       <MemberActions
         member={m}
         onEdit={() => setEditing(m)}
         onStatus={(status) => void changeStatus(m, status)}
         onRemove={() => setRemoving(m)}
+        onIssueCode={() => setCodeTarget(pinTarget(m))}
+        onDisablePin={() => setDisableTarget(pinTarget(m))}
       />
     ) : null;
 
@@ -157,10 +172,16 @@ function TeamView({
         <div className="flex flex-wrap items-center gap-2">
           {scopeToggle}
           {canManage ? (
-            <Button onClick={() => setInviteOpen(true)}>
-              <UserPlus data-icon="inline-start" aria-hidden="true" />
-              Inviter un membre
-            </Button>
+            <>
+              <Button variant="outline" onClick={() => setPinMemberOpen(true)}>
+                <KeyRound data-icon="inline-start" aria-hidden="true" />
+                Ajouter un membre sans compte (PIN)
+              </Button>
+              <Button onClick={() => setInviteOpen(true)}>
+                <UserPlus data-icon="inline-start" aria-hidden="true" />
+                Inviter un membre
+              </Button>
+            </>
           ) : null}
         </div>
       </div>
@@ -280,6 +301,9 @@ function TeamView({
       ) : null}
 
       <InviteDialog open={inviteOpen} onOpenChange={setInviteOpen} scope={scope} organizationId={organizationId} scopeLabel={scopeLabel} />
+      <PinMemberDialog open={pinMemberOpen} onOpenChange={setPinMemberOpen} scope={scope} organizationId={organizationId} scopeLabel={scopeLabel} />
+      <ActivationCodeDialog target={codeTarget} organizationId={organizationId} onClose={() => setCodeTarget(null)} />
+      <DisablePinDialog target={disableTarget} organizationId={organizationId} onClose={() => setDisableTarget(null)} />
       <MemberRolesDialog
         member={editing ? { memberId: editing.memberId, displayName: editing.name ?? editing.email ?? "Membre", roleIds: scopedRoleIds(editing) } : null}
         scope={scope}
@@ -349,9 +373,20 @@ function MemberIdentity({ member: m }: { member: Member }) {
         {m.name ?? m.email ?? "Membre"}
         {m.isSelf ? <span className="font-normal text-muted-foreground"> (vous)</span> : null}
       </span>
-      {m.name ? <span className="truncate text-sm text-muted-foreground">{m.email}</span> : null}
+      {m.name && m.email ? <span className="truncate text-sm text-muted-foreground">{m.email}</span> : null}
     </>
   );
+}
+
+function displayName(m: Member): string {
+  return m.name ?? m.email ?? "Membre";
+}
+
+function PinBadge({ pin }: { pin: Member["pin"] }) {
+  if (pin === "active") return <Badge variant="outline">PIN actif</Badge>;
+  if (pin === "pending") return <Badge variant="outline">PIN à activer</Badge>;
+  if (pin === "disabled") return <Badge variant="destructive">PIN désactivé</Badge>;
+  return null;
 }
 
 function MemberBadges({ member: m }: { member: Member }) {
@@ -359,6 +394,8 @@ function MemberBadges({ member: m }: { member: Member }) {
     <>
       {m.isOwner ? <Badge>Propriétaire</Badge> : null}
       {m.status === "suspended" ? <Badge variant="destructive">Suspendu</Badge> : null}
+      {m.kind === "pin_only" ? <Badge variant="outline">Sans compte</Badge> : null}
+      <PinBadge pin={m.pin} />
       {m.roles.map((r) => (
         <Badge key={r.assignmentId} variant="secondary">
           {r.label} · {r.scopeType === "organization" ? "toute l'organisation" : r.venueName}
@@ -373,11 +410,15 @@ function MemberActions({
   onEdit,
   onStatus,
   onRemove,
+  onIssueCode,
+  onDisablePin,
 }: {
   member: Member;
   onEdit: () => void;
   onStatus: (status: "active" | "suspended") => void;
   onRemove: () => void;
+  onIssueCode: () => void;
+  onDisablePin: () => void;
 }) {
   return (
     <DropdownMenu>
@@ -388,6 +429,18 @@ function MemberActions({
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuItem onSelect={onEdit}>Modifier les rôles</DropdownMenuItem>
+        {m.canChangeStatus && m.status === "active" ? (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={onIssueCode}>Émettre un code d'activation</DropdownMenuItem>
+            {m.pin === "active" || m.pin === "pending" ? (
+              <DropdownMenuItem variant="destructive" onSelect={onDisablePin}>
+                Désactiver le PIN
+              </DropdownMenuItem>
+            ) : null}
+            <DropdownMenuSeparator />
+          </>
+        ) : null}
         {m.canChangeStatus ? (
           <>
             {m.status === "suspended" ? (
