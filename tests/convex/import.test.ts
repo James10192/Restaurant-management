@@ -128,6 +128,41 @@ describe("duplication depuis un autre établissement", () => {
     expect(groups.map((g) => [g.name, g.productCount])).toEqual([["Piment", 1]]);
   });
 
+  test("un groupe rendu obligatoire pour UN plat le reste pour ce plat seulement", async () => {
+    const r = await restaurantWithMenu();
+    const groupId = await r.owner.as.mutation(api.modifiers.createGroup, {
+      venueId: r.cocody,
+      name: "Sauce",
+      selectionType: "single",
+      minSelect: 0,
+      maxSelect: 1,
+      isRequired: false,
+      options: [{ name: "Tomate", priceDelta: 0 }],
+    });
+    for (const productId of [r.products.poulet, r.products.poisson]) {
+      await r.owner.as.mutation(api.products.setModifierGroups, { venueId: r.cocody, productId, modifierGroupIds: [groupId] });
+    }
+    // Surcharge posée sur le lien du poulet seulement (réglage fait en base, faute d'écran).
+    await r.t.run(async (ctx) => {
+      const link = (await ctx.db.query("productModifierGroups").collect()).find((l) => l.productId === r.products.poulet)!;
+      await ctx.db.patch(link._id, { overrideRequired: true });
+    });
+    const { menuId } = await r.owner.as.mutation(api.menuImport.duplicateFromVenue, {
+      venueId: r.plateau,
+      sourceVenueId: r.cocody,
+      sourceMenuId: r.menuId,
+    });
+    const tree = await r.owner.as.query(api.menus.editor, { venueId: r.plateau, menuId });
+    const copies = tree.sections.flatMap((s) => s.products);
+    const required = async (name: string) => {
+      const id = copies.find((p) => p.name === name)!._id;
+      const product = await r.owner.as.query(api.products.get, { venueId: r.plateau, productId: id });
+      return product.modifierGroups[0]!.isRequired;
+    };
+    expect(await required("Poulet braisé")).toBe(true);
+    expect(await required("Poisson braisé")).toBe(false);
+  });
+
   test("jamais d'une organisation à l'autre, même pour qui appartient aux deux", async () => {
     const r = await restaurantWithMenu();
     // Awa ouvre une seconde organisation : elle est propriétaire des deux.

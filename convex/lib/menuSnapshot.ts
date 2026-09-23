@@ -292,3 +292,23 @@ export function diffSnapshots(published: MenuSnapshot | null, draft: MenuSnapsho
   }
   return changes;
 }
+
+/** Tout ce qui fait le prix d'un plat, sous une forme comparable. */
+function priceSignature(p: SnapshotProduct): string {
+  return canonical({
+    base: p.basePrice,
+    promo: p.promoPrice ?? null,
+    promoEndsAt: p.promoEndsAt ?? null,
+    variants: p.variants.map((v) => [v.id, v.price]),
+    options: p.modifierGroups.flatMap((g) => g.options.map((o) => [o.id, o.priceDelta])),
+  });
+}
+
+/**
+ * Les plats de `next` dont le prix n'est pas celui qu'affiche `current` (ou qui n'y figurent
+ * pas). Remettre en ligne une ancienne version, c'est remettre ses prix : un acte financier.
+ */
+export function pricedDifferently(current: MenuSnapshot | null, next: MenuSnapshot): string[] {
+  const online = new Map((current?.sections ?? []).flatMap((s) => s.products.map((p) => [p.id, priceSignature(p)] as const)));
+  return next.sections.flatMap((s) => s.products.filter((p) => online.get(p.id) !== priceSignature(p)).map((p) => p.name));
+}

@@ -194,6 +194,14 @@ function SectionRow({
     }
   }
 
+  // Ne changer que le nom anglais : une description anglaise (recopiée d'une autre carte, par
+  // exemple) ne doit pas disparaître au passage.
+  const englishWith = (name: string): Record<string, { name?: string; description?: string }> => {
+    const description = (section.i18n as { en?: { description?: string } } | null)?.en?.description;
+    const en = { ...(name ? { name } : {}), ...(description ? { description } : {}) };
+    return Object.keys(en).length > 0 ? { en } : {};
+  };
+
   const save = () => {
     const changedName = name.trim() && name !== section.name;
     const currentEn = (section.i18n as { en?: { name?: string } } | null)?.en?.name ?? "";
@@ -204,7 +212,7 @@ function SectionRow({
         venueId,
         sectionId: section._id,
         ...(changedName ? { name } : {}),
-        ...(changedEn ? { i18n: nameEn.trim() ? { en: { name: nameEn.trim() } } : {} } : {}),
+        ...(changedEn ? { i18n: englishWith(nameEn.trim()) } : {}),
       }),
     );
   };

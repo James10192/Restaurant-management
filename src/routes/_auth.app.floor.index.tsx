@@ -179,25 +179,33 @@ function AreaEditor({
 
   const box = (t: Table): Box => local[t._id] ?? { x: t.x, y: t.y, width: t.width, height: t.height, rotation: t.rotation };
 
-  function scheduleSave(next: Record<string, Box>, delay: number) {
+  // Les tables présentes DANS cette zone, à jour : une table déplacée vers une autre zone
+  // entre-temps ne doit pas faire refuser tout le lot (le serveur refuse le lot entier).
+  const areaTables = useRef(new Set<string>());
+  areaTables.current = new Set(area.tables.map((t) => t._id));
+  const pending = useRef<Record<string, Box>>({});
+
+  async function flush() {
     window.clearTimeout(saveTimer.current);
-    saveTimer.current = window.setTimeout(async () => {
-      const tables = Object.entries(next).map(([tableId, b]) => ({ tableId: tableId as Id<"restaurantTables">, ...b }));
-      if (tables.length === 0) return;
-      try {
-        await saveLayout({ venueId, serviceAreaId: area._id, tables });
-        setSavedAt(Date.now());
-        setError(null);
-        // Le serveur fait foi une fois enregistré : on lâche la copie locale.
-        setLocal((current) => {
-          const rest = { ...current };
-          for (const t of tables) if (rest[t.tableId] === next[t.tableId]) delete rest[t.tableId];
-          return rest;
-        });
-      } catch (e) {
-        setError(describeError(e).message);
-      }
-    }, delay);
+    const batch = Object.entries(pending.current).filter(([id]) => areaTables.current.has(id));
+    pending.current = {};
+    if (batch.length === 0) return;
+    const tables = batch.map(([tableId, b]) => ({ tableId: tableId as Id<"restaurantTables">, ...b }));
+    try {
+      await saveLayout({ venueId, serviceAreaId: area._id, tables });
+      setSavedAt(Date.now());
+      setError(null);
+      // Le serveur fait foi une fois enregistré : on lâche la copie locale.
+      setLocal((current) => {
+        const rest = { ...current };
+        for (const [id, b] of batch) if (rest[id] === b) delete rest[id];
+        return rest;
+      });
+    } catch (e) {
+      // Remis en attente : le prochain geste réessaie, sans ce qui a quitté la zone.
+      pending.current = { ...Object.fromEntries(batch), ...pending.current };
+      setError(describeError(e).message);
+    }
   }
 
   function move(t: Table, b: Box, delay: number) {
@@ -206,12 +214,15 @@ function AreaEditor({
       x: Math.max(0, Math.min(area.canvasWidth - b.width, b.x)),
       y: Math.max(0, Math.min(area.canvasHeight - b.height, b.y)),
     };
-    const next = { ...local, [t._id]: clamped };
-    setLocal(next);
-    scheduleSave(next, delay);
+    setLocal((current) => ({ ...current, [t._id]: clamped }));
+    pending.current = { ...pending.current, [t._id]: clamped };
+    window.clearTimeout(saveTimer.current);
+    saveTimer.current = window.setTimeout(() => void flush(), delay);
   }
 
-  useEffect(() => () => window.clearTimeout(saveTimer.current), []);
+  // Changer de zone ou quitter l'écran enregistre ce qui attendait, au lieu de le perdre.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => () => void flush(), []);
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_20rem]">

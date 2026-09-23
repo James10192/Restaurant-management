@@ -16,6 +16,7 @@ const ASSETS = "joliba-assets-v1";
 const PHOTOS = "joliba-photos-v1";
 const KEEP = [PAGES, ASSETS, PHOTOS];
 const MAX_PHOTOS = 200;
+const MAX_ASSETS = 60;
 const NETWORK_TIMEOUT_MS = 4000;
 
 self.addEventListener("install", () => self.skipWaiting());
@@ -38,17 +39,20 @@ async function networkFirst(request) {
   // La clé ignore `?plat=` : c'est la même carte.
   const key = new URL(request.url);
   key.search = "";
-  try {
-    const response = await Promise.race([
-      fetch(request),
-      new Promise((_, reject) => setTimeout(() => reject(new Error("délai")), NETWORK_TIMEOUT_MS)),
-    ]);
+  const network = fetch(request).then(async (response) => {
     if (response.ok) await cache.put(key.href, response.clone());
     return response;
-  } catch (error) {
+  });
+  try {
+    return await Promise.race([
+      network,
+      new Promise((_, reject) => setTimeout(() => reject(new Error("délai")), NETWORK_TIMEOUT_MS)),
+    ]);
+  } catch {
+    // Réseau lent ou absent : la dernière carte connue. Sans elle, on ATTEND le réseau — un
+    // premier scan sur une 4G lente ne doit pas échouer parce que le délai est passé.
     const cached = await cache.match(key.href);
-    if (cached) return cached;
-    throw error;
+    return cached ?? network;
   }
 }
 
@@ -75,7 +79,8 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   if (url.origin === self.location.origin) {
     if (request.mode === "navigate" && isMenuPage(url)) event.respondWith(networkFirst(request));
-    else if (url.pathname.startsWith("/assets/")) event.respondWith(cacheFirst(ASSETS, request));
+    // Plafonné : chaque déploiement apporte de nouveaux fichiers, les anciens doivent partir.
+    else if (url.pathname.startsWith("/assets/")) event.respondWith(cacheFirst(ASSETS, request, MAX_ASSETS));
     return;
   }
   // Photos servies par le stockage Convex : même identifiant, même fichier, pour toujours.

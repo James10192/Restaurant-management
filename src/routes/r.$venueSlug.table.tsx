@@ -13,6 +13,9 @@ import { useServiceWorker } from "~/lib/guest/sw";
 export const Route = createFileRoute("/r/$venueSlug/table")({
   validateSearch: (search: Record<string, unknown>): { plat?: string } =>
     typeof search.plat === "string" && /^[a-z0-9]{1,40}$/.test(search.plat) ? { plat: search.plat } : {},
+  // Ce chargeur ne doit tourner qu'au rendu serveur : le cookie de table est limité au chemin
+  // `/r/<établissement>` et n'accompagne pas l'appel d'une fonction serveur depuis le navigateur.
+  // Aucune navigation côté client ne mène donc ici (la fiche plat ne change que `?plat=`).
   loader: ({ params }) =>
     // Une adresse mal formée n'a pas de carte : même écran que sans laissez-passer.
     SLUG_PATTERN.test(params.venueSlug) ? loadTableMenu({ data: { venueSlug: params.venueSlug } }) : { menu: null, renderedAt: Date.now() },

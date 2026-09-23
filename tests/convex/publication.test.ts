@@ -6,7 +6,7 @@ import { describe, expect, test } from "vitest";
 import { api } from "../../convex/_generated/api";
 import { diffSnapshots, type MenuSnapshot } from "../../convex/lib/menuSnapshot";
 import { restaurantWithMenu } from "./catalogFixtures";
-import { expectCode } from "./setup";
+import { expectCode, inviteAndJoin } from "./setup";
 
 describe("écart entre brouillon et carte en ligne", () => {
   const base: MenuSnapshot = {
@@ -137,6 +137,30 @@ describe("historique et retour arrière", () => {
     // Le brouillon garde 9 000 : l'écart le montre.
     const pending = await r.owner.as.query(api.publications.pendingChanges, { venueId: r.cocody, menuId: r.menuId });
     expect(pending.changes.map((c) => c.fields)).toEqual([["prix"]]);
+  });
+
+  test("remettre d'anciens prix en ligne exige le droit sur les prix", async () => {
+    const r = await restaurantWithMenu();
+    const roleId = await r.owner.as.mutation(api.roles.create, {
+      organizationId: r.organizationId,
+      label: "Publie sans toucher aux prix",
+      permissions: ["venue.read", "menu.read", "menu.publish"],
+    });
+    const publisher = await inviteAndJoin(r.t, r.owner, { organizationId: r.organizationId, roleId, venueIds: [r.cocody] }, { email: "publie@maquis.ci" });
+    await r.owner.as.mutation(api.publications.publish, { venueId: r.cocody, menuId: r.menuId });
+    await r.owner.as.mutation(api.products.setPrice, { venueId: r.cocody, productId: r.products.poulet, basePrice: 9000 });
+    await r.owner.as.mutation(api.publications.publish, { venueId: r.cocody, menuId: r.menuId });
+    const history = await r.owner.as.query(api.publications.history, { venueId: r.cocody, menuId: r.menuId });
+    await expectCode(
+      publisher.as.mutation(api.publications.rollback, { venueId: r.cocody, menuId: r.menuId, publicationId: history[1]!._id }),
+      "FORBIDDEN",
+    );
+    // Une version aux mêmes prix, elle, se remet en ligne : seul le nom a changé.
+    await r.owner.as.mutation(api.products.update, { venueId: r.cocody, productId: r.products.bissap, name: "Bissap maison" });
+    await r.owner.as.mutation(api.publications.publish, { venueId: r.cocody, menuId: r.menuId });
+    const again = await r.owner.as.query(api.publications.history, { venueId: r.cocody, menuId: r.menuId });
+    const { version } = await publisher.as.mutation(api.publications.rollback, { venueId: r.cocody, menuId: r.menuId, publicationId: again[1]!._id });
+    expect(version).toBe(4);
   });
 
   test("on ne remet pas en ligne la version d'une autre carte", async () => {

@@ -246,6 +246,7 @@ export const get = query({
         isAvailable: variant.isAvailable,
       })),
       modifierGroups: groups,
+      timezone: actor.venue.timezone,
       canEdit: actor.permissions.has("menu.edit"),
       canEditPrice: actor.permissions.has("menu.price.edit"),
     };
@@ -357,6 +358,10 @@ export const setPrice = mutation({
     const product = await getInVenue(ctx, args.productId, actor.venue._id, "Ce produit");
     const basePrice = assertPrice(args.basePrice);
     const patch: Partial<Doc<"products">> = { basePrice };
+    // La promotion en cours reste en place si on ne la touche pas : elle doit rester sous le prix.
+    if (args.promoPrice === undefined && product.promoPrice !== undefined && product.promoPrice >= basePrice) {
+      throw invalid("Ce prix passerait sous la promotion en cours : retirez ou baissez d'abord la promotion.");
+    }
     if (args.promoPrice !== undefined) {
       if (args.promoPrice === null) {
         patch.promoPrice = undefined;
@@ -608,13 +613,48 @@ export function imageProblem(bytes: Uint8Array, maxBytes: number): string | null
   return jpeg || png || webp ? null : refuse;
 }
 
+/** Un fichier fraîchement envoyé : au-delà, ce n'est plus « la photo qu'on vient de choisir ». */
+const FRESH_UPLOAD_MS = 60 * 60 * 1000;
+
+/**
+ * Les identifiants de fichier viennent du navigateur : rien ne dit qu'ils désignent la photo
+ * qu'il vient d'envoyer. On n'accepte donc qu'un fichier RÉCENT et que AUCUN produit de
+ * l'organisation n'utilise déjà — sinon on pourrait s'approprier, ou faire effacer par un
+ * refus, la photo d'un autre plat, voire celle d'une carte en ligne.
+ */
+async function assertFreshUnusedFiles(ctx: ReadCtx, actor: VenueActor, ids: Id<"_storage">[]) {
+  const now = Date.now();
+  for (const id of ids) {
+    const file = await ctx.db.system.get(id);
+    if (!file || now - file._creationTime > FRESH_UPLOAD_MS) throw invalid("Cette photo n'a pas été envoyée à l'instant. Choisissez-la à nouveau.");
+  }
+  const venues = await ctx.db
+    .query("venues")
+    .withIndex("by_org", (q) => q.eq("organizationId", actor.organization._id))
+    .collect();
+  const wanted = new Set<string>(ids);
+  for (const venue of venues) {
+    const products = await ctx.db
+      .query("products")
+      .withIndex("by_venue_section_sort", (q) => q.eq("venueId", venue._id))
+      .collect();
+    for (const p of products) {
+      if (p.images.some((image) => wanted.has(image.storageId) || wanted.has(image.thumbStorageId))) {
+        throw invalid("Cette photo est déjà utilisée par un autre produit.");
+      }
+    }
+  }
+}
+
 /** La garde de l'envoi, rejouée par l'action AVANT qu'elle touche un fichier. */
 export const assertCanAttachImage = internalQuery({
-  args: { venueId: v.id("venues"), productId: v.id("products") },
+  args: { venueId: v.id("venues"), productId: v.id("products"), storageId: v.id("_storage"), thumbStorageId: v.id("_storage") },
   handler: async (ctx, args) => {
     const actor = await requirePermission(ctx, "menu.edit", { venueId: args.venueId });
     const product = await getInVenue(ctx, args.productId, actor.venue._id, "Ce produit");
     if (product.images.length >= LIMITS.images) throw invalid(`Pas plus de ${LIMITS.images} photos par produit.`);
+    if (args.storageId === args.thumbStorageId) throw invalid("La photo et sa vignette sont deux fichiers distincts.");
+    await assertFreshUnusedFiles(ctx, actor, [args.storageId, args.thumbStorageId]);
   },
 });
 
@@ -631,6 +671,8 @@ export const recordImage = internalMutation({
   handler: async (ctx, args) => {
     const actor = await requirePermission(ctx, "menu.edit", { venueId: args.venueId });
     const product = await getInVenue(ctx, args.productId, actor.venue._id, "Ce produit");
+    // Rejouée au moment d'écrire : entre la lecture et l'écriture, un autre envoi a pu les prendre.
+    await assertFreshUnusedFiles(ctx, actor, [args.storageId, args.thumbStorageId]);
     if (!args.accepted) {
       // Un fichier refusé ne reste pas stocké : sinon l'envoi servirait à stocker n'importe quoi.
       for (const id of [args.storageId, args.thumbStorageId]) {
@@ -665,7 +707,12 @@ export const addImage = action({
   handler: async (ctx, args): Promise<{ ok: true } | { ok: false; message: string }> => {
     // garde : `assertCanAttachImage` s'exécute avec l'identité de l'appelant, AVANT toute
     // lecture de fichier ; `recordImage` rejoue la même garde au moment d'écrire.
-    await ctx.runQuery(internal.products.assertCanAttachImage, { venueId: args.venueId, productId: args.productId });
+    await ctx.runQuery(internal.products.assertCanAttachImage, {
+      venueId: args.venueId,
+      productId: args.productId,
+      storageId: args.storageId,
+      thumbStorageId: args.thumbStorageId,
+    });
     for (const d of [args.width, args.height]) {
       if (!Number.isInteger(d) || d < 64 || d > 4096) throw invalid("Dimensions de photo invalides.");
     }

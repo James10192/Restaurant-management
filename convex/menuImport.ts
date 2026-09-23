@@ -17,12 +17,13 @@ import { writeAudit } from "./lib/audit";
 import { getInVenue } from "./lib/catalogAccess";
 import { cleanName } from "./lib/catalog";
 import { forbidden, invalid, notFound } from "./lib/errors";
-import { accessibleVenues, requirePermission, type MutationCtx, type VenueActor } from "./lib/guards";
+import { accessibleVenues, requirePermission, resolvePermissions, type MutationCtx, type VenueActor } from "./lib/guards";
 import { buildDraftSnapshot, countProducts as countSnapshotProducts } from "./lib/menuSnapshot";
 import { uniqueSlug } from "./lib/slug";
 import { IMPORT_MAX_ROWS } from "./lib/menuImport";
 import { countProducts, insertProduct } from "./products";
-import { sectionsOf } from "./menus";
+import { MAX_MENUS_PER_VENUE, sectionsOf } from "./menus";
+import { MAX_GROUPS_PER_VENUE } from "./modifiers";
 
 const MAX_PRODUCTS_PER_VENUE = 1500;
 
@@ -126,6 +127,8 @@ export const sources = query({
     const result = [];
     for (const venue of venues) {
       if (venue._id === actor.venue._id) continue;
+      // Accessible ne veut pas dire lisible : il faut le droit de lire la carte là-bas aussi.
+      if (!(await resolvePermissions(ctx, actor, venue)).has("menu.read")) continue;
       const menus = (
         await ctx.db
           .query("menus")
@@ -169,6 +172,17 @@ export const duplicateFromVenue = mutation({
       .query("menus")
       .withIndex("by_venue", (q) => q.eq("venueId", venueId))
       .collect();
+    if (existingMenus.filter((m) => m.status !== "archived").length >= MAX_MENUS_PER_VENUE) {
+      throw invalid(`Pas plus de ${MAX_MENUS_PER_VENUE} cartes par établissement.`);
+    }
+    const sourceGroupIds = new Set(snapshot.sections.flatMap((s) => s.products.flatMap((p) => p.modifierGroups.map((g) => g.id))));
+    const existingGroups = await ctx.db
+      .query("modifierGroups")
+      .withIndex("by_venue", (q) => q.eq("venueId", venueId))
+      .collect();
+    if (existingGroups.length + sourceGroupIds.size > MAX_GROUPS_PER_VENUE) {
+      throw invalid(`Cette copie dépasserait ${MAX_GROUPS_PER_VENUE} groupes d'options pour l'établissement.`);
+    }
     const menuName = existingMenus.some((m) => m.name === sourceMenu.name) ? `${sourceMenu.name} (copie)`.slice(0, 80) : sourceMenu.name;
     const slug = await uniqueSlug(menuName, async (candidate) => existingMenus.some((m) => m.slug === candidate));
     const menuId = await ctx.db.insert("menus", {
@@ -220,6 +234,10 @@ export const duplicateFromVenue = mutation({
           });
         }
         for (const [index, group] of p.modifierGroups.entries()) {
+          // Le groupe du cliché porte l'« obligatoire » PROPRE à ce produit (surcharge du lien) :
+          // le groupe recréé prend la valeur du groupe source, et le lien sa surcharge.
+          const sourceGroup = (await ctx.db.get(group.id as Id<"modifierGroups">)) as Doc<"modifierGroups"> | null;
+          const baseRequired = sourceGroup?.isRequired ?? group.isRequired;
           let groupId = groups.get(group.id);
           if (!groupId) {
             groupId = await ctx.db.insert("modifierGroups", {
@@ -227,9 +245,9 @@ export const duplicateFromVenue = mutation({
               name: group.name,
               ...(group.i18n ? { i18n: group.i18n } : {}),
               selectionType: group.selectionType,
-              minSelect: group.minSelect,
+              minSelect: sourceGroup?.minSelect ?? group.minSelect,
               maxSelect: group.maxSelect,
-              isRequired: group.isRequired,
+              isRequired: baseRequired,
             });
             for (const [optionIndex, option] of group.options.entries()) {
               await ctx.db.insert("modifierOptions", {
@@ -244,7 +262,13 @@ export const duplicateFromVenue = mutation({
             }
             groups.set(group.id, groupId);
           }
-          await ctx.db.insert("productModifierGroups", { venueId, productId, modifierGroupId: groupId, sortOrder: index });
+          await ctx.db.insert("productModifierGroups", {
+            venueId,
+            productId,
+            modifierGroupId: groupId,
+            sortOrder: index,
+            ...(group.isRequired !== baseRequired ? { overrideRequired: group.isRequired } : {}),
+          });
         }
       }
     }

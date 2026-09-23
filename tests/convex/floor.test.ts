@@ -5,7 +5,7 @@
 import { describe, expect, test } from "vitest";
 import { api } from "../../convex/_generated/api";
 import { cleanTableNumber } from "../../convex/floor";
-import { signGuestPass, verifyGuestPass } from "../../convex/lib/guestPass";
+import { guestPassExpiry, signGuestPass, verifyGuestPass } from "../../convex/lib/guestPass";
 import { indexabilityChecks, isIndexable } from "../../convex/lib/indexability";
 import { restaurantWithMenu, type Restaurant } from "./catalogFixtures";
 import { expectCode } from "./setup";
@@ -111,6 +111,9 @@ describe("laissez-passer", () => {
     });
     expect(await verifyGuestPass(pass, now)).toMatchObject({ qrVersion: 1 });
     expect(await verifyGuestPass(pass, now + 2000)).toBeNull();
+    // Le serveur web lit l'échéance sans secret ; un texte quelconque n'en a pas.
+    expect(guestPassExpiry(pass)).toBe(now + 1000);
+    expect(guestPassExpiry("gp1.pas-du-json.x")).toBeNull();
     const [prefix, body, signature] = pass.split(".");
     const forged = btoa(JSON.stringify({ v: "v", t: "t", q: "q", n: 1, e: now + 1e9 }))
       .replace(/\+/g, "-")

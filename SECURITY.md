@@ -107,7 +107,8 @@ partage sur WhatsApp. C'est le cas d'usage réel, pas une hypothèse.
 session (D-045). Le laissez-passer est un HMAC signé par Convex (`GUEST_PASS_SECRET`), valable 12 h,
 dans un cookie limité au chemin `/r/<établissement>`, et **revérifié à chaque lecture** contre l'état
 et la version du QR : « Révoquer et régénérer » coupe aussitôt les clients déjà entrés par l'ancien
-(D-046, vérifié par `e2e/t1.spec.ts`). Le jeton est stocké en clair pour permettre la réimpression :
+(D-046, vérifié par `e2e/t1.spec.ts`). L'échéance est contrôlée aussi par le serveur web à chaque
+requête, une requête Convex en cache ne se réévaluant pas avec l'heure (D-057). Le jeton est stocké en clair pour permettre la réimpression :
 seule la planche d'impression le lit, avec la permission `table.qr.manage`.
 
 **Ce qu'il faut assumer** : en mode `frictionless`, une photo permet de rejoindre une session
@@ -219,7 +220,10 @@ fichier régénéré ; service depuis une origine distincte ; nettoyage des fich
 comprise), puis le serveur vérifie les octets d'en-tête (JPEG, PNG, WebP) et le poids (600 Ko, 80 Ko
 pour la vignette) et efface un fichier refusé (D-047). Écart assumé : un client modifié peut envoyer
 un fichier valide non ré-encodé, EXIF compris — le ré-encodage côté serveur reste à faire. Les
-fichiers sont servis par le stockage Convex, une origine distincte de l'application.
+fichiers sont servis par le stockage Convex, une origine distincte de l'application. Un fichier
+n'est rattaché, ou effacé après un refus, que s'il est récent et qu'aucun produit ne l'utilise
+(D-056). Reste ouvert : un envoi jamais rattaché reste stocké — un nettoyage périodique des
+fichiers orphelins est à écrire.
 
 ### M15 — Injection par formule dans un export
 

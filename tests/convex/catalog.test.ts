@@ -30,7 +30,9 @@ describe("règles de saisie (fonctions pures)", () => {
       minSelect: 1,
       maxSelect: 1,
     });
-    expect(() => assertSelectionBounds({ selectionType: "multiple", minSelect: 3, maxSelect: 2, isRequired: false })).toThrow();
+    expect(() => assertSelectionBounds({ selectionType: "multiple", minSelect: 3, maxSelect: 2, isRequired: true })).toThrow();
+    // Facultatif : le minimum tombe à zéro, quel que soit celui qu'on garde en mémoire.
+    expect(assertSelectionBounds({ selectionType: "multiple", minSelect: 2, maxSelect: 3, isRequired: false })).toEqual({ minSelect: 0, maxSelect: 3 });
   });
 });
 
@@ -69,6 +71,11 @@ describe("saisie de la carte", () => {
     });
     const p = await r.owner.as.query(api.products.get, { venueId: r.cocody, productId: r.products.poulet });
     expect(p.promoPrice).toBe(3000);
+    // Baisser le prix sous la promotion en cours, sans la toucher : refusé.
+    await expectCode(
+      r.owner.as.mutation(api.products.setPrice, { venueId: r.cocody, productId: r.products.poulet, basePrice: 2800 }),
+      "INVALID_ARGUMENT",
+    );
   });
 
   test("un allergène hors liste est refusé : un texte libre ne se filtre pas", async () => {
@@ -329,6 +336,25 @@ describe("photos", () => {
     const p = await r.owner.as.query(api.products.get, { venueId: r.cocody, productId: r.products.poulet });
     expect(p.images).toHaveLength(1);
     expect(p.images[0]!.width).toBe(1200);
+  });
+
+  test("la photo d'un autre plat ne s'approprie pas, et un refus ne l'efface pas", async () => {
+    const r = await restaurantWithMenu();
+    const store = (blob: Blob) => r.t.run((ctx) => ctx.storage.store(blob));
+    const add = (productId: Id<"products">, storageId: Id<"_storage">, thumbStorageId: Id<"_storage">) =>
+      r.owner.as.action(api.products.addImage, { venueId: r.cocody, productId, storageId, thumbStorageId, width: 1200, height: 900 });
+    const photo = await store(jpeg(200 * 1024));
+    const thumb = await store(jpeg(10 * 1024));
+    expect(await add(r.products.poulet, photo, thumb)).toEqual({ ok: true });
+
+    // La même photo, rattachée à un autre plat : refusé.
+    await expectCode(add(r.products.poisson, photo, await store(jpeg(10 * 1024))), "INVALID_ARGUMENT");
+    // Avec une vignette trop lourde, pour provoquer un refus qui efface : refusé AVANT, rien d'effacé.
+    await expectCode(add(r.products.poisson, photo, await store(jpeg(700 * 1024))), "INVALID_ARGUMENT");
+    expect(await r.t.run((ctx) => ctx.db.system.get(photo))).not.toBeNull();
+    // Photo et vignette identiques : refusé.
+    const same = await store(jpeg(10 * 1024));
+    await expectCode(add(r.products.poisson, same, same), "INVALID_ARGUMENT");
   });
 
   test("sans le droit d'éditer, aucun fichier n'est touché — pas même effacé", async () => {

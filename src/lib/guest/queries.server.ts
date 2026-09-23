@@ -8,12 +8,14 @@
 import { getCookie } from "@tanstack/react-start/server";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "../../../convex/_generated/api";
+import { guestPassExpiry } from "../../../convex/lib/guestPass";
 import { convexServerUrl, siteOrigin, TABLE_COOKIE } from "./env.server";
 
 export async function fetchTableMenu(venueSlug: string) {
   const pass = getCookie(TABLE_COOKIE);
   const renderedAt = Date.now();
-  if (!pass) return { menu: null, renderedAt };
+  const expiresAt = pass ? guestPassExpiry(pass) : null;
+  if (!pass || expiresAt === null || expiresAt <= renderedAt) return { menu: null, renderedAt };
   const menu = await new ConvexHttpClient(convexServerUrl()).query(api.guest.tableMenu, { pass, venueSlug });
   return { menu, renderedAt };
 }

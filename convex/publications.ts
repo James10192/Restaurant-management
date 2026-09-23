@@ -12,13 +12,14 @@ import { mutation, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { writeAudit } from "./lib/audit";
 import { getInVenue } from "./lib/catalogAccess";
-import { conflict, invalid } from "./lib/errors";
+import { conflict, forbidden, invalid } from "./lib/errors";
 import { requirePermission, type MutationCtx, type ReadCtx } from "./lib/guards";
 import {
   MAX_SNAPSHOT_BYTES,
   buildDraftSnapshot,
   countProducts,
   diffSnapshots,
+  pricedDifferently,
   snapshotSize,
   type MenuSnapshot,
 } from "./lib/menuSnapshot";
@@ -154,6 +155,13 @@ export const rollback = mutation({
     if (target.menuId !== menu._id) throw invalid("Cette version appartient à une autre carte.");
     if (target.isCurrent) throw conflict("Cette version est déjà en ligne.");
     if (menu.status === "archived") throw invalid("Cette carte est archivée.");
+    const current = await currentPublication(ctx, menu._id);
+    const repriced = pricedDifferently(current ? (current.snapshot as MenuSnapshot) : null, target.snapshot as MenuSnapshot);
+    if (repriced.length > 0 && !actor.permissions.has("menu.price.edit")) {
+      throw forbidden(
+        `Cette version remettrait d'anciens prix en ligne (${repriced.slice(0, 3).join(", ")}${repriced.length > 3 ? "…" : ""}) : il faut aussi le droit de modifier les prix.`,
+      );
+    }
     const { publicationId, version } = await insertVersion(ctx, menu, target.snapshot as MenuSnapshot, actor.user._id);
     await writeAudit(ctx, {
       organizationId: actor.organization._id,

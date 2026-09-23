@@ -20,6 +20,7 @@ import { LoadingState, PermissionDeniedState } from "~/components/ui/states";
 import { Textarea } from "~/components/ui/textarea";
 import { describeError } from "~/lib/errors";
 import { PhotoError, reducePhoto, uploadBlob } from "~/lib/photo";
+import { dateIn, endOfDayIn } from "~/lib/zoned";
 
 export const Route = createFileRoute("/_auth/app/menu/products/$productId")({
   head: () => ({ meta: [{ title: "Produit — Joliba" }] }),
@@ -297,17 +298,11 @@ function DetailsForm({ venueId, product }: { venueId: Id<"venues">; product: Pro
   );
 }
 
-function toDateInput(ms: number | null): string {
-  if (ms === null) return "";
-  const d = new Date(ms);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
 function PriceBlock({ venueId, product }: { venueId: Id<"venues">; product: Product }) {
   const setPrice = useMutation(api.products.setPrice);
   const [base, setBase] = useState<number | null>(product.basePrice);
   const [promo, setPromo] = useState<number | null>(product.promoPrice);
-  const [promoEnds, setPromoEnds] = useState(toDateInput(product.promoEndsAt));
+  const [promoEnds, setPromoEnds] = useState(product.promoEndsAt === null ? "" : dateIn(product.promoEndsAt, product.timezone));
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useSaved([base, promo, promoEnds]);
@@ -327,7 +322,7 @@ function PriceBlock({ venueId, product }: { venueId: Id<"venues">; product: Prod
           {product.promoPrice !== null ? (
             <p className="text-body text-ink-2">
               En promotion à {formatPrice(product.promoPrice, product.currency)}
-              {product.promoEndsAt ? ` jusqu'au ${new Date(product.promoEndsAt).toLocaleDateString("fr-FR")}` : ""}
+              {product.promoEndsAt ? ` jusqu'au ${new Date(product.promoEndsAt).toLocaleDateString("fr-FR", { timeZone: product.timezone })}` : ""}
             </p>
           ) : null}
         </CardContent>
@@ -344,8 +339,8 @@ function PriceBlock({ venueId, product }: { venueId: Id<"venues">; product: Prod
     setBusy(true);
     setError(null);
     try {
-      // La promotion prend fin à la fin du jour choisi, à l'heure de l'appareil.
-      const endsAt = promoEnds ? new Date(`${promoEnds}T23:59:59`).getTime() : null;
+      // La promotion prend fin à la fin du jour choisi, à l'heure de l'ÉTABLISSEMENT.
+      const endsAt = promoEnds ? endOfDayIn(promoEnds, product.timezone) : null;
       await setPrice({ venueId, productId: product._id, basePrice: base, promoPrice: promo, promoEndsAt: promo === null ? null : endsAt });
       setSaved(true);
     } catch (e) {

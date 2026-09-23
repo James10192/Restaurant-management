@@ -17,7 +17,7 @@ import { invalid } from "./lib/errors";
 import { requirePermission, type MutationCtx, type ReadCtx } from "./lib/guards";
 import { uniqueSlug } from "./lib/slug";
 
-const MAX_MENUS_PER_VENUE = 12;
+export const MAX_MENUS_PER_VENUE = 12;
 const MAX_SECTIONS_PER_MENU = 40;
 
 const i18nArg = v.optional(

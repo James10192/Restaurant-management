@@ -96,3 +96,22 @@ export async function verifyGuestPass(pass: string, now: number): Promise<GuestP
     return null;
   }
 }
+
+/**
+ * L'échéance écrite dans un laissez-passer, SANS vérifier la signature — pour le serveur web,
+ * qui n'a pas le secret. Une requête Convex mise en cache ne se réévalue pas quand l'heure
+ * passe : l'échéance doit aussi être contrôlée là où chaque requête HTTP est servie. La
+ * signature, elle, reste vérifiée par Convex.
+ */
+export function guestPassExpiry(pass: string): number | null {
+  const parts = pass.split(".");
+  if (parts.length !== 3 || parts[0] !== PREFIX) return null;
+  const body = fromBase64Url(parts[1]!);
+  if (!body) return null;
+  try {
+    const data = JSON.parse(new TextDecoder().decode(body)) as { e?: unknown };
+    return typeof data.e === "number" ? data.e : null;
+  } catch {
+    return null;
+  }
+}

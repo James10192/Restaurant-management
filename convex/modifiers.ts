@@ -17,7 +17,7 @@ import { LIMITS, assertPriceDelta, assertSelectionBounds, cleanI18n, cleanName }
 import { conflict, forbidden, invalid } from "./lib/errors";
 import { requirePermission, type ReadCtx } from "./lib/guards";
 
-const MAX_GROUPS_PER_VENUE = 100;
+export const MAX_GROUPS_PER_VENUE = 100;
 
 const i18nArg = v.optional(
   v.record(v.string(), v.object({ name: v.optional(v.string()), description: v.optional(v.string()) })),

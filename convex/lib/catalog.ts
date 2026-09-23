@@ -142,7 +142,9 @@ export function assertSelectionBounds(args: {
     // Un choix unique : un seul, obligatoire ou non. Les bornes saisies n'ont pas de sens ici.
     return { minSelect: isRequired ? 1 : 0, maxSelect: 1 };
   }
-  const minSelect = Math.max(args.minSelect, isRequired ? 1 : 0);
+  // Facultatif, c'est un minimum de zéro : sans cela, un groupe rendu facultatif gardait son
+  // ancien minimum et restait obligatoire en fait.
+  const minSelect = isRequired ? Math.max(args.minSelect, 1) : 0;
   const maxSelect = args.maxSelect;
   if (maxSelect < 1 || maxSelect > LIMITS.options) throw invalid(`Le maximum va de 1 à ${LIMITS.options}.`);
   if (minSelect > maxSelect) throw invalid("Le minimum ne peut pas dépasser le maximum.");
