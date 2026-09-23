@@ -17,10 +17,12 @@ export function QrCode({ value, size, title }: { value: string; size: string; ti
     return { path: d, count: qr.size };
   }, [value]);
   // `data-qr-value` : la même information que le dessin, lisible par un test sans décodeur.
+  // Noir sur blanc, et jamais les couleurs du thème : c'est le contraste que lisent les
+  // téléphones, y compris quand l'interface passe en sombre. Seule exception aux jetons.
   return (
-    <svg viewBox={`0 0 ${count} ${count}`} width={size} height={size} role="img" aria-label={title} shapeRendering="crispEdges" data-qr-value={value}>
-      <rect width={count} height={count} fill="#fff" />
-      <path d={path} fill="#000" />
+    <svg viewBox={`0 0 ${count} ${count}`} width={size} height={size} role="img" aria-label={title} shapeRendering="crispEdges" className="shrink-0" data-qr-value={value}>
+      <rect width={count} height={count} fill="white" />
+      <path d={path} fill="black" />
     </svg>
   );
 }

@@ -1,23 +1,46 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type PointerEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
-import { Plus, Printer, RotateCw } from "lucide-react";
+import { ChevronRight, CircleAlert, Plus, Printer, QrCode, RotateCw, WifiOff } from "lucide-react";
+import { toast } from "sonner";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
+import { FormField } from "~/components/app/form-field";
+import { PendingButton } from "~/components/app/pending-button";
+import {
+  ResponsiveDialog,
+  ResponsiveDialogContent,
+  ResponsiveDialogDescription,
+  ResponsiveDialogFooter,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+} from "~/components/app/responsive-dialog";
+import { EmptyState, LoadingState, PermissionDeniedState } from "~/components/app/states";
 import { useWorkspace } from "~/components/app/workspace";
-import { ConfirmDialog, PageHeader } from "~/components/menu/shared";
 import { Alert, AlertDescription } from "~/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "~/components/ui/alert-dialog";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "~/components/ui/dialog";
-import { Field } from "~/components/ui/field";
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/ui/card";
 import { Input } from "~/components/ui/input";
-import { NativeSelect } from "~/components/ui/native-select";
-import { EmptyState, LoadingState, PermissionDeniedState } from "~/components/ui/states";
+import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "~/components/ui/item";
+import { NativeSelect, NativeSelectOption } from "~/components/ui/native-select";
+import { Separator } from "~/components/ui/separator";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "~/components/ui/sheet";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "~/components/ui/tabs";
+import { ToggleGroup, ToggleGroupItem } from "~/components/ui/toggle-group";
+import { useIsMobile } from "~/hooks/use-mobile";
 import { describeError } from "~/lib/errors";
-import { cn } from "~/lib/cn";
+import { cn } from "~/lib/utils";
 
 export const Route = createFileRoute("/_auth/app/floor/")({
   head: () => ({ meta: [{ title: "Plan de salle — Joliba" }] }),
@@ -48,6 +71,27 @@ function useOnline() {
     };
   }, []);
   return online;
+}
+
+function PageTitle({ description, actions }: { description?: ReactNode; actions?: ReactNode }) {
+  return (
+    <div className="flex flex-wrap items-end justify-between gap-3">
+      <div className="min-w-0">
+        <h1 className="text-2xl font-semibold tracking-tight">Plan de salle</h1>
+        {description ? <p className="text-muted-foreground">{description}</p> : null}
+      </div>
+      {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
+    </div>
+  );
+}
+
+function ErrorAlert({ children }: { children: ReactNode }) {
+  return (
+    <Alert variant="destructive">
+      <CircleAlert />
+      <AlertDescription>{children}</AlertDescription>
+    </Alert>
+  );
 }
 
 /**
@@ -82,8 +126,8 @@ function FloorPage() {
 
   if (!area) {
     return (
-      <>
-        <PageHeader title="Plan de salle" />
+      <div className="flex flex-col gap-6">
+        <PageTitle />
         <EmptyState
           title="Commencez par créer une zone"
           description="Salle, Terrasse, VIP… Chaque zone a son plan et sa planche de QR."
@@ -96,60 +140,66 @@ function FloorPage() {
           }
           secondaryAction={
             overview.canManage ? (
-              <Button variant="secondary" onClick={() => void addAreas(AREA_TEMPLATES)} disabled={!online}>
+              <Button variant="outline" onClick={() => void addAreas(AREA_TEMPLATES)} disabled={!online}>
                 Salle, Terrasse et VIP
               </Button>
             ) : undefined
           }
         />
-        {error ? (
-          <p role="alert" className="mt-4 text-center text-label text-danger-700">
-            {error}
-          </p>
-        ) : null}
-      </>
+        {error ? <ErrorAlert>{error}</ErrorAlert> : null}
+      </div>
     );
   }
 
+  const editor = (
+    <AreaEditor key={area._id} venueId={venueId} area={area} areas={overview.areas} canManage={canManage} canManageQr={overview.canManageQr && online} onAddAreas={addAreas} />
+  );
+
   return (
-    <>
-      <PageHeader
-        title="Plan de salle"
+    <div className="flex flex-col gap-6">
+      <PageTitle
         description={overview.canManage ? undefined : "Seul un responsable peut modifier le plan."}
         actions={
-          <>
-            {overview.areas.length > 1 ? (
-              <NativeSelect aria-label="Zone" value={area._id} onChange={(e) => setAreaId(e.target.value)} className="w-auto">
-                {overview.areas.map((a) => (
-                  <option key={a._id} value={a._id}>
-                    {a.name}
-                  </option>
-                ))}
-              </NativeSelect>
-            ) : null}
-            {overview.canManageQr ? (
-              <Button variant="secondary" asChild>
-                <Link to="/app/floor/print" search={{ zone: area._id }}>
-                  <Printer aria-hidden="true" />
-                  Imprimer les QR
-                </Link>
-              </Button>
-            ) : null}
-          </>
+          overview.canManageQr ? (
+            <Button variant="outline" asChild>
+              <Link to="/app/floor/print" search={{ zone: area._id }}>
+                <Printer data-icon="inline-start" aria-hidden="true" />
+                Imprimer les QR
+              </Link>
+            </Button>
+          ) : null
         }
       />
       {!online && overview.canManage ? (
-        <Alert variant="warning" className="mb-4">
+        <Alert role="status">
+          <WifiOff />
           <AlertDescription>Hors ligne : le plan est en lecture seule jusqu'au retour du réseau.</AlertDescription>
         </Alert>
       ) : null}
-      {error ? (
-        <p role="alert" className="mb-4 text-label text-danger-700">
-          {error}
-        </p>
-      ) : null}
-      <AreaEditor key={area._id} venueId={venueId} area={area} areas={overview.areas} canManage={canManage} canManageQr={overview.canManageQr && online} onAddAreas={addAreas} />
-    </>
+      {error ? <ErrorAlert>{error}</ErrorAlert> : null}
+      {overview.areas.length > 1 ? (
+        <Tabs value={area._id} onValueChange={setAreaId}>
+          {/* Beaucoup de zones sur un téléphone : la barre défile seule, jamais la page. */}
+          <div className="max-w-full overflow-x-auto">
+            <TabsList aria-label="Zones">
+              {overview.areas.map((a) => (
+                <TabsTrigger key={a._id} value={a._id}>
+                  {a.name}
+                  <Badge variant="secondary" className="tabular-nums">
+                    {a.tables.length}
+                  </Badge>
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </div>
+          <TabsContent value={area._id} className="pt-2">
+            {editor}
+          </TabsContent>
+        </Tabs>
+      ) : (
+        editor
+      )}
+    </div>
   );
 }
 
@@ -169,6 +219,7 @@ function AreaEditor({
   onAddAreas: (names: string[]) => Promise<void>;
 }) {
   const saveLayout = useMutation(api.floor.saveLayout);
+  const isMobile = useIsMobile();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [local, setLocal] = useState<Record<string, Box>>({});
   const [savedAt, setSavedAt] = useState<number | null>(null);
@@ -225,51 +276,77 @@ function AreaEditor({
   useEffect(() => () => void flush(), []);
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[1fr_20rem]">
-      <div className="flex flex-col gap-3">
-        <div className="flex flex-wrap items-center gap-2">
+    <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
+      <div className="flex min-w-0 flex-col gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           {canManage ? (
             <Button onClick={() => setAdding(true)}>
-              <Plus aria-hidden="true" />
+              <Plus data-icon="inline-start" aria-hidden="true" />
               Ajouter une table
             </Button>
           ) : null}
-          <span role="status" className="text-label text-ink-3">
+          <span role="status" className="text-sm text-muted-foreground">
             {savedAt ? `Enregistré à ${timeFormat.format(savedAt)}` : ""}
           </span>
         </div>
-        {error ? (
-          <p role="alert" className="text-label text-danger-700">
-            {error}
-          </p>
-        ) : null}
+        {error ? <ErrorAlert>{error}</ErrorAlert> : null}
         {area.tables.length === 0 ? (
-          <EmptyState title="Aucune table ici" description="Ajoutez les tables de cette zone : une par une, ou une rangée d'un coup." />
+          <EmptyState
+            className="border border-dashed"
+            title="Aucune table ici"
+            description="Ajoutez les tables de cette zone : une par une, ou une rangée d'un coup."
+          />
         ) : (
           <>
             <Canvas area={area} box={box} selectedId={selectedId} canManage={canManage} onSelect={setSelectedId} onMove={move} />
-            <ul className="divide-y divide-line rounded-md border border-line bg-surface md:hidden">
+            <ItemGroup className="gap-2 md:hidden">
               {area.tables.map((t) => (
-                <li key={t._id}>
-                  <button type="button" onClick={() => setSelectedId(t._id)} className="flex min-h-12 w-full items-center justify-between px-4 text-left">
-                    <span className="text-body text-ink">
-                      Table {t.number}
-                      {t.label ? ` · ${t.label}` : ""}
-                    </span>
-                    <span className="text-label text-ink-3">{t.seats} places</span>
-                  </button>
-                </li>
+                <div role="listitem" key={t._id}>
+                  <Item variant="outline" asChild>
+                    <button type="button" onClick={() => setSelectedId(t._id)} className="text-left">
+                      <ItemContent className="min-w-0">
+                        <ItemTitle>Table {t.number}</ItemTitle>
+                        {t.label ? <ItemDescription className="truncate">{t.label}</ItemDescription> : null}
+                      </ItemContent>
+                      <ItemActions>
+                        {t.status === "out_of_service" ? <Badge variant="outline">Hors service</Badge> : null}
+                        <span className="text-sm text-muted-foreground tabular-nums">{t.seats} places</span>
+                        <ChevronRight aria-hidden="true" className="size-4 text-muted-foreground" />
+                      </ItemActions>
+                    </button>
+                  </Item>
+                </div>
               ))}
-            </ul>
+            </ItemGroup>
           </>
         )}
       </div>
-      <div className="flex flex-col gap-4">
+      <div className="flex min-w-0 flex-col gap-4">
         {selected ? (
-          <TablePanel key={selected._id} venueId={venueId} table={selected} box={box(selected)} areas={areas} canManage={canManage} canManageQr={canManageQr} onMove={(b) => move(selected, b, 600)} onRemoved={() => setSelectedId(null)} />
-        ) : (
-          <p className="text-body text-ink-2">Choisissez une table pour voir son QR{canManage ? ", la renommer ou la déplacer" : ""}.</p>
-        )}
+          <TablePanel
+            key={selected._id}
+            mobile={isMobile}
+            venueId={venueId}
+            table={selected}
+            box={box(selected)}
+            areas={areas}
+            canManage={canManage}
+            canManageQr={canManageQr}
+            onMove={(b) => move(selected, b, 600)}
+            onRemoved={() => setSelectedId(null)}
+            onClose={() => setSelectedId(null)}
+          />
+        ) : null}
+        {!selected || isMobile ? (
+          <Item variant="muted">
+            <ItemMedia variant="icon">
+              <QrCode aria-hidden="true" />
+            </ItemMedia>
+            <ItemContent>
+              <ItemDescription className="line-clamp-none">Choisissez une table pour voir son QR{canManage ? ", la renommer ou la déplacer" : ""}.</ItemDescription>
+            </ItemContent>
+          </Item>
+        ) : null}
         {canManage ? <AreaPanel venueId={venueId} area={area} onAddAreas={onAddAreas} /> : null}
       </div>
       <AddTableDialog open={adding} onOpenChange={setAdding} venueId={venueId} areaId={area._id} />
@@ -334,18 +411,20 @@ function Canvas({
     onMove(t, { ...b, x: b.x + d[0], y: b.y + d[1] }, 600);
   }
 
+  // Le dessin du plan n'a pas d'équivalent dans la bibliothèque : il reste en SVG, mais toutes
+  // ses couleurs viennent des jetons du thème (clair comme sombre).
   return (
-    <div className="hidden overflow-auto rounded-md border border-line bg-surface md:block">
+    <Card className="hidden overflow-auto py-0 md:flex">
       <svg
         ref={svgRef}
         viewBox={`0 0 ${area.canvasWidth} ${area.canvasHeight}`}
-        className="block w-full touch-none select-none"
+        className="block w-full touch-none bg-muted/30 select-none"
         role="group"
         aria-label={`Plan de la zone ${area.name}${canManage ? ". Flèches pour déplacer une table, Maj + flèches pour un pixel." : ""}`}
       >
         <defs>
           <pattern id="floor-grid" width={GRID} height={GRID} patternUnits="userSpaceOnUse">
-            <path d={`M ${GRID} 0 L 0 0 0 ${GRID}`} fill="none" stroke="var(--color-line)" strokeWidth={0.5} />
+            <path d={`M ${GRID} 0 L 0 0 0 ${GRID}`} fill="none" className="stroke-border" strokeWidth={0.5} />
           </pattern>
         </defs>
         <rect width={area.canvasWidth} height={area.canvasHeight} fill="url(#floor-grid)" />
@@ -355,6 +434,8 @@ function Canvas({
           const out = t.status === "out_of_service";
           const cx = b.x + b.width / 2;
           const cy = b.y + b.height / 2;
+          const shapeClass = cn(active ? "fill-primary stroke-primary" : out ? "fill-muted stroke-muted-foreground/60" : "fill-card stroke-muted-foreground/50");
+          const shapeProps = { className: shapeClass, strokeWidth: active ? 3 : 1.5, strokeDasharray: out ? "6 4" : undefined };
           return (
             <g
               key={t._id}
@@ -368,25 +449,97 @@ function Canvas({
               onPointerUp={() => (drag.current = null)}
               onKeyDown={(e) => onKeyDown(e, t)}
               onFocus={() => onSelect(t._id)}
-              className={cn("outline-none focus-visible:[&>*:first-child]:stroke-accent-600", canManage ? "cursor-grab active:cursor-grabbing" : "cursor-pointer")}
+              className={cn("outline-none focus-visible:[&>*:first-child]:stroke-ring", canManage ? "cursor-grab active:cursor-grabbing" : "cursor-pointer")}
             >
               {t.shape === "round" ? (
-                <ellipse cx={cx} cy={cy} rx={b.width / 2} ry={b.height / 2} fill={out ? "var(--color-surface-2)" : "var(--color-surface)"} stroke={active ? "var(--color-accent-600)" : "var(--color-line-control)"} strokeWidth={active ? 3 : 1.5} strokeDasharray={out ? "6 4" : undefined} />
+                <ellipse cx={cx} cy={cy} rx={b.width / 2} ry={b.height / 2} {...shapeProps} />
               ) : (
-                <rect x={b.x} y={b.y} width={b.width} height={b.height} rx={6} fill={out ? "var(--color-surface-2)" : "var(--color-surface)"} stroke={active ? "var(--color-accent-600)" : "var(--color-line-control)"} strokeWidth={active ? 3 : 1.5} strokeDasharray={out ? "6 4" : undefined} />
+                <rect x={b.x} y={b.y} width={b.width} height={b.height} rx={8} {...shapeProps} />
               )}
-              <text x={cx} y={cy} textAnchor="middle" dominantBaseline="central" fontSize={22} fontWeight={600} fill="var(--color-ink)">
+              <text
+                x={cx}
+                y={cy}
+                textAnchor="middle"
+                dominantBaseline="central"
+                fontSize={22}
+                fontWeight={600}
+                className={cn("tabular-nums", active ? "fill-primary-foreground" : out ? "fill-muted-foreground" : "fill-foreground")}
+              >
                 {t.number}
               </text>
             </g>
           );
         })}
       </svg>
-    </div>
+    </Card>
+  );
+}
+
+/**
+ * Une confirmation qui dit la conséquence, pas « Êtes-vous sûr ? » (DESIGN §9.3). Le bouton
+ * reste occupé pendant l'envoi : un double clic ne fait pas deux fois la chose.
+ */
+function ConfirmAction({
+  open,
+  onOpenChange,
+  title,
+  description,
+  confirmLabel,
+  onConfirm,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  title: string;
+  description: ReactNode;
+  confirmLabel: string;
+  onConfirm: () => Promise<void>;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <AlertDialog
+      open={open}
+      onOpenChange={(next) => {
+        if (busy) return;
+        setError(null);
+        onOpenChange(next);
+      }}
+    >
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{title}</AlertDialogTitle>
+          <AlertDialogDescription>{description}</AlertDialogDescription>
+        </AlertDialogHeader>
+        {error ? <ErrorAlert>{error}</ErrorAlert> : null}
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={busy}>Annuler</AlertDialogCancel>
+          <PendingButton
+            variant="destructive"
+            pending={busy}
+            pendingText="Un instant…"
+            onClick={async () => {
+              setBusy(true);
+              setError(null);
+              try {
+                await onConfirm();
+                onOpenChange(false);
+              } catch (e) {
+                setError(describeError(e).message);
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            {confirmLabel}
+          </PendingButton>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
 
 function TablePanel({
+  mobile,
   venueId,
   table,
   box,
@@ -395,7 +548,9 @@ function TablePanel({
   canManageQr,
   onMove,
   onRemoved,
+  onClose,
 }: {
+  mobile: boolean;
   venueId: Id<"venues">;
   table: Table;
   box: Box;
@@ -404,21 +559,21 @@ function TablePanel({
   canManageQr: boolean;
   onMove: (b: Box) => void;
   onRemoved: () => void;
+  onClose: () => void;
 }) {
   const updateTable = useMutation(api.floor.updateTable);
   const removeTable = useMutation(api.floor.removeTable);
   const rotate = useMutation(api.qr.rotate);
   const [form, setForm] = useState({ number: table.number, label: table.label ?? "", seats: String(table.seats) });
   const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
   const [confirm, setConfirm] = useState<"rotate" | "remove" | null>(null);
+  const outOfService = table.status === "out_of_service";
 
   async function run(action: () => Promise<unknown>) {
     setError(null);
-    setSaved(false);
     try {
       await action();
-      setSaved(true);
+      toast.success("Enregistré.");
     } catch (e) {
       setError(describeError(e).message);
     }
@@ -429,107 +584,132 @@ function TablePanel({
     void run(() => updateTable({ venueId, tableId: table._id, number: form.number, label: form.label.trim() ? form.label : null, seats: Number(form.seats) }));
   }
 
-  return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between gap-2">
-        <CardTitle>Table {table.number}</CardTitle>
-        {table.status === "out_of_service" ? <Badge>Hors service</Badge> : null}
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4 pb-5">
-        {canManage ? (
-          <form onSubmit={submit} noValidate className="flex flex-col gap-3">
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Numéro" error={error}>
-                <Input value={form.number} onChange={(e) => setForm({ ...form, number: e.target.value })} maxLength={12} />
-              </Field>
-              <Field label="Places">
-                <Input type="number" inputMode="numeric" min={1} max={50} value={form.seats} onChange={(e) => setForm({ ...form, seats: e.target.value })} />
-              </Field>
-            </div>
-            <Field label="Libellé" optional description="« Près de la fenêtre », « Banquette »…">
-              <Input value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} maxLength={80} />
-            </Field>
-            <Button type="submit" variant="secondary" className="self-start">
-              Enregistrer
-            </Button>
-            {saved ? (
-              <span role="status" className="text-label text-success-700">
-                Enregistré.
-              </span>
-            ) : null}
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Forme">
-                <NativeSelect value={table.shape} onChange={(e) => void run(() => updateTable({ venueId, tableId: table._id, shape: e.target.value as Table["shape"] }))}>
-                  {Object.entries(SHAPES).map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </NativeSelect>
-              </Field>
-              <Field label="Zone">
-                <NativeSelect value={areas.find((a) => a.tables.some((t) => t._id === table._id))?._id} onChange={(e) => void run(() => updateTable({ venueId, tableId: table._id, serviceAreaId: e.target.value as Id<"serviceAreas"> }))}>
-                  {areas.map((a) => (
-                    <option key={a._id} value={a._id}>
-                      {a.name}
-                    </option>
-                  ))}
-                </NativeSelect>
-              </Field>
-              <Field label="Largeur">
-                <Input type="number" inputMode="numeric" min={40} max={400} step={GRID} value={box.width} onChange={(e) => onMove({ ...box, width: Math.max(40, Math.min(400, Number(e.target.value) || 40)) })} />
-              </Field>
-              <Field label="Hauteur">
-                <Input type="number" inputMode="numeric" min={40} max={400} step={GRID} value={box.height} onChange={(e) => onMove({ ...box, height: Math.max(40, Math.min(400, Number(e.target.value) || 40)) })} />
-              </Field>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button type="button" variant="secondary" size="sm" onClick={() => onMove({ ...box, rotation: (box.rotation + 45) % 360 })}>
-                <RotateCw aria-hidden="true" />
-                Tourner
-              </Button>
-              <Button type="button" variant="secondary" size="sm" onClick={() => void run(() => updateTable({ venueId, tableId: table._id, inService: table.status === "out_of_service" }))}>
-                {table.status === "out_of_service" ? "Remettre en service" : "Mettre hors service"}
-              </Button>
-              <Button type="button" variant="danger" size="sm" onClick={() => setConfirm("remove")}>
-                Retirer la table
-              </Button>
-            </div>
-          </form>
-        ) : (
-          <p className="text-body text-ink-2">
-            {table.seats} places{table.label ? ` · ${table.label}` : ""}
-          </p>
-        )}
+  const summary = `${table.seats} places${table.label ? ` · ${table.label}` : ""}`;
 
-        <div className="border-t border-line pt-4">
-          <p className="text-label text-ink">QR de la table</p>
-          {table.qr ? (
-            <p className="text-label text-ink-2">
-              Version {table.qr.version} · créé le {dateFormat.format(table.qr.createdAt)} · {table.qr.scanCount} scan{table.qr.scanCount > 1 ? "s" : ""}
-            </p>
-          ) : (
-            <p className="text-label text-warning-700">Pas de QR actif : cette table ne peut pas être scannée.</p>
-          )}
-          {canManageQr ? (
-            <div className="mt-2 flex flex-wrap gap-2">
-              <Button variant="secondary" size="sm" asChild>
-                <Link to="/app/floor/print" search={{ table: table._id }}>
-                  <Printer aria-hidden="true" />
-                  Réimprimer
-                </Link>
-              </Button>
-              <Button variant="danger" size="sm" onClick={() => setConfirm("rotate")}>
-                Révoquer et régénérer
-              </Button>
-            </div>
-          ) : null}
+  const body = (
+    <div className="flex flex-col gap-5">
+      {canManage ? (
+        <form onSubmit={submit} noValidate className="flex flex-col gap-4">
+          <div className="grid grid-cols-2 gap-3">
+            <FormField label="Numéro" error={error}>
+              <Input value={form.number} onChange={(e) => setForm({ ...form, number: e.target.value })} maxLength={12} />
+            </FormField>
+            <FormField label="Places">
+              <Input type="number" inputMode="numeric" min={1} max={50} value={form.seats} onChange={(e) => setForm({ ...form, seats: e.target.value })} />
+            </FormField>
+          </div>
+          <FormField label="Libellé" optional description="« Près de la fenêtre », « Banquette »…">
+            <Input value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} maxLength={80} />
+          </FormField>
+          <Button type="submit" variant="outline" className="self-start">
+            Enregistrer
+          </Button>
+          <Separator />
+          <div className="grid grid-cols-2 gap-3">
+            <FormField label="Forme">
+              <NativeSelect
+                className="w-full"
+                value={table.shape}
+                onChange={(e) => void run(() => updateTable({ venueId, tableId: table._id, shape: e.target.value as Table["shape"] }))}
+              >
+                {Object.entries(SHAPES).map(([value, label]) => (
+                  <NativeSelectOption key={value} value={value}>
+                    {label}
+                  </NativeSelectOption>
+                ))}
+              </NativeSelect>
+            </FormField>
+            <FormField label="Zone">
+              <NativeSelect
+                className="w-full"
+                value={areas.find((a) => a.tables.some((t) => t._id === table._id))?._id}
+                onChange={(e) => void run(() => updateTable({ venueId, tableId: table._id, serviceAreaId: e.target.value as Id<"serviceAreas"> }))}
+              >
+                {areas.map((a) => (
+                  <NativeSelectOption key={a._id} value={a._id}>
+                    {a.name}
+                  </NativeSelectOption>
+                ))}
+              </NativeSelect>
+            </FormField>
+            <FormField label="Largeur">
+              <Input
+                type="number"
+                inputMode="numeric"
+                min={40}
+                max={400}
+                step={GRID}
+                value={box.width}
+                onChange={(e) => onMove({ ...box, width: Math.max(40, Math.min(400, Number(e.target.value) || 40)) })}
+              />
+            </FormField>
+            <FormField label="Hauteur">
+              <Input
+                type="number"
+                inputMode="numeric"
+                min={40}
+                max={400}
+                step={GRID}
+                value={box.height}
+                onChange={(e) => onMove({ ...box, height: Math.max(40, Math.min(400, Number(e.target.value) || 40)) })}
+              />
+            </FormField>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={() => onMove({ ...box, rotation: (box.rotation + 45) % 360 })}>
+              <RotateCw data-icon="inline-start" aria-hidden="true" />
+              Tourner
+            </Button>
+            <Button type="button" variant="outline" size="sm" onClick={() => void run(() => updateTable({ venueId, tableId: table._id, inService: outOfService }))}>
+              {outOfService ? "Remettre en service" : "Mettre hors service"}
+            </Button>
+            <Button type="button" variant="destructive" size="sm" onClick={() => setConfirm("remove")}>
+              Retirer la table
+            </Button>
+          </div>
+        </form>
+      ) : null}
+
+      <div className="flex flex-col gap-3 rounded-lg bg-muted/50 p-3">
+        <div className="flex items-start gap-3">
+          <QrCode aria-hidden="true" className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <p className="text-sm font-medium">QR de la table</p>
+            {table.qr ? (
+              <p className="text-sm text-muted-foreground">
+                Version {table.qr.version} · créé le {dateFormat.format(table.qr.createdAt)} · {table.qr.scanCount} scan{table.qr.scanCount > 1 ? "s" : ""}
+              </p>
+            ) : null}
+          </div>
         </div>
-      </CardContent>
-      <ConfirmDialog
+        {table.qr ? null : (
+          <Alert role="status">
+            <CircleAlert />
+            <AlertDescription>Pas de QR actif : cette table ne peut pas être scannée.</AlertDescription>
+          </Alert>
+        )}
+        {canManageQr ? (
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" asChild>
+              <Link to="/app/floor/print" search={{ table: table._id }}>
+                <Printer data-icon="inline-start" aria-hidden="true" />
+                Réimprimer
+              </Link>
+            </Button>
+            <Button variant="destructive" size="sm" onClick={() => setConfirm("rotate")}>
+              Révoquer et régénérer
+            </Button>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+
+  const dialogs = (
+    <>
+      <ConfirmAction
         open={confirm === "rotate"}
         onOpenChange={(o) => !o && setConfirm(null)}
-        danger
         title={`Régénérer le QR de la table ${table.number} ?`}
         description="Les QR imprimés pour cette table ne fonctionneront plus. Faites-le si une photo du QR circule, puis imprimez le nouveau."
         confirmLabel="Révoquer et régénérer"
@@ -537,10 +717,9 @@ function TablePanel({
           await rotate({ venueId, tableId: table._id });
         }}
       />
-      <ConfirmDialog
+      <ConfirmAction
         open={confirm === "remove"}
         onOpenChange={(o) => !o && setConfirm(null)}
-        danger
         title={`Retirer la table ${table.number} ?`}
         description="Elle quitte le plan et son QR cesse de fonctionner. Son historique est conservé."
         confirmLabel="Retirer"
@@ -549,6 +728,42 @@ function TablePanel({
           onRemoved();
         }}
       />
+    </>
+  );
+
+  // Au téléphone, le détail de la table monte dans un panneau du bas ; sur grand écran, il
+  // reste à côté du plan.
+  if (mobile) {
+    return (
+      <Sheet open onOpenChange={(o) => !o && onClose()}>
+        <SheetContent side="bottom" className="max-h-[90dvh] overflow-y-auto">
+          <SheetHeader className="pr-12">
+            <SheetTitle className="flex items-center gap-2">
+              Table {table.number}
+              {outOfService ? <Badge variant="outline">Hors service</Badge> : null}
+            </SheetTitle>
+            <SheetDescription>{summary}</SheetDescription>
+          </SheetHeader>
+          <div className="px-4 pb-6">{body}</div>
+          {dialogs}
+        </SheetContent>
+      </Sheet>
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Table {table.number}</CardTitle>
+        <CardDescription>{summary}</CardDescription>
+        {outOfService ? (
+          <CardAction>
+            <Badge variant="outline">Hors service</Badge>
+          </CardAction>
+        ) : null}
+      </CardHeader>
+      <CardContent>{body}</CardContent>
+      {dialogs}
     </Card>
   );
 }
@@ -565,9 +780,10 @@ function AreaPanel({ venueId, area, onAddAreas }: { venueId: Id<"venues">; area:
     <Card>
       <CardHeader>
         <CardTitle>Zones</CardTitle>
+        <CardDescription>Chaque zone a son plan et sa planche de QR.</CardDescription>
       </CardHeader>
-      <CardContent className="flex flex-col gap-3 pb-5">
-        <Field label="Nom de cette zone" error={error}>
+      <CardContent className="flex flex-col gap-4">
+        <FormField label="Nom de cette zone" error={error}>
           <Input
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -582,7 +798,7 @@ function AreaPanel({ venueId, area, onAddAreas }: { venueId: Id<"venues">; area:
             }}
             maxLength={80}
           />
-        </Field>
+        </FormField>
         <form
           noValidate
           className="flex items-end gap-2"
@@ -592,21 +808,21 @@ function AreaPanel({ venueId, area, onAddAreas }: { venueId: Id<"venues">; area:
             void onAddAreas([newArea]).then(() => setNewArea(""));
           }}
         >
-          <Field label="Nouvelle zone">
+          <FormField label="Nouvelle zone" className="min-w-0 flex-1">
             <Input value={newArea} onChange={(e) => setNewArea(e.target.value)} maxLength={80} placeholder="Terrasse" />
-          </Field>
-          <Button type="submit" variant="secondary" disabled={!newArea.trim()}>
+          </FormField>
+          <Button type="submit" variant="outline" disabled={!newArea.trim()}>
             Créer
           </Button>
         </form>
-        <Button variant="quiet" size="sm" className="self-start" onClick={() => setDeleting(true)}>
+        <Separator />
+        <Button variant="ghost" size="sm" className="self-start text-destructive" onClick={() => setDeleting(true)}>
           Supprimer cette zone
         </Button>
       </CardContent>
-      <ConfirmDialog
+      <ConfirmAction
         open={deleting}
         onOpenChange={setDeleting}
-        danger
         title={`Supprimer la zone « ${area.name} » ?`}
         description={area.tables.length > 0 ? "Elle contient encore des tables : déplacez-les ou retirez-les d'abord." : "Elle disparaît du plan."}
         confirmLabel="Supprimer"
@@ -649,73 +865,67 @@ function AddTableDialog({ open, onOpenChange, venueId, areaId }: { open: boolean
   }
 
   return (
-    <Dialog open={open} onOpenChange={(o) => !busy && onOpenChange(o)}>
-      <DialogContent>
-        <form onSubmit={submit} noValidate>
-          <DialogHeader>
-            <DialogTitle>Ajouter des tables</DialogTitle>
-            <DialogDescription>Chaque table naît avec son QR, prêt à imprimer. Un numéro est unique dans l'établissement.</DialogDescription>
-          </DialogHeader>
-          <div className="mt-4 flex flex-col gap-4">
-            <div role="radiogroup" aria-label="Combien de tables" className="flex gap-2">
-              {(
-                [
-                  ["one", "Une table"],
-                  ["range", "Une rangée"],
-                ] as const
-              ).map(([value, label]) => (
-                <Button key={value} type="button" role="radio" aria-checked={mode === value} variant={mode === value ? "primary" : "secondary"} size="sm" onClick={() => setMode(value)}>
-                  {label}
-                </Button>
-              ))}
+    <ResponsiveDialog open={open} onOpenChange={(o) => !busy && onOpenChange(o)}>
+      <ResponsiveDialogContent>
+        <form onSubmit={submit} noValidate className="flex flex-col gap-4">
+          <ResponsiveDialogHeader>
+            <ResponsiveDialogTitle>Ajouter des tables</ResponsiveDialogTitle>
+            <ResponsiveDialogDescription>Chaque table naît avec son QR, prêt à imprimer. Un numéro est unique dans l'établissement.</ResponsiveDialogDescription>
+          </ResponsiveDialogHeader>
+          <ToggleGroup
+            type="single"
+            variant="outline"
+            aria-label="Combien de tables"
+            value={mode}
+            onValueChange={(value) => {
+              if (value === "one" || value === "range") setMode(value);
+            }}
+          >
+            <ToggleGroupItem value="one">Une table</ToggleGroupItem>
+            <ToggleGroupItem value="range">Une rangée</ToggleGroupItem>
+          </ToggleGroup>
+          {mode === "one" ? (
+            <FormField label="Numéro">
+              <Input value={number} onChange={(e) => setNumber(e.target.value)} maxLength={12} autoFocus />
+            </FormField>
+          ) : (
+            <div className="grid grid-cols-3 gap-3">
+              <FormField label="Préfixe" optional>
+                <Input value={prefix} onChange={(e) => setPrefix(e.target.value)} maxLength={4} placeholder="T" />
+              </FormField>
+              <FormField label="De">
+                <Input type="number" inputMode="numeric" value={from} onChange={(e) => setFrom(e.target.value)} />
+              </FormField>
+              <FormField label="À">
+                <Input type="number" inputMode="numeric" value={to} onChange={(e) => setTo(e.target.value)} />
+              </FormField>
             </div>
-            {mode === "one" ? (
-              <Field label="Numéro">
-                <Input value={number} onChange={(e) => setNumber(e.target.value)} maxLength={12} autoFocus />
-              </Field>
-            ) : (
-              <div className="grid grid-cols-3 gap-3">
-                <Field label="Préfixe" optional>
-                  <Input value={prefix} onChange={(e) => setPrefix(e.target.value)} maxLength={4} placeholder="T" />
-                </Field>
-                <Field label="De">
-                  <Input type="number" inputMode="numeric" value={from} onChange={(e) => setFrom(e.target.value)} />
-                </Field>
-                <Field label="À">
-                  <Input type="number" inputMode="numeric" value={to} onChange={(e) => setTo(e.target.value)} />
-                </Field>
-              </div>
-            )}
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Places">
-                <Input type="number" inputMode="numeric" min={1} max={50} value={seats} onChange={(e) => setSeats(e.target.value)} />
-              </Field>
-              <Field label="Forme">
-                <NativeSelect value={shape} onChange={(e) => setShape(e.target.value as Table["shape"])}>
-                  {Object.entries(SHAPES).map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </NativeSelect>
-              </Field>
-            </div>
-            {error ? (
-              <p role="alert" className="text-label text-danger-700">
-                {error}
-              </p>
-            ) : null}
+          )}
+          <div className="grid grid-cols-2 gap-3">
+            <FormField label="Places">
+              <Input type="number" inputMode="numeric" min={1} max={50} value={seats} onChange={(e) => setSeats(e.target.value)} />
+            </FormField>
+            <FormField label="Forme">
+              <NativeSelect className="w-full" value={shape} onChange={(e) => setShape(e.target.value as Table["shape"])}>
+                {Object.entries(SHAPES).map(([value, label]) => (
+                  <NativeSelectOption key={value} value={value}>
+                    {label}
+                  </NativeSelectOption>
+                ))}
+              </NativeSelect>
+            </FormField>
           </div>
-          <DialogFooter>
-            <Button type="button" variant="quiet" onClick={() => onOpenChange(false)} disabled={busy}>
+          {error ? <ErrorAlert>{error}</ErrorAlert> : null}
+          <ResponsiveDialogFooter>
+            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)} disabled={busy}>
               Annuler
             </Button>
-            <Button type="submit" loading={busy} loadingText="Création…" disabled={mode === "one" ? !number.trim() : count < 1}>
+            <PendingButton type="submit" pending={busy} pendingText="Création…" disabled={mode === "one" ? !number.trim() : count < 1}>
               {mode === "one" ? "Ajouter la table" : `Ajouter ${count} table${count > 1 ? "s" : ""}`}
-            </Button>
-          </DialogFooter>
+            </PendingButton>
+          </ResponsiveDialogFooter>
         </form>
-      </DialogContent>
-    </Dialog>
+      </ResponsiveDialogContent>
+    </ResponsiveDialog>
   );
 }
