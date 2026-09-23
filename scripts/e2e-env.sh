@@ -13,6 +13,9 @@ SECRET=$(node -e "console.log(require('crypto').randomBytes(32).toString('base64
 pnpm exec convex env set SITE_URL "http://localhost:3000"
 pnpm exec convex env set BETTER_AUTH_SECRET "$SECRET"
 pnpm exec convex env set GUEST_PASS_SECRET "$(node -e "console.log(require('crypto').randomBytes(32).toString('base64'))")"
+pnpm exec convex env set PIN_PEPPER "$(node -e "console.log(require('crypto').randomBytes(32).toString('base64'))")"
+# Clés des jetons d'appareil et de PIN : la publique n'est lue qu'au déploiement suivant.
+node scripts/operator-keys.mjs --apply
 pnpm exec convex env set RESEND_API_KEY "test-local"
 pnpm exec convex env set EMAIL_FROM "Joliba <noreply@joliba.test>"
 pnpm exec convex env set RESEND_API_URL "http://127.0.0.1:4010/emails"
