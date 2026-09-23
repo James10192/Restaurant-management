@@ -11,7 +11,7 @@
  * fuite de tenant fait tomber la CI.
  */
 
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { expectCode, inviteAndJoin, modules, openOrganization, setup, type Session } from "./setup";
@@ -59,7 +59,71 @@ async function twoTenants() {
   });
   const floorA = await floorFor(a.owner, a.venueId);
   const floorB = await floorFor(b.owner, b.venueId);
-  return { t, a, b, venueA2, waiterA, waiterB, pendingB, invitationB, catalogA, catalogB, ruleB, floorA, floorB };
+  return {
+    t, a, b, venueA2, waiterA, waiterB, pendingB, invitationB, catalogA, catalogB, ruleB, floorA, floorB,
+    /** Le service de B, monté seulement par les cas qui en ont besoin (il occupe la table de B). */
+    serviceB: undefined as ServiceFixture | undefined,
+  };
+}
+
+type ServiceFixture = Awaited<ReturnType<typeof serviceFor>>;
+
+/**
+ * Un service en cours : un poste, la table ouverte, une commande envoyée (un bon en file),
+ * et une commande de client qui attend d'être validée.
+ */
+async function serviceFor(
+  t: ReturnType<typeof setup>,
+  owner: Session,
+  venueId: Id<"venues">,
+  floor: { tableId: Id<"restaurantTables"> },
+  catalog: { productId: Id<"products">; variantId: Id<"productVariants"> },
+  tag: string,
+) {
+  const stationId = await owner.as.mutation(api.stations.create, { venueId, name: `Bar ${tag}`, type: "bar" });
+  const sessionId = await owner.as.mutation(api.sessions.open, { venueId, tableId: floor.tableId });
+  // Le plat de B n'est servi qu'en semaine, de 7 h à 11 h : on commande un lundi matin.
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-09-21T08:30:00Z"));
+  const sent = await owner.as
+    .mutation(api.orders.submit, {
+      venueId,
+      sessionId,
+      lines: [{ productId: catalog.productId, variantId: catalog.variantId, optionIds: [], quantity: 2, courseNumber: 1 }],
+      heldCourses: [],
+      idempotencyKey: `isolation-${tag}-0000000001`,
+    })
+    .finally(() => vi.useRealTimers());
+  if (!sent.ok) throw new Error(`commande refusée : ${JSON.stringify(sent.problems)}`);
+  return t.run(async (ctx) => {
+    const ticket = (await ctx.db.query("kitchenTickets").withIndex("by_order", (q) => q.eq("orderId", sent.orderId)).unique())!;
+    const item = (await ctx.db.query("orderItems").withIndex("by_order", (q) => q.eq("orderId", sent.orderId)).unique())!;
+    const order = (await ctx.db.get(sent.orderId))!;
+    const pendingOrderId = await ctx.db.insert("orders", {
+      venueId,
+      tableSessionId: sessionId,
+      reference: `${order.reference}-P`,
+      status: "pending_acceptance",
+      channel: "guest",
+      submittedAt: Date.now(),
+      totals: order.totals,
+      currency: order.currency,
+      idempotencyKey: `isolation-${tag}-pending-000001`,
+    });
+    return { stationId, sessionId, orderId: sent.orderId, ticketId: ticket._id, itemId: item._id, pendingOrderId, idempotencyKey: `isolation-${tag}-0000000001` };
+  });
+}
+
+type World = Awaited<ReturnType<typeof twoTenants>>;
+
+async function withServiceB(w: World): Promise<ServiceFixture> {
+  w.serviceB ??= await serviceFor(w.t, w.b.owner, w.b.venueId, w.floorB, w.catalogB, "B");
+  return w.serviceB;
+}
+
+/** A ouvre sa propre table, pour les franchissements « son établissement + un objet de B ». */
+async function openA(w: World): Promise<Id<"tableSessions">> {
+  return w.a.owner.as.mutation(api.sessions.open, { venueId: w.a.venueId, tableId: w.floorA.tableId });
 }
 
 /** Une zone et une table, avec son QR. */
@@ -746,6 +810,197 @@ const CASES: Record<string, (w: Awaited<ReturnType<typeof twoTenants>>) => Promi
       "NOT_FOUND",
     );
   },
+  /* ─── Service en salle : postes ─── */
+  "stations.list": async ({ a, b }) => {
+    await expectCode(a.owner.as.query(api.stations.list, { venueId: b.venueId }), "NOT_FOUND");
+  },
+  "stations.create": async ({ a, b }) => {
+    await expectCode(a.owner.as.mutation(api.stations.create, { venueId: b.venueId, name: "Intrus", type: "bar" }), "NOT_FOUND");
+  },
+  "stations.update": async (w) => {
+    const s = await withServiceB(w);
+    await bothRefused(
+      w.a.owner.as.mutation(api.stations.update, { venueId: w.b.venueId, stationId: s.stationId, name: "Intrus" }),
+      w.a.owner.as.mutation(api.stations.update, { venueId: w.a.venueId, stationId: s.stationId, name: "Intrus" }),
+    );
+  },
+  "stations.archive": async (w) => {
+    const s = await withServiceB(w);
+    await bothRefused(
+      w.a.owner.as.mutation(api.stations.archive, { venueId: w.b.venueId, stationId: s.stationId }),
+      w.a.owner.as.mutation(api.stations.archive, { venueId: w.a.venueId, stationId: s.stationId }),
+    );
+  },
+  "stations.reorder": async (w) => {
+    const s = await withServiceB(w);
+    await bothRefused(
+      w.a.owner.as.mutation(api.stations.reorder, { venueId: w.b.venueId, stationIds: [s.stationId] }),
+      w.a.owner.as.mutation(api.stations.reorder, { venueId: w.a.venueId, stationIds: [s.stationId] }),
+    );
+  },
+  "stations.routeSection": async (w) => {
+    const s = await withServiceB(w);
+    await bothRefused(
+      w.a.owner.as.mutation(api.stations.routeSection, { venueId: w.b.venueId, sectionId: w.catalogB.sectionId, stationId: null }),
+      w.a.owner.as.mutation(api.stations.routeSection, { venueId: w.a.venueId, sectionId: w.catalogB.sectionId, stationId: null }),
+    );
+    // Sa propre section vers le poste de B : le poste est introuvable.
+    await expectCode(
+      w.a.owner.as.mutation(api.stations.routeSection, { venueId: w.a.venueId, sectionId: w.catalogA.sectionId, stationId: s.stationId }),
+      "NOT_FOUND",
+    );
+  },
+  "stations.routeProduct": async (w) => {
+    const s = await withServiceB(w);
+    await bothRefused(
+      w.a.owner.as.mutation(api.stations.routeProduct, { venueId: w.b.venueId, productId: w.catalogB.productId, stationId: null }),
+      w.a.owner.as.mutation(api.stations.routeProduct, { venueId: w.a.venueId, productId: w.catalogA.productId, stationId: s.stationId }),
+    );
+  },
+  "stations.routing": async ({ a, b }) => {
+    await expectCode(a.owner.as.query(api.stations.routing, { venueId: b.venueId }), "NOT_FOUND");
+  },
+  /* ─── Service en salle : tables ─── */
+  "sessions.open": async ({ a, b, floorB }) => {
+    await bothRefused(
+      a.owner.as.mutation(api.sessions.open, { venueId: b.venueId, tableId: floorB.tableId }),
+      a.owner.as.mutation(api.sessions.open, { venueId: a.venueId, tableId: floorB.tableId }),
+    );
+  },
+  "sessions.assignWaiter": async (w) => {
+    const s = await withServiceB(w);
+    await bothRefused(
+      w.a.owner.as.mutation(api.sessions.assignWaiter, { venueId: w.b.venueId, sessionId: s.sessionId }),
+      w.a.owner.as.mutation(api.sessions.assignWaiter, { venueId: w.a.venueId, sessionId: s.sessionId }),
+    );
+    // Sa propre table confiée au serveur de B : ce membre n'existe pas chez A.
+    const mine = await openA(w);
+    await expectCode(
+      w.a.owner.as.mutation(api.sessions.assignWaiter, { venueId: w.a.venueId, sessionId: mine, userId: w.waiterB.userId }),
+      "NOT_FOUND",
+    );
+  },
+  "sessions.close": async (w) => {
+    const s = await withServiceB(w);
+    await bothRefused(
+      w.a.owner.as.mutation(api.sessions.close, { venueId: w.b.venueId, sessionId: s.sessionId }),
+      w.a.owner.as.mutation(api.sessions.close, { venueId: w.a.venueId, sessionId: s.sessionId }),
+    );
+  },
+  "sessions.floor": async (w) => {
+    await withServiceB(w);
+    await expectCode(w.a.owner.as.query(api.sessions.floor, { venueId: w.b.venueId }), "NOT_FOUND");
+    const floor = await w.a.owner.as.query(api.sessions.floor, { venueId: w.a.venueId });
+    expect(JSON.stringify(floor)).not.toContain("Plat B");
+  },
+  "sessions.detail": async (w) => {
+    const s = await withServiceB(w);
+    await bothRefused(
+      w.a.owner.as.query(api.sessions.detail, { venueId: w.b.venueId, sessionId: s.sessionId }),
+      w.a.owner.as.query(api.sessions.detail, { venueId: w.a.venueId, sessionId: s.sessionId }),
+    );
+  },
+  /* ─── Service en salle : commandes ─── */
+  "orders.menu": async ({ a, b }) => {
+    await expectCode(a.owner.as.query(api.orders.menu, { venueId: b.venueId }), "NOT_FOUND");
+    const menu = await a.owner.as.query(api.orders.menu, { venueId: a.venueId });
+    expect(JSON.stringify(menu)).not.toContain("Plat B");
+  },
+  "orders.submit": async (w) => {
+    const s = await withServiceB(w);
+    const line = { productId: w.catalogB.productId, optionIds: [], quantity: 1, courseNumber: 1 };
+    await bothRefused(
+      w.a.owner.as.mutation(api.orders.submit, { venueId: w.b.venueId, sessionId: s.sessionId, lines: [line], heldCourses: [], idempotencyKey: "intrus-000000000001" }),
+      w.a.owner.as.mutation(api.orders.submit, { venueId: w.a.venueId, sessionId: s.sessionId, lines: [line], heldCourses: [], idempotencyKey: "intrus-000000000002" }),
+    );
+    // Sa table, le plat de B : introuvable dans SA carte, la commande n'est pas créée.
+    const mine = await openA(w);
+    const refused = await w.a.owner.as.mutation(api.orders.submit, {
+      venueId: w.a.venueId,
+      sessionId: mine,
+      lines: [line],
+      heldCourses: [],
+      idempotencyKey: "intrus-000000000003",
+    });
+    expect(refused).toMatchObject({ ok: false, problems: [{ code: "PRODUCT_NOT_FOUND" }] });
+    // La clé d'envoi de B ne rejoue pas la commande de B : A obtient la sienne.
+    const own = await w.a.owner.as.mutation(api.orders.submit, {
+      venueId: w.a.venueId,
+      sessionId: mine,
+      lines: [{ productId: w.catalogA.productId, optionIds: [], quantity: 1, courseNumber: 1 }],
+      heldCourses: [],
+      idempotencyKey: s.idempotencyKey,
+    });
+    expect(own).toMatchObject({ ok: true, replayed: false });
+    if (own.ok) expect(own.orderId).not.toBe(s.orderId);
+  },
+  "orders.fireCourse": async (w) => {
+    const s = await withServiceB(w);
+    await bothRefused(
+      w.a.owner.as.mutation(api.orders.fireCourse, { venueId: w.b.venueId, sessionId: s.sessionId, courseNumber: 2 }),
+      w.a.owner.as.mutation(api.orders.fireCourse, { venueId: w.a.venueId, sessionId: s.sessionId, courseNumber: 2 }),
+    );
+  },
+  "orders.serveTicket": async (w) => {
+    const s = await withServiceB(w);
+    await bothRefused(
+      w.a.owner.as.mutation(api.orders.serveTicket, { venueId: w.b.venueId, ticketId: s.ticketId }),
+      w.a.owner.as.mutation(api.orders.serveTicket, { venueId: w.a.venueId, ticketId: s.ticketId }),
+    );
+  },
+  "orders.readyToServe": async (w) => {
+    await withServiceB(w);
+    await expectCode(w.a.owner.as.query(api.orders.readyToServe, { venueId: w.b.venueId }), "NOT_FOUND");
+    expect((await w.a.owner.as.query(api.orders.readyToServe, { venueId: w.a.venueId })).tickets).toEqual([]);
+  },
+  "orders.cancelItem": async (w) => {
+    const s = await withServiceB(w);
+    await bothRefused(
+      w.a.owner.as.mutation(api.orders.cancelItem, { venueId: w.b.venueId, itemId: s.itemId, reason: "intrusion" }),
+      w.a.owner.as.mutation(api.orders.cancelItem, { venueId: w.a.venueId, itemId: s.itemId, reason: "intrusion" }),
+    );
+  },
+  "orders.cancelOrder": async (w) => {
+    const s = await withServiceB(w);
+    await bothRefused(
+      w.a.owner.as.mutation(api.orders.cancelOrder, { venueId: w.b.venueId, orderId: s.orderId, reason: "intrusion" }),
+      w.a.owner.as.mutation(api.orders.cancelOrder, { venueId: w.a.venueId, orderId: s.orderId, reason: "intrusion" }),
+    );
+  },
+  "orders.accept": async (w) => {
+    const s = await withServiceB(w);
+    await bothRefused(
+      w.a.owner.as.mutation(api.orders.accept, { venueId: w.b.venueId, orderId: s.pendingOrderId }),
+      w.a.owner.as.mutation(api.orders.accept, { venueId: w.a.venueId, orderId: s.pendingOrderId }),
+    );
+  },
+  "orders.reject": async (w) => {
+    const s = await withServiceB(w);
+    await bothRefused(
+      w.a.owner.as.mutation(api.orders.reject, { venueId: w.b.venueId, orderId: s.pendingOrderId, reason: "intrusion" }),
+      w.a.owner.as.mutation(api.orders.reject, { venueId: w.a.venueId, orderId: s.pendingOrderId, reason: "intrusion" }),
+    );
+  },
+  "orders.pendingAcceptance": async (w) => {
+    await withServiceB(w);
+    await expectCode(w.a.owner.as.query(api.orders.pendingAcceptance, { venueId: w.b.venueId }), "NOT_FOUND");
+    expect(JSON.stringify(await w.a.owner.as.query(api.orders.pendingAcceptance, { venueId: w.a.venueId }))).not.toContain("-P");
+  },
+  /* ─── Service en salle : production ─── */
+  "kitchen.board": async (w) => {
+    const s = await withServiceB(w);
+    await bothRefused(
+      w.a.owner.as.query(api.kitchen.board, { venueId: w.b.venueId, stationId: s.stationId }),
+      w.a.owner.as.query(api.kitchen.board, { venueId: w.a.venueId, stationId: s.stationId }),
+    );
+  },
+  "kitchen.advance": async (w) => {
+    const s = await withServiceB(w);
+    await bothRefused(
+      w.a.owner.as.mutation(api.kitchen.advance, { venueId: w.b.venueId, ticketId: s.ticketId, action: "ready" }),
+      w.a.owner.as.mutation(api.kitchen.advance, { venueId: w.a.venueId, ticketId: s.ticketId, action: "ready" }),
+    );
+  },
 };
 
 describe("isolation multi-tenant : A ne voit ni ne touche rien de B", () => {
@@ -773,9 +1028,32 @@ describe("isolation multi-tenant : A ne voit ni ne touche rien de B", () => {
       const boardB = await world.b.owner.as.query(api.availability.board, { venueId: world.b.venueId });
       expect(boardB.rules).toHaveLength(1);
       const planB = await world.b.owner.as.query(api.floor.overview, { venueId: world.b.venueId });
+      const tableStatus = world.serviceB ? "occupied" : "available";
       expect(planB.areas.map((a) => [a.name, a.tables.map((x) => [x.number, x.status, x.qr?.version])])).toEqual([
-        ["Salle", [["1", "available", 1]]],
+        ["Salle", [["1", tableStatus, 1]]],
       ]);
+      // Et le service de B n'a pas bougé : même commande, même bon, même attente de validation.
+      if (world.serviceB) {
+        const s = world.serviceB;
+        const state = await world.t.run(async (ctx) => ({
+          order: (await ctx.db.get(s.orderId))?.status,
+          pending: (await ctx.db.get(s.pendingOrderId))?.status,
+          ticket: (await ctx.db.get(s.ticketId))?.status,
+          item: (await ctx.db.get(s.itemId))?.status,
+          session: (await ctx.db.get(s.sessionId))?.status,
+          station: (await ctx.db.get(s.stationId))?.name,
+          sectionRouting: (await ctx.db.get(world.catalogB.productId))?.prepStationId ?? null,
+        }));
+        expect(state).toEqual({
+          order: "accepted",
+          pending: "pending_acceptance",
+          ticket: "queued",
+          item: "ordered",
+          session: "ordering",
+          station: "Bar B",
+          sectionRouting: null,
+        });
+      }
     });
   }
 

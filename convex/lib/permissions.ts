@@ -82,6 +82,9 @@ export const PERMISSIONS = {
   "order.cancel": { label: "Annuler une commande", group: "Commandes", scope: "venue", sensitive: true, audited: true, requiresReason: true },
   "order.discount.apply": { label: "Appliquer une remise", group: "Commandes", scope: "venue", sensitive: true, audited: true, requiresReason: true },
   "order.course.fire": { label: "Déclencher un service en attente", group: "Commandes", scope: "venue" },
+  // Porter à table est un geste distinct de la saisie : un commis de salle sert sans prendre
+  // de commande. Séparée de `order.modify`, qui ne concerne que l'avant-production.
+  "order.serve": { label: "Marquer des plats servis", group: "Commandes", scope: "venue" },
 
   /* ── Production ──────────────────────────────────────────────────────── */
   "kitchen.read": { label: "Voir l'écran de production", group: "Production", scope: "venue" },
@@ -208,7 +211,7 @@ export const ROLE_TEMPLATES = {
       "table.read", "table.manage", "table.session.open", "table.session.close",
       "table.session.close_with_debt", "table.session.transfer", "table.qr.manage",
       "order.read", "order.create", "order.accept", "order.modify", "order.modify.after_fire",
-      "order.cancel", "order.discount.apply", "order.course.fire",
+      "order.cancel", "order.discount.apply", "order.course.fire", "order.serve",
       "kitchen.read", "kitchen.ticket.update", "kitchen.manage",
       "service_request.read", "service_request.handle",
       "payment.read", "payment.collect", "payment.refund", "payment.void", "check.manage", "bill.reissue",
@@ -227,7 +230,7 @@ export const ROLE_TEMPLATES = {
       "table.read", "table.session.open", "table.session.close", "table.session.close_with_debt",
       "table.session.transfer",
       "order.read", "order.create", "order.accept", "order.modify", "order.modify.after_fire",
-      "order.cancel", "order.discount.apply", "order.course.fire",
+      "order.cancel", "order.discount.apply", "order.course.fire", "order.serve",
       "kitchen.read", "service_request.read", "service_request.handle",
       "payment.read", "payment.collect", "check.manage",
       "customer.read", "team.read", "analytics.read", "ai.use",
@@ -242,7 +245,7 @@ export const ROLE_TEMPLATES = {
     permissions: [
       "venue.read", "menu.read",
       "table.read", "table.session.open", "table.session.close",
-      "order.read", "order.create", "order.accept", "order.modify", "order.course.fire",
+      "order.read", "order.create", "order.accept", "order.modify", "order.course.fire", "order.serve",
       "kitchen.read", "service_request.read", "service_request.handle",
       "check.manage", "payment.read",
     ],

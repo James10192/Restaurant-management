@@ -837,7 +837,8 @@ export default defineSchema({
     .index("by_session", ["tableSessionId"])
     .index("by_venue_status_submitted", ["venueId", "status", "submittedAt"])
     .index("by_venue_submittedAt", ["venueId", "submittedAt"])
-    .index("by_idempotency", ["idempotencyKey"]),
+    // Portée par établissement : une clé venue d'un autre locataire n'est ni vue ni refusée.
+    .index("by_venue_idempotency", ["venueId", "idempotencyKey"]),
 
   /** Une ligne commandée, avec son snapshot figé (D-005, R6). Ne se supprime jamais. */
   orderItems: defineTable({
@@ -910,6 +911,19 @@ export default defineSchema({
     .index("by_order", ["orderId"])
     .index("by_venue_type", ["venueId", "type"]),
 
+  /**
+   * Compteurs d'un établissement : la référence dite à voix haute (« A-042 », repartant chaque
+   * jour de service) et celle d'une session (« TS-2026-000123 »). Un document par clé : compter
+   * les commandes du jour à chaque envoi lirait un nombre de lignes qui grandit toute la
+   * soirée, et Convex sérialise déjà deux incréments concurrents sur le même document.
+   */
+  venueCounters: defineTable({
+    venueId: v.id("venues"),
+    /** `order:2026-09-23`, `session:2026`. */
+    key: v.string(),
+    value: v.number(),
+  }).index("by_venue_key", ["venueId", "key"]),
+
   /* ══════════════════════════════════════════════════════════════════════════
    * 7. PRODUCTION
    * ══════════════════════════════════════════════════════════════════════════ */
@@ -946,6 +960,12 @@ export default defineSchema({
       v.literal("started"),
       v.literal("ready"),
       v.literal("recalled"),
+      /**
+       * Porté à table. Un état et non un simple horodatage : l'index par statut ne garde
+       * ainsi en « prêt » que ce qui attend vraiment le serveur, au lieu d'accumuler tout
+       * ce qui a été prêt un jour — la liste « à servir » reste courte sans filtre.
+       */
+      v.literal("served"),
       v.literal("cancelled"),
     ),
     courseNumber: v.number(),
@@ -956,6 +976,8 @@ export default defineSchema({
     recalledAt: v.optional(v.number()),
     startedByUserId: v.optional(v.id("users")),
     readyByUserId: v.optional(v.id("users")),
+    servedAt: v.optional(v.number()),
+    servedByUserId: v.optional(v.id("users")),
     /** Remonté au niveau du bon : une allergie ne se lit pas en petit dans une ligne. */
     allergyFlags: v.array(v.string()),
     itemCount: v.number(),

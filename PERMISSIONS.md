@@ -104,6 +104,7 @@ fichier ; les deux doivent rester alignés (un test le vérifie — voir §9).
 | `order.cancel` | Annuler une commande ou une ligne | venue |
 | `order.discount.apply` | Appliquer une remise | venue |
 | `order.course.fire` | Déclencher un service en attente (« fire ») | venue |
+| `order.serve` | Marquer des plats servis (porter à table) — distinct de la saisie | venue |
 
 ### Production (cuisine / bar)
 

@@ -542,7 +542,7 @@ accepté.
 | `notes?` | string | |
 
 **Index** : `by_session ["tableSessionId"]` · `by_venue_status_submitted ["venueId","status","submittedAt"]`
-(tour de contrôle) · `by_idempotency ["idempotencyKey"]` (unicité) ·
+(tour de contrôle) · `by_venue_idempotency ["venueId","idempotencyKey"]` (unicité par établissement : jamais globale, sinon la clé d'un locataire se lit ou se bloque depuis un autre) ·
 `by_venue_submittedAt ["venueId","submittedAt"]` (analytics)
 **Permissions** : `order.read` / `create` / `accept` / `modify` / `cancel`.
 
@@ -586,6 +586,17 @@ d'origine reste lisible — sinon on ne sait plus si le plat était à 5 000 ou 
 **Index** : `by_session ["tableSessionId"]` · `by_order ["orderId"]` · `by_venue_type ["venueId","type"]`
 **Permissions** : `order.discount.apply`. **Auditée** au-delà d'un seuil réglé par établissement.
 
+### `venueCounters`
+**Objectif.** Les compteurs d'un établissement qui fabriquent les références dites à voix haute :
+`order:<jour de service>` pour « A-042 » (repart à 1 chaque jour, à 4 h), `session:<année>` pour
+« TS-2026-000123 ».
+**Champs** : `venueId`, `key`, `value`.
+**Index** : `by_venue_key ["venueId","key"]`
+**Pourquoi une table.** Compter les commandes du jour à chaque envoi lirait un nombre de lignes qui
+grandit toute la soirée ; un document par compteur coûte une lecture, et Convex sérialise deux
+incréments concurrents sur le même document — deux serveurs qui envoient en même temps n'obtiennent
+pas le même numéro.
+
 ---
 
 ## 8. Production
@@ -606,11 +617,11 @@ cuisine voit ; elle ne voit jamais la commande entière.
 | `organizationId`, `venueId`, `orderId`, `prepStationId`, `tableSessionId` | Id | |
 | `reference` | string | `A-042-BAR` |
 | `tableNumber` | string | **dénormalisé** : la cuisine ne doit pas résoudre trois relations pour afficher « Table 12 » |
-| `status` | `held`/`queued`/`started`/`ready`/`recalled`/`cancelled` | |
+| `status` | `held`/`queued`/`started`/`ready`/`recalled`/`served`/`cancelled` | `served` : porté à table — l'index par statut ne garde en « prêt » que ce qui attend le serveur |
 | `courseNumber` | number | |
 | `priority` | number | |
 | `queuedAt?`, `startedAt?`, `readyAt?`, `recalledAt?` | number | quatre champs, pas quatre lignes |
-| `startedByUserId?`, `readyByUserId?` | | |
+| `startedByUserId?`, `readyByUserId?`, `servedAt?`, `servedByUserId?` | | |
 | `allergyFlags` | string[] | **remonté au niveau du bon** : une allergie ne doit pas se lire en petit dans une ligne |
 | `itemCount` | number | |
 

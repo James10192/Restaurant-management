@@ -23,7 +23,14 @@ type VenueScopedTable =
   | "menuPublications"
   | "serviceAreas"
   | "restaurantTables"
-  | "tableQrCodes";
+  | "tableQrCodes"
+  | "prepStations"
+  | "tableSessions"
+  | "orders"
+  | "orderItems"
+  | "kitchenTickets"
+  | "serviceRequests"
+  | "guestSessions";
 
 export async function getInVenue<T extends VenueScopedTable & TableNames>(
   ctx: ReadCtx,
