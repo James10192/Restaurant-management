@@ -114,10 +114,15 @@ sur appareil enrôlé** *(D-060)* · file d'écriture hors ligne persistante et 
 | Lot | Contenu | État |
 |---|---|---|
 | T2.a | Moteur : postes et routage, sessions de table, commandes chiffrées côté serveur, bons par poste et par service, écran de production, « à servir », clôture | fait (2026-09-23) |
-| T2.c | Modèle d'acteur (membre, appareil, session d'opérateur), enrôlement d'appareil, PIN, `clientRef`, file hors ligne | à faire — **avant** les écrans |
-| T2.b | Côté client : panier à montrer, demandes de service, validation sous garde-fous | à faire |
-| T2.d | Écrans (composants shadcn uniquement) : prise de commande, KDS, mes tables, demandes, postes | à faire |
-| T2.e | Bout en bout d'un service complet, revue adverse, documentation | à faire |
+| T2.c | Modèle d'acteur (membre, appareil, session d'opérateur), enrôlement d'appareil, PIN, `clientRef`, file hors ligne | fait (2026-09-23) |
+| T2.b | Côté client : panier à montrer, demandes de service, validation sous garde-fous | fait (2026-09-23) |
+| T2.d | Écrans (composants shadcn uniquement) : prise de commande, KDS, mes tables, demandes, postes | fait (2026-09-23) |
+| T2.e | Bout en bout d'un service complet, revue adverse, documentation | fait (2026-09-23) |
+
+- Écarts assumés à la fin de T2 : un gérant ne voit pas les gestes en attente sur l'appareil d'un
+  autre (chaque file est locale) ; « envoyer la suite » envoie tout le service, pas un plat ; pas
+  de limite de débit globale sur l'enrôlement (seulement par code) ; la preuve de D-061 (le panier
+  à montrer ne ralentit pas le service) attend un essai en salle réelle.
 
 **À la fin** : un serveur prend une commande sur son téléphone, la cuisine la reçoit et la marque
 prête, le serveur est prévenu et sert. **Le restaurant coordonne sa salle et sa cuisine sans crier.**
