@@ -220,3 +220,37 @@ export const publicMenuReadiness = query({
     };
   },
 });
+
+/**
+ * Qui saisit la commande (D-061). `staff_only` par défaut, avec le panier à montrer ;
+ * `guest_with_approval` en réglage, avec ses garde-fous. `guest_direct` et `hybrid` sont
+ * REFUSÉS ici, côté serveur, jusqu'à la tranche T4 : avec un QR sans friction, une photo du code
+ * suffirait à envoyer des plats en cuisine depuis la rue.
+ */
+export const setOrderingMode = mutation({
+  args: { venueId: v.id("venues"), orderingMode: v.union(v.literal("staff_only"), v.literal("guest_with_approval"), v.literal("guest_direct"), v.literal("hybrid")) },
+  handler: async (ctx, args) => {
+    const actor = await requirePermission(ctx, "venue.settings.service", { venueId: args.venueId });
+    if (args.orderingMode === "guest_direct" || args.orderingMode === "hybrid") {
+      throw invalid("La commande directe par le client n'est pas encore disponible : le serveur garde la main.");
+    }
+    const settings = await ctx.db
+      .query("venueSettings")
+      .withIndex("by_venue", (q) => q.eq("venueId", actor.venue._id))
+      .unique();
+    if (!settings) throw invalid("Réglages introuvables.");
+    if (settings.service.orderingMode === args.orderingMode) return;
+    await ctx.db.patch(settings._id, { service: { ...settings.service, orderingMode: args.orderingMode } });
+    await writeAudit(ctx, {
+      organizationId: actor.organization._id,
+      venueId: actor.venue._id,
+      actorUserId: actor.user._id,
+      actorMemberId: actor.member._id,
+      action: "venue.settings.ordering_mode",
+      resourceType: "venue",
+      resourceId: actor.venue._id,
+      before: { orderingMode: settings.service.orderingMode },
+      after: { orderingMode: args.orderingMode },
+    });
+  },
+});

@@ -531,8 +531,9 @@ l'installation à la clôture. Ni la table, ni la commande, ni l'addition.
 ### `guestSessions`
 **Objectif.** Un navigateur rattaché à une session de table. C'est l'identité légère qui rend la
 commande collaborative possible **sans compte** (§11).
-**Champs** : `organizationId`, `venueId`, `tableSessionId`, `displayName?` (« Invité 2 », ou le
-prénom donné), `colorKey`, `deviceFingerprintHash?`, `joinedAt`, `lastSeenAt`, `status`
+**Champs** : `venueId`, `tableSessionId`, `displayName?` (« Invité 2 », ou le
+prénom donné), `colorKey`, `deviceFingerprintHash?` (SHA-256 d'une clé aléatoire tirée par le
+navigateur : elle sépare les paniers des convives, ce n'est pas une identité), `joinedAt`, `lastSeenAt`, `status`
 (`active`/`left`), `customerProfileId?` (si le client s'identifie volontairement).
 **Index** : `by_session ["tableSessionId"]` · `by_session_status ["tableSessionId","status"]`
 **Permissions** : lecture par la session elle-même (cookie signé) ; le personnel via `table.read`.
@@ -543,11 +544,13 @@ prénom donné), `colorKey`, `deviceFingerprintHash?`, `joinedAt`, `lastSeenAt`,
 
 ### `serviceRequests`
 **Objectif.** Un appel du client (serveur, eau, couverts, addition).
-**Champs** : `organizationId`, `venueId`, `tableSessionId`, `guestSessionId?`, `type`, `note?`,
+**Champs** : `venueId`, `tableId` (la table d'abord : on appelle un serveur **avant** qu'il ait ouvert
+la table, D-045), `tableSessionId?`, `guestSessionId?`, `type`, `note?`,
 `status` (`open`/`acknowledged`/`resolved`/`cancelled`), `createdAt`, `acknowledgedAt?`,
 `acknowledgedByMemberId?`, `resolvedAt?`, `resolvedByMemberId?`.
 **Index** : `by_venue_status_created ["venueId","status","createdAt"]` (file du serveur, triée) ·
-`by_session ["tableSessionId"]`
+`by_session ["tableSessionId"]` · `by_table_created ["tableId","createdAt"]` (délai anti-répétition
+par table et par type)
 **Permissions** : création par la session invité ; `service_request.handle` pour le reste.
 **Cycle** : `open` → `acknowledged` → `resolved`. Les trois horodatages sont les **seules** données
 qui permettront de mesurer « temps demande → réponse » (§41) : les stocker coûte trois champs, les
@@ -567,7 +570,9 @@ isoler évite de réécrire tout le panier à chaque geste, et rend le panier pa
 collaboratif.
 
 `carts` : `tableSessionId`, `guestSessionId?` (absent = panier commun à la table), `status`
-(`active`/`submitted`/`abandoned`), `updatedAt`.
+(`active`/`submitted`/`dismissed`/`abandoned`), `updatedAt`, `orderId?` (la commande qu'il est
+devenu). En T2, c'est le **panier à montrer** (D-061) : le client compose, rien ne part, le serveur
+l'importe d'un geste (`carts.importCart`) ; oublié 30 minutes après la dernière modification.
 `cartItems` : `cartId`, `productId`, `variantId?`, `modifierSelections[]`, `quantity`,
 `instructions?`, `addedByGuestSessionId`, `courseNumber?`, `estimatedUnitPrice`.
 

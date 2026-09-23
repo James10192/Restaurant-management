@@ -122,6 +122,24 @@ async function withServiceB(w: World): Promise<ServiceFixture> {
   return w.serviceB;
 }
 
+/** Un client attablé chez B, avec un panier, et une demande en attente. */
+async function guestAtB(w: World) {
+  const service = await withServiceB(w);
+  const scanned = await w.t.mutation(api.guest.exchange, { token: w.floorB.token });
+  if (!scanned.ok) throw new Error("scan refusé");
+  const guest = { pass: scanned.pass, venueSlug: scanned.venueSlug, guestKey: "telephone-chez-b-0000000001" };
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-09-21T08:30:00Z"));
+  try {
+    await w.t.mutation(api.guestService.saveCart, { ...guest, lines: [{ productId: w.catalogB.productId, variantId: w.catalogB.variantId, optionIds: [], quantity: 1 }] });
+  } finally {
+    vi.useRealTimers();
+  }
+  await w.t.mutation(api.guestService.requestService, { ...guest, type: "call_waiter" });
+  const [cart, request] = await w.t.run(async (ctx) => [(await ctx.db.query("carts").collect())[0]!, (await ctx.db.query("serviceRequests").collect())[0]!] as const);
+  return { service, guest, cartId: cart._id, requestId: request._id };
+}
+
 /** A ouvre sa propre table, pour les franchissements « son établissement + un objet de B ». */
 async function openA(w: World): Promise<Id<"tableSessions">> {
   return w.a.owner.as.mutation(api.sessions.open, { venueId: w.a.venueId, tableId: w.floorA.tableId });
@@ -1099,6 +1117,89 @@ const CASES: Record<string, (w: Awaited<ReturnType<typeof twoTenants>>) => Promi
     const opB = await activateAndUnlock(t, deviceB.deviceToken, koffiB.code, "2468");
     await t.mutation(api.operators.lock, { deviceToken: deviceA.deviceToken });
     expect((await t.run((ctx) => ctx.db.get(opB.sessionId)))!.endedAt).toBeUndefined();
+  },
+  /* ─── Le client à table (D-061) ─── */
+  "guestService.presence": async (w) => {
+    const b = await guestAtB(w);
+    // Le laissez-passer de B présenté sous l'adresse de A : rien.
+    expect(await w.t.query(api.guestService.presence, { ...b.guest, venueSlug: "maquis-a-cocody" })).toBeNull();
+    // Le laissez-passer de A, avec le téléphone du client de B : A ne voit pas le panier de B.
+    const scannedA = await w.t.mutation(api.guest.exchange, { token: w.floorA.token });
+    if (!scannedA.ok) throw new Error("scan refusé");
+    const seen = await w.t.query(api.guestService.presence, { pass: scannedA.pass, venueSlug: scannedA.venueSlug, guestKey: b.guest.guestKey });
+    expect(seen).toMatchObject({ tableOpen: false, cart: null, orders: [] });
+  },
+  "guestService.saveCart": async (w) => {
+    const b = await guestAtB(w);
+    expect(await w.t.mutation(api.guestService.saveCart, { ...b.guest, venueSlug: "maquis-a-cocody", lines: [] })).toEqual({ ok: false, reason: "invalid_pass" });
+    // Chez A, le plat de B n'existe pas.
+    await openA(w);
+    const scannedA = await w.t.mutation(api.guest.exchange, { token: w.floorA.token });
+    if (!scannedA.ok) throw new Error("scan refusé");
+    const saved = await w.t.mutation(api.guestService.saveCart, {
+      pass: scannedA.pass,
+      venueSlug: scannedA.venueSlug,
+      guestKey: "telephone-chez-a-0000000001",
+      lines: [{ productId: w.catalogB.productId, optionIds: [], quantity: 1 }],
+    });
+    expect(saved).toMatchObject({ ok: true, problems: [{ code: "PRODUCT_NOT_FOUND" }] });
+  },
+  "guestService.submitCart": async (w) => {
+    const b = await guestAtB(w);
+    expect(await w.t.mutation(api.guestService.submitCart, { ...b.guest, venueSlug: "maquis-a-cocody", idempotencyKey: "intrus-000000000009" })).toEqual({ ok: false, reason: "invalid_pass" });
+  },
+  "guestService.requestService": async (w) => {
+    const b = await guestAtB(w);
+    expect(await w.t.mutation(api.guestService.requestService, { ...b.guest, venueSlug: "maquis-a-cocody", type: "call_waiter" })).toEqual({ ok: false, reason: "invalid_pass" });
+  },
+  "carts.forSession": async (w) => {
+    const b = await guestAtB(w);
+    await bothRefused(
+      w.a.owner.as.query(api.carts.forSession, { venueId: w.b.venueId, sessionId: b.service.sessionId }),
+      w.a.owner.as.query(api.carts.forSession, { venueId: w.a.venueId, sessionId: b.service.sessionId }),
+    );
+  },
+  "carts.importCart": async (w) => {
+    const b = await guestAtB(w);
+    await bothRefused(
+      w.a.owner.as.mutation(api.carts.importCart, { venueId: w.b.venueId, cartId: b.cartId, idempotencyKey: "intrus-000000000010" }),
+      w.a.owner.as.mutation(api.carts.importCart, { venueId: w.a.venueId, cartId: b.cartId, idempotencyKey: "intrus-000000000011" }),
+    );
+    expect((await w.t.run((ctx) => ctx.db.get(b.cartId)))!.status).toBe("active");
+  },
+  "carts.dismissCart": async (w) => {
+    const b = await guestAtB(w);
+    await bothRefused(
+      w.a.owner.as.mutation(api.carts.dismissCart, { venueId: w.b.venueId, cartId: b.cartId }),
+      w.a.owner.as.mutation(api.carts.dismissCart, { venueId: w.a.venueId, cartId: b.cartId }),
+    );
+    expect((await w.t.run((ctx) => ctx.db.get(b.cartId)))!.status).toBe("active");
+  },
+  "serviceRequests.open": async (w) => {
+    await guestAtB(w);
+    await expectCode(w.a.owner.as.query(api.serviceRequests.open, { venueId: w.b.venueId }), "NOT_FOUND");
+    expect((await w.a.owner.as.query(api.serviceRequests.open, { venueId: w.a.venueId })).requests).toEqual([]);
+  },
+  "serviceRequests.acknowledge": async (w) => {
+    const b = await guestAtB(w);
+    await bothRefused(
+      w.a.owner.as.mutation(api.serviceRequests.acknowledge, { venueId: w.b.venueId, requestId: b.requestId }),
+      w.a.owner.as.mutation(api.serviceRequests.acknowledge, { venueId: w.a.venueId, requestId: b.requestId }),
+    );
+    expect((await w.t.run((ctx) => ctx.db.get(b.requestId)))!.status).toBe("open");
+  },
+  "serviceRequests.resolve": async (w) => {
+    const b = await guestAtB(w);
+    await bothRefused(
+      w.a.owner.as.mutation(api.serviceRequests.resolve, { venueId: w.b.venueId, requestId: b.requestId }),
+      w.a.owner.as.mutation(api.serviceRequests.resolve, { venueId: w.a.venueId, requestId: b.requestId }),
+    );
+    expect((await w.t.run((ctx) => ctx.db.get(b.requestId)))!.status).toBe("open");
+  },
+  "venues.setOrderingMode": async ({ t, a, b }) => {
+    await expectCode(a.owner.as.mutation(api.venues.setOrderingMode, { venueId: b.venueId, orderingMode: "guest_with_approval" }), "NOT_FOUND");
+    const settings = await t.run(async (ctx) => (await ctx.db.query("venueSettings").withIndex("by_venue", (q) => q.eq("venueId", b.venueId)).unique())!);
+    expect(settings.service.orderingMode).toBe("staff_only");
   },
 };
 

@@ -376,3 +376,14 @@ export const OFFLINE_REPLAY_MAX_MS = 6 * 60 * 60_000;
 
 /** Au-delà, l'appareil ne renvoie plus seul une commande en cuisine : elle passe « À régulariser ». */
 export const OFFLINE_AUTO_SEND_MAX_MS = 3 * 60_000;
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * Le client à table (D-061)
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+/** Un panier laissé plus longtemps est oublié : le client est parti, ou il a commandé autrement. */
+export const CART_TTL_MS = 30 * 60_000;
+/** Au-delà, une commande du client en attente alerte tout le personnel de la salle. */
+export const APPROVAL_ESCALATE_MS = 90_000;
+/** Au-delà, elle expire, et le client le lit. */
+export const APPROVAL_EXPIRE_MS = 10 * 60_000;

@@ -19,10 +19,11 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { writeAudit } from "./lib/audit";
 import { getInVenue } from "./lib/catalogAccess";
 import { conflict, forbidden, invalid } from "./lib/errors";
-import type { MutationCtx } from "./lib/guards";
+import type { MutationCtx, ReadCtx } from "./lib/guards";
 import { requireServiceActor, requireServiceMutation, type ServiceActor } from "./lib/serviceActor";
 import { loadLiveAvailability } from "./lib/guestMenu";
 import {
+  APPROVAL_ESCALATE_MS,
   OFFLINE_REPLAY_MAX_MS,
   ORDER_LIMITS,
   isClientRef,
@@ -95,7 +96,7 @@ export const menu = query({
 
 type Priced = { lines: PricedLine[]; problems: LineProblem[] };
 
-async function priceRequest(ctx: MutationCtx, venue: Doc<"venues">, lines: LineRequest[], now: number): Promise<Priced> {
+export async function priceRequest(ctx: ReadCtx, venue: Doc<"venues">, lines: LineRequest[], now: number): Promise<Priced> {
   if (lines.length === 0) throw invalid("La commande est vide.");
   if (lines.length > ORDER_LIMITS.linesPerOrder) throw invalid(`${ORDER_LIMITS.linesPerOrder} lignes au plus par envoi.`);
   const published = indexPublishedProducts(await loadOrderingMenus(ctx, venue._id));
@@ -603,6 +604,8 @@ export const pendingAcceptance = query({
         tableNumber: table?.number ?? "?",
         sessionId: order.tableSessionId,
         submittedAt: order.submittedAt,
+        /** Au-delà de 90 secondes, l'alerte passe à tout le personnel de la salle (D-061). */
+        escalated: Date.now() - order.submittedAt > APPROVAL_ESCALATE_MS,
         total: order.totals.total,
         notes: order.notes ?? null,
         items: items.map((i) => ({ name: i.nameSnapshot, variantName: i.variantNameSnapshot ?? null, quantity: i.quantity, modifiers: i.modifiers.map((m) => m.optionName) })),

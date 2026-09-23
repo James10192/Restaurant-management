@@ -29,4 +29,7 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
   deviceEnroll: { kind: "token bucket", rate: 20, period: MINUTE, capacity: 40 },
   // Codes d'activation de PIN, par appareil enrôlé.
   pinActivation: { kind: "fixed window", rate: 10, period: 10 * MINUTE },
+  // Côté client, par QR : une photo du code qui circule ne doit pas inonder la salle.
+  guestRequest: { kind: "fixed window", rate: 12, period: 10 * MINUTE },
+  guestOrder: { kind: "fixed window", rate: 6, period: 10 * MINUTE },
 });

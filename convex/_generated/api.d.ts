@@ -10,10 +10,12 @@
 
 import type * as auth from "../auth.js";
 import type * as availability from "../availability.js";
+import type * as carts from "../carts.js";
 import type * as devSeed from "../devSeed.js";
 import type * as devices from "../devices.js";
 import type * as floor from "../floor.js";
 import type * as guest from "../guest.js";
+import type * as guestService from "../guestService.js";
 import type * as health from "../health.js";
 import type * as http from "../http.js";
 import type * as kitchen from "../kitchen.js";
@@ -32,6 +34,7 @@ import type * as lib_errors from "../lib/errors.js";
 import type * as lib_guards from "../lib/guards.js";
 import type * as lib_guestMenu from "../lib/guestMenu.js";
 import type * as lib_guestPass from "../lib/guestPass.js";
+import type * as lib_guestTable from "../lib/guestTable.js";
 import type * as lib_indexability from "../lib/indexability.js";
 import type * as lib_log from "../lib/log.js";
 import type * as lib_menuImport from "../lib/menuImport.js";
@@ -59,6 +62,7 @@ import type * as products from "../products.js";
 import type * as publications from "../publications.js";
 import type * as qr from "../qr.js";
 import type * as roles from "../roles.js";
+import type * as serviceRequests from "../serviceRequests.js";
 import type * as sessions from "../sessions.js";
 import type * as staff from "../staff.js";
 import type * as stations from "../stations.js";
@@ -75,10 +79,12 @@ import type {
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   availability: typeof availability;
+  carts: typeof carts;
   devSeed: typeof devSeed;
   devices: typeof devices;
   floor: typeof floor;
   guest: typeof guest;
+  guestService: typeof guestService;
   health: typeof health;
   http: typeof http;
   kitchen: typeof kitchen;
@@ -97,6 +103,7 @@ declare const fullApi: ApiFromModules<{
   "lib/guards": typeof lib_guards;
   "lib/guestMenu": typeof lib_guestMenu;
   "lib/guestPass": typeof lib_guestPass;
+  "lib/guestTable": typeof lib_guestTable;
   "lib/indexability": typeof lib_indexability;
   "lib/log": typeof lib_log;
   "lib/menuImport": typeof lib_menuImport;
@@ -124,6 +131,7 @@ declare const fullApi: ApiFromModules<{
   publications: typeof publications;
   qr: typeof qr;
   roles: typeof roles;
+  serviceRequests: typeof serviceRequests;
   sessions: typeof sessions;
   staff: typeof staff;
   stations: typeof stations;

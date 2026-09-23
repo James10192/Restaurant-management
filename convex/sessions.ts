@@ -251,6 +251,8 @@ export const floor = query({
           label: table.label ?? null,
           seats: table.seats,
           outOfService: table.status === "out_of_service",
+          /** Un client appelle avant que la table soit ouverte : le serveur le voit quand même. */
+          waitingRequests: session ? 0 : openRequests.filter((r) => r.tableId === table._id).length,
           session: session
             ? {
                 _id: session._id,
@@ -262,7 +264,7 @@ export const floor = query({
                 waiterName: await nameOf(session.assignedWaiterMemberId),
                 isMine: actor.member !== null && session.assignedWaiterMemberId === actor.member._id,
                 readyCount: readyTickets.filter((t) => t.tableSessionId === session._id).length,
-                requestCount: openRequests.filter((r) => r.tableSessionId === session._id).length,
+                requestCount: openRequests.filter((r) => r.tableId === table._id).length,
                 pendingCount: pendingOrders.filter((o) => o.tableSessionId === session._id).length,
               }
             : null,

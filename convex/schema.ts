@@ -843,7 +843,9 @@ export default defineSchema({
 
   serviceRequests: defineTable({
     venueId: v.id("venues"),
-    tableSessionId: v.id("tableSessions"),
+    /** La table d'abord : on appelle un serveur AVANT qu'il ait ouvert la table (D-045). */
+    tableId: v.id("restaurantTables"),
+    tableSessionId: v.optional(v.id("tableSessions")),
     guestSessionId: v.optional(v.id("guestSessions")),
     type: v.string(),
     note: v.optional(v.string()),
@@ -860,7 +862,8 @@ export default defineSchema({
     resolvedByMemberId: v.optional(v.id("organizationMembers")),
   })
     .index("by_venue_status_created", ["venueId", "status", "createdAt"])
-    .index("by_session", ["tableSessionId"]),
+    .index("by_session", ["tableSessionId"])
+    .index("by_table_created", ["tableId", "createdAt"]), // délai anti-répétition
 
   /* ══════════════════════════════════════════════════════════════════════════
    * 6. COMMANDES
@@ -871,8 +874,14 @@ export default defineSchema({
     tableSessionId: v.id("tableSessions"),
     /** Absent = panier commun à la table (mode collaboratif). */
     guestSessionId: v.optional(v.id("guestSessions")),
-    status: v.union(v.literal("active"), v.literal("submitted"), v.literal("abandoned")),
+    /**
+     * `active` : le client compose. `submitted` : importé par le serveur, ou envoyé pour validation.
+     * `dismissed` : ignoré par le serveur. `abandoned` : laissé plus de 30 minutes (D-061).
+     */
+    status: v.union(v.literal("active"), v.literal("submitted"), v.literal("dismissed"), v.literal("abandoned")),
     updatedAt: v.number(),
+    /** La commande qu'il est devenu, s'il a été importé ou envoyé. */
+    orderId: v.optional(v.id("orders")),
   })
     .index("by_session", ["tableSessionId"])
     .index("by_guest", ["guestSessionId"]),

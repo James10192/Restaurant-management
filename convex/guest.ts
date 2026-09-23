@@ -5,14 +5,15 @@
  * permission : c'est un JETON (le QR), puis un LAISSEZ-PASSER signé qui en est l'échange.
  * Chaque fonction ci-dessous dit, en commentaire `garde :`, ce qui la protège.
  *
- * En tranche T1, le scan ne crée PAS de session de table : il n'y a encore rien à commander,
- * et une session ouverte que personne ne ferme marquerait la table « occupée » pour rien. Le
- * laissez-passer désigne une table ; la tranche T2 y ajoutera l'ouverture de session (D-045).
+ * Le scan ne crée PAS de session de table (D-045) : une session ouverte que personne ne ferme
+ * marquerait la table « occupée » pour rien. C'est le personnel qui ouvre ; le client s'y joint
+ * ensuite (convex/guestService.ts).
  */
 
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { GUEST_PASS_TTL_MS, signGuestPass, verifyGuestPass } from "./lib/guestPass";
+import { GUEST_PASS_TTL_MS, signGuestPass } from "./lib/guestPass";
+import { resolveGuestTable } from "./lib/guestTable";
 import { loadLiveAvailability, loadPublishedMenus, publicVenue, publishedFacts } from "./lib/guestMenu";
 
 type ExchangeFailure = "invalid" | "table_closed" | "venue_closed";
@@ -66,15 +67,9 @@ export const tableMenu = query({
     // garde : laissez-passer signé par Convex, revérifié contre le QR, la table et
     // l'établissement. Un laissez-passer d'un autre établissement que celui de l'adresse
     // est refusé : l'adresse ne choisit pas la carte.
-    const payload = await verifyGuestPass(args.pass, Date.now());
-    if (!payload) return null;
-    const code = await ctx.db.get(payload.qrCodeId);
-    if (!code || code.status !== "active" || code.version !== payload.qrVersion || code.tableId !== payload.tableId) return null;
-    const venue = await ctx.db.get(payload.venueId);
-    if (!venue || venue._id !== code.venueId || venue.slug !== args.venueSlug) return null;
-    if (venue.status === "archived" || venue.status === "paused") return null;
-    const table = await ctx.db.get(payload.tableId);
-    if (!table || !table.isActive || table.status === "out_of_service") return null;
+    const resolved = await resolveGuestTable(ctx, args.pass, args.venueSlug);
+    if (!resolved) return null;
+    const { venue, table } = resolved;
     return {
       venue: publicVenue(venue),
       table: { number: table.number, label: table.label ?? null },
