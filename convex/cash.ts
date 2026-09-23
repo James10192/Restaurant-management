@@ -86,7 +86,7 @@ export async function resolveCashSession(
   return { ok: false, reason: drawers.length === 0 ? "no_cash_session" : "choose_register", options: drawers };
 }
 
-async function registerName(ctx: ReadCtx, session: Doc<"cashRegisterSessions">): Promise<string> {
+export async function registerName(ctx: ReadCtx, session: Doc<"cashRegisterSessions">): Promise<string> {
   if (session.holderMemberId) return `Pochette de ${(await memberName(ctx, session.holderMemberId)) ?? "?"}`;
   const register = session.cashRegisterId ? await ctx.db.get(session.cashRegisterId) : null;
   return register?.name ?? "Caisse";

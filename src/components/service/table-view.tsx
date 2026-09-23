@@ -30,7 +30,10 @@ import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/ui/card";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemTitle } from "~/components/ui/item";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "~/components/ui/tabs";
 import { Textarea } from "~/components/ui/textarea";
+import { BillPanel } from "~/components/billing/bill-panel";
+import { ReasonDialog } from "~/components/billing/reason-dialog";
 import { describeError } from "~/lib/errors";
 import { uuidv7 } from "~/lib/outbox";
 import { cn } from "~/lib/utils";
@@ -181,6 +184,14 @@ export function TableView({ tableId }: { tableId: Id<"restaurantTables"> }) {
         />
       ) : null}
 
+      <Tabs defaultValue="orders" className="gap-4">
+        {sessionId && scope.can("payment.read") ? (
+          <TabsList className="w-full sm:w-auto">
+            <TabsTrigger value="orders">Commandes</TabsTrigger>
+            <TabsTrigger value="bill">Addition</TabsTrigger>
+          </TabsList>
+        ) : null}
+        <TabsContent value="orders" className="flex flex-col gap-4">
       {sessionId ? (
         <GuestCarts
           sessionId={sessionId}
@@ -206,6 +217,13 @@ export function TableView({ tableId }: { tableId: Id<"restaurantTables"> }) {
       {detail === undefined && sessionId ? <LoadingState /> : null}
       {detail?.orders.length === 0 && localOrders.length === 0 ? <EmptyState title="Rien de commandé" description="Touchez « Commander » pour saisir." /> : null}
       {detail ? [...detail.orders].reverse().map((o) => <OrderCard key={o._id} order={o} detail={detail} />) : null}
+        </TabsContent>
+        {sessionId && scope.can("payment.read") ? (
+          <TabsContent value="bill">
+            <BillPanel sessionId={sessionId} />
+          </TabsContent>
+        ) : null}
+      </Tabs>
 
       {canOrder ? (
         <div className="fixed inset-x-0 bottom-0 z-10 border-t bg-background p-3 md:static md:border-0 md:p-0">
@@ -227,7 +245,12 @@ function TableActions({ detail }: { detail: Detail }) {
   const { online } = useOutbox();
   const assign = useMutation(api.sessions.assignWaiter);
   const close = useMutation(api.sessions.close);
+  const closeWithDebt = useMutation(api.sessions.closeWithDebt);
+  const bill = useQuery(api.checks.forSession, scope.can("payment.read") ? { venueId: scope.venueId, sessionId: detail._id } : "skip");
+  const money = useMoney();
   const [closing, setClosing] = useState(false);
+  const [debt, setDebt] = useState(false);
+  const due = bill?.due ?? 0;
   return (
     <div className="flex flex-wrap gap-2">
       {!detail.isMine && scope.memberId && scope.can("table.session.open") ? (
@@ -256,13 +279,26 @@ function TableActions({ detail }: { detail: Detail }) {
           <AlertDialogHeader>
             <AlertDialogTitle>Clôturer la table {detail.tableNumber} ?</AlertDialogTitle>
             <AlertDialogDescription>
-              La table redevient libre. C'est refusé tant qu'une commande est en cours : servez ou annulez d'abord. La clôture ne se fait pas hors ligne.
+              {due > 0
+                ? `Il reste ${money(due)} à encaisser : la table ne se clôt pas tant que l'addition n'est pas réglée.`
+                : "La table redevient libre. C'est refusé tant qu'une commande est en cours : servez ou annulez d'abord. La clôture ne se fait pas hors ligne."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Annuler</AlertDialogCancel>
+            {due > 0 && bill?.can.closeWithDebt ? (
+              <Button
+                variant="destructive"
+                onClick={() => {
+                  setClosing(false);
+                  setDebt(true);
+                }}
+              >
+                Clôturer avec un impayé
+              </Button>
+            ) : null}
             <AlertDialogAction
-              disabled={!online}
+              disabled={!online || due > 0}
               onClick={async (e) => {
                 e.preventDefault();
                 try {
@@ -280,6 +316,20 @@ function TableActions({ detail }: { detail: Detail }) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <ReasonDialog
+        open={debt}
+        onOpenChange={setDebt}
+        title={`Table ${detail.tableNumber} : clôturer avec un impayé`}
+        description={`${money(due)} ne seront pas encaissés. Le montant, votre nom et le motif figurent au rapport de fin de service.`}
+        confirmLabel="Clôturer avec l'impayé"
+        destructive
+        onConfirm={async ({ reason }) => {
+          await closeWithDebt({ venueId: scope.venueId, sessionId: detail._id, reason });
+          setDebt(false);
+          toast.success(`Table ${detail.tableNumber} clôturée avec un impayé.`);
+          scope.nav.board();
+        }}
+      />
     </div>
   );
 }

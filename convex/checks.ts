@@ -23,7 +23,7 @@ import { conflict, invalid, notFound } from "./lib/errors";
 import type { MutationCtx, ReadCtx } from "./lib/guards";
 import { requireServiceActor, requireServiceMutation, type ServiceActor } from "./lib/serviceActor";
 import { isOpenSession, memberName, settingsOf } from "./lib/service";
-import { cashModeOf, memberOf, requireAmount, requireReason, resolveCashSession } from "./cash";
+import { cashModeOf, memberOf, registerName, requireAmount, requireReason, resolveCashSession } from "./cash";
 
 /** « TS-2026-000123-2 » : la session, puis le rang de l'addition dans la session. */
 async function nextCheckReference(ctx: ReadCtx, session: Doc<"tableSessions">): Promise<string> {
@@ -155,7 +155,12 @@ export const forSession = query({
         amountStep: settings.payments.amountStep ?? 1,
       },
       /** Où ira l'espèce encaissée par cette personne, s'il y en a une. */
-      cash: cash === null ? null : cash.ok ? { status: "ready" as const, sessionId: cash.session._id } : { status: cash.reason, options: cash.options.map((o) => o._id) },
+      cash:
+        cash === null
+          ? null
+          : cash.ok
+            ? { status: "ready" as const, sessionId: cash.session._id, options: [] }
+            : { status: cash.reason, sessionId: null, options: await Promise.all(cash.options.map(async (o) => ({ _id: o._id, name: await registerName(ctx, o) }))) },
       can: {
         collect: actor.permissions.has("payment.collect") && isOpenSession(session),
         manage: actor.permissions.has("check.manage") && isOpenSession(session),

@@ -19,12 +19,14 @@ import { Route as AuthConnexionRouteImport } from './routes/_auth.connexion'
 import { Route as ApiClientErrorsRouteImport } from './routes/api/client-errors'
 import { Route as ApiHealthRouteImport } from './routes/api/health'
 import { Route as AppareilIndexRouteImport } from './routes/appareil.index'
+import { Route as AppareilCaisseRouteImport } from './routes/appareil.caisse'
 import { Route as MenuVenueSlugRouteImport } from './routes/menu.$venueSlug'
 import { Route as AuthAppIndexRouteImport } from './routes/_auth.app.index'
 import { Route as AuthAppAccountRouteImport } from './routes/_auth.app.account'
 import { Route as AuthAppCuisineRouteImport } from './routes/_auth.app.cuisine'
 import { Route as AuthAppMenuRouteImport } from './routes/_auth.app.menu'
 import { Route as AuthAppOnboardingRouteImport } from './routes/_auth.app.onboarding'
+import { Route as AuthAppRapportRouteImport } from './routes/_auth.app.rapport'
 import { Route as AuthAppServiceRouteImport } from './routes/_auth.app.service'
 import { Route as AuthAppTeamRouteImport } from './routes/_auth.app.team'
 import { Route as AuthAuthOtpRouteImport } from './routes/_auth.auth.otp'
@@ -42,7 +44,9 @@ import { Route as AuthAppMenuOptionsRouteImport } from './routes/_auth.app.menu.
 import { Route as AuthAppRolesIndexRouteImport } from './routes/_auth.app.roles.index'
 import { Route as AuthAppRolesRoleIdRouteImport } from './routes/_auth.app.roles.$roleId'
 import { Route as AuthAppServiceIndexRouteImport } from './routes/_auth.app.service.index'
+import { Route as AuthAppServiceCaisseRouteImport } from './routes/_auth.app.service.caisse'
 import { Route as AuthAppSettingsDevicesRouteImport } from './routes/_auth.app.settings.devices'
+import { Route as AuthAppSettingsPaymentsRouteImport } from './routes/_auth.app.settings.payments'
 import { Route as AuthAppSettingsStationsRouteImport } from './routes/_auth.app.settings.stations'
 import { Route as AuthAppSettingsVenueRouteImport } from './routes/_auth.app.settings.venue'
 import { Route as RVenueSlugTTokenRouteImport } from './routes/r.$venueSlug.t.$token'
@@ -99,6 +103,11 @@ const AppareilIndexRoute = AppareilIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AppareilRoute,
 } as any)
+const AppareilCaisseRoute = AppareilCaisseRouteImport.update({
+  id: '/caisse',
+  path: '/caisse',
+  getParentRoute: () => AppareilRoute,
+} as any)
 const MenuVenueSlugRoute = MenuVenueSlugRouteImport.update({
   id: '/menu/$venueSlug',
   path: '/menu/$venueSlug',
@@ -127,6 +136,11 @@ const AuthAppMenuRoute = AuthAppMenuRouteImport.update({
 const AuthAppOnboardingRoute = AuthAppOnboardingRouteImport.update({
   id: '/onboarding',
   path: '/onboarding',
+  getParentRoute: () => AuthAppRoute,
+} as any)
+const AuthAppRapportRoute = AuthAppRapportRouteImport.update({
+  id: '/rapport',
+  path: '/rapport',
   getParentRoute: () => AuthAppRoute,
 } as any)
 const AuthAppServiceRoute = AuthAppServiceRouteImport.update({
@@ -214,9 +228,19 @@ const AuthAppServiceIndexRoute = AuthAppServiceIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AuthAppServiceRoute,
 } as any)
+const AuthAppServiceCaisseRoute = AuthAppServiceCaisseRouteImport.update({
+  id: '/caisse',
+  path: '/caisse',
+  getParentRoute: () => AuthAppServiceRoute,
+} as any)
 const AuthAppSettingsDevicesRoute = AuthAppSettingsDevicesRouteImport.update({
   id: '/settings/devices',
   path: '/settings/devices',
+  getParentRoute: () => AuthAppRoute,
+} as any)
+const AuthAppSettingsPaymentsRoute = AuthAppSettingsPaymentsRouteImport.update({
+  id: '/settings/payments',
+  path: '/settings/payments',
   getParentRoute: () => AuthAppRoute,
 } as any)
 const AuthAppSettingsStationsRoute = AuthAppSettingsStationsRouteImport.update({
@@ -262,12 +286,14 @@ export interface FileRoutesByFullPath {
   '/connexion': typeof AuthConnexionRoute
   '/api/client-errors': typeof ApiClientErrorsRoute
   '/api/health': typeof ApiHealthRoute
+  '/appareil/caisse': typeof AppareilCaisseRoute
   '/menu/$venueSlug': typeof MenuVenueSlugRoute
   '/appareil/': typeof AppareilIndexRoute
   '/app/account': typeof AuthAppAccountRoute
   '/app/cuisine': typeof AuthAppCuisineRoute
   '/app/menu': typeof AuthAppMenuRouteWithChildren
   '/app/onboarding': typeof AuthAppOnboardingRoute
+  '/app/rapport': typeof AuthAppRapportRoute
   '/app/service': typeof AuthAppServiceRouteWithChildren
   '/app/team': typeof AuthAppTeamRoute
   '/auth/otp': typeof AuthAuthOtpRoute
@@ -282,7 +308,9 @@ export interface FileRoutesByFullPath {
   '/app/menu/categories': typeof AuthAppMenuCategoriesRoute
   '/app/menu/options': typeof AuthAppMenuOptionsRoute
   '/app/roles/$roleId': typeof AuthAppRolesRoleIdRoute
+  '/app/service/caisse': typeof AuthAppServiceCaisseRoute
   '/app/settings/devices': typeof AuthAppSettingsDevicesRoute
+  '/app/settings/payments': typeof AuthAppSettingsPaymentsRoute
   '/app/settings/stations': typeof AuthAppSettingsStationsRoute
   '/app/settings/venue': typeof AuthAppSettingsVenueRoute
   '/r/$venueSlug/t/$token': typeof RVenueSlugTTokenRoute
@@ -301,11 +329,13 @@ export interface FileRoutesByTo {
   '/connexion': typeof AuthConnexionRoute
   '/api/client-errors': typeof ApiClientErrorsRoute
   '/api/health': typeof ApiHealthRoute
+  '/appareil/caisse': typeof AppareilCaisseRoute
   '/menu/$venueSlug': typeof MenuVenueSlugRoute
   '/appareil': typeof AppareilIndexRoute
   '/app/account': typeof AuthAppAccountRoute
   '/app/cuisine': typeof AuthAppCuisineRoute
   '/app/onboarding': typeof AuthAppOnboardingRoute
+  '/app/rapport': typeof AuthAppRapportRoute
   '/app/team': typeof AuthAppTeamRoute
   '/auth/otp': typeof AuthAuthOtpRoute
   '/invitation/$token': typeof AuthInvitationTokenRoute
@@ -319,7 +349,9 @@ export interface FileRoutesByTo {
   '/app/menu/categories': typeof AuthAppMenuCategoriesRoute
   '/app/menu/options': typeof AuthAppMenuOptionsRoute
   '/app/roles/$roleId': typeof AuthAppRolesRoleIdRoute
+  '/app/service/caisse': typeof AuthAppServiceCaisseRoute
   '/app/settings/devices': typeof AuthAppSettingsDevicesRoute
+  '/app/settings/payments': typeof AuthAppSettingsPaymentsRoute
   '/app/settings/stations': typeof AuthAppSettingsStationsRoute
   '/app/settings/venue': typeof AuthAppSettingsVenueRoute
   '/r/$venueSlug/t/$token': typeof RVenueSlugTTokenRoute
@@ -342,12 +374,14 @@ export interface FileRoutesById {
   '/_auth/connexion': typeof AuthConnexionRoute
   '/api/client-errors': typeof ApiClientErrorsRoute
   '/api/health': typeof ApiHealthRoute
+  '/appareil/caisse': typeof AppareilCaisseRoute
   '/menu/$venueSlug': typeof MenuVenueSlugRoute
   '/appareil/': typeof AppareilIndexRoute
   '/_auth/app/account': typeof AuthAppAccountRoute
   '/_auth/app/cuisine': typeof AuthAppCuisineRoute
   '/_auth/app/menu': typeof AuthAppMenuRouteWithChildren
   '/_auth/app/onboarding': typeof AuthAppOnboardingRoute
+  '/_auth/app/rapport': typeof AuthAppRapportRoute
   '/_auth/app/service': typeof AuthAppServiceRouteWithChildren
   '/_auth/app/team': typeof AuthAppTeamRoute
   '/_auth/auth/otp': typeof AuthAuthOtpRoute
@@ -362,7 +396,9 @@ export interface FileRoutesById {
   '/_auth/app/menu/categories': typeof AuthAppMenuCategoriesRoute
   '/_auth/app/menu/options': typeof AuthAppMenuOptionsRoute
   '/_auth/app/roles/$roleId': typeof AuthAppRolesRoleIdRoute
+  '/_auth/app/service/caisse': typeof AuthAppServiceCaisseRoute
   '/_auth/app/settings/devices': typeof AuthAppSettingsDevicesRoute
+  '/_auth/app/settings/payments': typeof AuthAppSettingsPaymentsRoute
   '/_auth/app/settings/stations': typeof AuthAppSettingsStationsRoute
   '/_auth/app/settings/venue': typeof AuthAppSettingsVenueRoute
   '/r/$venueSlug/t/$token': typeof RVenueSlugTTokenRoute
@@ -385,12 +421,14 @@ export interface FileRouteTypes {
     | '/connexion'
     | '/api/client-errors'
     | '/api/health'
+    | '/appareil/caisse'
     | '/menu/$venueSlug'
     | '/appareil/'
     | '/app/account'
     | '/app/cuisine'
     | '/app/menu'
     | '/app/onboarding'
+    | '/app/rapport'
     | '/app/service'
     | '/app/team'
     | '/auth/otp'
@@ -405,7 +443,9 @@ export interface FileRouteTypes {
     | '/app/menu/categories'
     | '/app/menu/options'
     | '/app/roles/$roleId'
+    | '/app/service/caisse'
     | '/app/settings/devices'
+    | '/app/settings/payments'
     | '/app/settings/stations'
     | '/app/settings/venue'
     | '/r/$venueSlug/t/$token'
@@ -424,11 +464,13 @@ export interface FileRouteTypes {
     | '/connexion'
     | '/api/client-errors'
     | '/api/health'
+    | '/appareil/caisse'
     | '/menu/$venueSlug'
     | '/appareil'
     | '/app/account'
     | '/app/cuisine'
     | '/app/onboarding'
+    | '/app/rapport'
     | '/app/team'
     | '/auth/otp'
     | '/invitation/$token'
@@ -442,7 +484,9 @@ export interface FileRouteTypes {
     | '/app/menu/categories'
     | '/app/menu/options'
     | '/app/roles/$roleId'
+    | '/app/service/caisse'
     | '/app/settings/devices'
+    | '/app/settings/payments'
     | '/app/settings/stations'
     | '/app/settings/venue'
     | '/r/$venueSlug/t/$token'
@@ -464,12 +508,14 @@ export interface FileRouteTypes {
     | '/_auth/connexion'
     | '/api/client-errors'
     | '/api/health'
+    | '/appareil/caisse'
     | '/menu/$venueSlug'
     | '/appareil/'
     | '/_auth/app/account'
     | '/_auth/app/cuisine'
     | '/_auth/app/menu'
     | '/_auth/app/onboarding'
+    | '/_auth/app/rapport'
     | '/_auth/app/service'
     | '/_auth/app/team'
     | '/_auth/auth/otp'
@@ -484,7 +530,9 @@ export interface FileRouteTypes {
     | '/_auth/app/menu/categories'
     | '/_auth/app/menu/options'
     | '/_auth/app/roles/$roleId'
+    | '/_auth/app/service/caisse'
     | '/_auth/app/settings/devices'
+    | '/_auth/app/settings/payments'
     | '/_auth/app/settings/stations'
     | '/_auth/app/settings/venue'
     | '/r/$venueSlug/t/$token'
@@ -584,6 +632,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppareilIndexRouteImport
       parentRoute: typeof AppareilRoute
     }
+    '/appareil/caisse': {
+      id: '/appareil/caisse'
+      path: '/caisse'
+      fullPath: '/appareil/caisse'
+      preLoaderRoute: typeof AppareilCaisseRouteImport
+      parentRoute: typeof AppareilRoute
+    }
     '/menu/$venueSlug': {
       id: '/menu/$venueSlug'
       path: '/menu/$venueSlug'
@@ -624,6 +679,13 @@ declare module '@tanstack/react-router' {
       path: '/onboarding'
       fullPath: '/app/onboarding'
       preLoaderRoute: typeof AuthAppOnboardingRouteImport
+      parentRoute: typeof AuthAppRoute
+    }
+    '/_auth/app/rapport': {
+      id: '/_auth/app/rapport'
+      path: '/rapport'
+      fullPath: '/app/rapport'
+      preLoaderRoute: typeof AuthAppRapportRouteImport
       parentRoute: typeof AuthAppRoute
     }
     '/_auth/app/service': {
@@ -745,11 +807,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthAppServiceIndexRouteImport
       parentRoute: typeof AuthAppServiceRoute
     }
+    '/_auth/app/service/caisse': {
+      id: '/_auth/app/service/caisse'
+      path: '/caisse'
+      fullPath: '/app/service/caisse'
+      preLoaderRoute: typeof AuthAppServiceCaisseRouteImport
+      parentRoute: typeof AuthAppServiceRoute
+    }
     '/_auth/app/settings/devices': {
       id: '/_auth/app/settings/devices'
       path: '/settings/devices'
       fullPath: '/app/settings/devices'
       preLoaderRoute: typeof AuthAppSettingsDevicesRouteImport
+      parentRoute: typeof AuthAppRoute
+    }
+    '/_auth/app/settings/payments': {
+      id: '/_auth/app/settings/payments'
+      path: '/settings/payments'
+      fullPath: '/app/settings/payments'
+      preLoaderRoute: typeof AuthAppSettingsPaymentsRouteImport
       parentRoute: typeof AuthAppRoute
     }
     '/_auth/app/settings/stations': {
@@ -820,11 +896,13 @@ const AuthAppMenuRouteWithChildren = AuthAppMenuRoute._addFileChildren(
 )
 
 interface AuthAppServiceRouteChildren {
+  AuthAppServiceCaisseRoute: typeof AuthAppServiceCaisseRoute
   AuthAppServiceIndexRoute: typeof AuthAppServiceIndexRoute
   AuthAppServiceTableTableIdRoute: typeof AuthAppServiceTableTableIdRoute
 }
 
 const AuthAppServiceRouteChildren: AuthAppServiceRouteChildren = {
+  AuthAppServiceCaisseRoute: AuthAppServiceCaisseRoute,
   AuthAppServiceIndexRoute: AuthAppServiceIndexRoute,
   AuthAppServiceTableTableIdRoute: AuthAppServiceTableTableIdRoute,
 }
@@ -838,12 +916,14 @@ interface AuthAppRouteChildren {
   AuthAppCuisineRoute: typeof AuthAppCuisineRoute
   AuthAppMenuRoute: typeof AuthAppMenuRouteWithChildren
   AuthAppOnboardingRoute: typeof AuthAppOnboardingRoute
+  AuthAppRapportRoute: typeof AuthAppRapportRoute
   AuthAppServiceRoute: typeof AuthAppServiceRouteWithChildren
   AuthAppTeamRoute: typeof AuthAppTeamRoute
   AuthAppIndexRoute: typeof AuthAppIndexRoute
   AuthAppFloorPrintRoute: typeof AuthAppFloorPrintRoute
   AuthAppRolesRoleIdRoute: typeof AuthAppRolesRoleIdRoute
   AuthAppSettingsDevicesRoute: typeof AuthAppSettingsDevicesRoute
+  AuthAppSettingsPaymentsRoute: typeof AuthAppSettingsPaymentsRoute
   AuthAppSettingsStationsRoute: typeof AuthAppSettingsStationsRoute
   AuthAppSettingsVenueRoute: typeof AuthAppSettingsVenueRoute
   AuthAppFloorIndexRoute: typeof AuthAppFloorIndexRoute
@@ -855,12 +935,14 @@ const AuthAppRouteChildren: AuthAppRouteChildren = {
   AuthAppCuisineRoute: AuthAppCuisineRoute,
   AuthAppMenuRoute: AuthAppMenuRouteWithChildren,
   AuthAppOnboardingRoute: AuthAppOnboardingRoute,
+  AuthAppRapportRoute: AuthAppRapportRoute,
   AuthAppServiceRoute: AuthAppServiceRouteWithChildren,
   AuthAppTeamRoute: AuthAppTeamRoute,
   AuthAppIndexRoute: AuthAppIndexRoute,
   AuthAppFloorPrintRoute: AuthAppFloorPrintRoute,
   AuthAppRolesRoleIdRoute: AuthAppRolesRoleIdRoute,
   AuthAppSettingsDevicesRoute: AuthAppSettingsDevicesRoute,
+  AuthAppSettingsPaymentsRoute: AuthAppSettingsPaymentsRoute,
   AuthAppSettingsStationsRoute: AuthAppSettingsStationsRoute,
   AuthAppSettingsVenueRoute: AuthAppSettingsVenueRoute,
   AuthAppFloorIndexRoute: AuthAppFloorIndexRoute,
@@ -887,11 +969,13 @@ const AuthRouteChildren: AuthRouteChildren = {
 const AuthRouteWithChildren = AuthRoute._addFileChildren(AuthRouteChildren)
 
 interface AppareilRouteChildren {
+  AppareilCaisseRoute: typeof AppareilCaisseRoute
   AppareilIndexRoute: typeof AppareilIndexRoute
   AppareilTableTableIdRoute: typeof AppareilTableTableIdRoute
 }
 
 const AppareilRouteChildren: AppareilRouteChildren = {
+  AppareilCaisseRoute: AppareilCaisseRoute,
   AppareilIndexRoute: AppareilIndexRoute,
   AppareilTableTableIdRoute: AppareilTableTableIdRoute,
 }

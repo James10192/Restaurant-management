@@ -1,7 +1,9 @@
 import { Link, useLocation, useNavigate, useRouter } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
 import {
+  Banknote,
   Building2,
+  ClipboardList,
   ChefHat,
   ChevronsUpDown,
   ConciergeBell,
@@ -15,6 +17,7 @@ import {
   UserRound,
   Users,
   UtensilsCrossed,
+  Wallet,
   type LucideIcon,
 } from "lucide-react";
 import { api } from "../../../convex/_generated/api";
@@ -54,6 +57,13 @@ export function useNavItems(): NavItem[] {
     { to: "/app", label: "Accueil", icon: House, show: true, exact: true },
     { to: "/app/service", label: "Service", icon: ConciergeBell, show: w.canInVenue("table.read") },
     { to: "/app/cuisine", label: "Cuisine", icon: ChefHat, show: w.canInVenue("kitchen.ticket.update") },
+    {
+      to: "/app/service/caisse",
+      label: "Caisse",
+      icon: Wallet,
+      show: w.canInVenue("table.read") && (w.canInVenue("payment.collect") || w.canInVenue("cash_register.open") || w.canInVenue("cash_register.close")),
+    },
+    { to: "/app/rapport", label: "Fin de service", icon: ClipboardList, show: w.canInVenue("analytics.financial.read") },
     { to: "/app/team", label: "Équipe", icon: Users, show: w.canInVenue("team.read") || w.canInOrganization("team.read") },
     {
       to: "/app/menu",
@@ -64,6 +74,7 @@ export function useNavItems(): NavItem[] {
     { to: "/app/floor", label: "Plan de salle", icon: LayoutGrid, show: w.canInVenue("table.read") },
     { to: "/app/roles", label: "Rôles", icon: ShieldCheck, show: w.canInOrganization("permissions.manage") },
     { to: "/app/settings/stations", label: "Postes de préparation", icon: Flame, show: w.canInVenue("kitchen.manage") },
+    { to: "/app/settings/payments", label: "Encaissement", icon: Banknote, show: w.canInVenue("venue.settings.service") },
     { to: "/app/settings/devices", label: "Appareils", icon: TabletSmartphone, show: w.canInVenue("device.manage") || w.canInVenue("venue.settings.service") },
     { to: "/app/settings/venue", label: "Établissement", icon: Settings, show: w.canInVenue("venue.manage") },
   ].filter((item) => item.show);
@@ -93,7 +104,10 @@ export function AppSidebar() {
               <nav aria-label="Navigation principale">
                 <SidebarMenu>
                   {items.map((item) => {
-                    const active = item.exact ? pathname === item.to : pathname === item.to || pathname.startsWith(`${item.to}/`);
+                    // L'entrée la plus précise l'emporte : « Caisse » (/app/service/caisse) n'allume pas « Service ».
+                    const matches = (i: NavItem) => (i.exact ? pathname === i.to : pathname === i.to || pathname.startsWith(`${i.to}/`));
+                    const best = items.filter(matches).sort((x, y) => y.to.length - x.to.length)[0];
+                    const active = best?.to === item.to;
                     return (
                       <SidebarMenuItem key={item.to}>
                         <SidebarMenuButton asChild isActive={active} tooltip={item.label}>

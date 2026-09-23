@@ -52,13 +52,16 @@ export const serviceDay = query({
     if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw invalid("Jour invalide.");
     const { from, to } = serviceDayWindow(day, venue.timezone, startHour);
     const nameOf = names(ctx);
+    // Les données de simulation n'entrent dans aucun chiffre réel (G2). Mais l'établissement de
+    // démonstration lui-même lit les siennes : sinon son rapport serait toujours vide.
+    const hide = (isSimulation: boolean) => isSimulation && !venue.isSimulation;
     const tableOf = tables(ctx);
 
     // ── Encaissements ──────────────────────────────────────────────────────
     const payments = (await ctx.db
       .query("payments")
       .withIndex("by_venue_createdAt", (q) => q.eq("venueId", venue._id).gte("createdAt", from).lt("createdAt", to))
-      .collect()).filter((p) => !p.isSimulation);
+      .collect()).filter((p) => !hide(p.isSimulation));
     const valid = payments.filter((p) => p.status !== "voided");
     const byMethod = new Map<string, { label: string; method: Doc<"payments">["method"]; amount: number; count: number }>();
     const byCollector = new Map<string, { name: string; amount: number; cash: number; count: number }>();
@@ -92,7 +95,7 @@ export const serviceDay = query({
     const refundRows = (await ctx.db
       .query("refunds")
       .withIndex("by_venue_createdAt", (q) => q.eq("venueId", venue._id).gte("createdAt", from).lt("createdAt", to))
-      .collect()).filter((r) => !r.isSimulation && r.status === "succeeded");
+      .collect()).filter((r) => !hide(r.isSimulation) && r.status === "succeeded");
     const refunds = [];
     for (const r of refundRows) {
       const payment = await ctx.db.get(r.paymentId);
@@ -115,7 +118,7 @@ export const serviceDay = query({
     const adjustments = [];
     for (const a of adjustmentRows) {
       const session = await ctx.db.get(a.tableSessionId);
-      if (session?.isSimulation) continue;
+      if (session && hide(session.isSimulation)) continue;
       adjustments.push({
         _id: a._id,
         type: a.type,
@@ -145,7 +148,7 @@ export const serviceDay = query({
     const cashSessions = [];
     const seen = new Set<string>();
     for (const s of [...opened, ...live]) {
-      if (seen.has(s._id) || s.isSimulation) continue;
+      if (seen.has(s._id) || hide(s.isSimulation)) continue;
       seen.add(s._id);
       const register = s.cashRegisterId ? await ctx.db.get(s.cashRegisterId) : null;
       const holder = await nameOf(s.holderMemberId);
@@ -176,7 +179,7 @@ export const serviceDay = query({
     const debtRows = (await ctx.db
       .query("tableSessions")
       .withIndex("by_venue_status", (q) => q.eq("venueId", venue._id).eq("status", "closed_with_debt"))
-      .collect()).filter((s) => !s.isSimulation && (s.closedAt ?? 0) >= from && (s.closedAt ?? 0) < to);
+      .collect()).filter((s) => !hide(s.isSimulation) && (s.closedAt ?? 0) >= from && (s.closedAt ?? 0) < to);
     const debts = [];
     for (const s of debtRows) {
       debts.push({ _id: s._id, table: await tableOf(s._id), reference: s.reference, amount: s.debtAmount ?? 0, reason: s.closeReason ?? null, by: await nameOf(s.closedByMemberId), at: s.closedAt ?? 0 });
@@ -188,7 +191,7 @@ export const serviceDay = query({
         .withIndex("by_venue_status", (q) => q.eq("venueId", venue._id).eq("status", status))
         .collect();
       for (const s of rows) {
-        if (s.isSimulation) continue;
+        if (hide(s.isSimulation)) continue;
         const billing = await loadSessionBilling(ctx, s);
         openTables.push({ _id: s._id, table: await tableOf(s._id), reference: s.reference, due: billing.due, waiter: await nameOf(s.assignedWaiterMemberId), openedAt: s.openedAt });
       }
@@ -206,7 +209,7 @@ export const serviceDay = query({
       const order = await ctx.db.get(e.orderId);
       if (!order) continue;
       const session = await ctx.db.get(order.tableSessionId);
-      if (session?.isSimulation) continue;
+      if (session && hide(session.isSimulation)) continue;
       cancellations.push({
         _id: e._id,
         table: await tableOf(order.tableSessionId),
@@ -228,6 +231,7 @@ export const serviceDay = query({
       to,
       currency: venue.currency,
       timezone: venue.timezone,
+      simulation: venue.isSimulation,
       totals: { collected, refunded, net: collected - refunded, count: valid.length },
       byMethod: [...byMethod.values()].sort((a, b) => b.amount - a.amount),
       byCollector: [...byCollector.values()].sort((a, b) => b.amount - a.amount),

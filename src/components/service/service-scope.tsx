@@ -33,6 +33,8 @@ export type ServiceScope = {
 export type ServiceNav = {
   board: () => void;
   table: (tableId: Id<"restaurantTables">) => void;
+  /** La caisse : ouvrir, sortir de l'argent, compter, clôturer (T3). */
+  cash: () => void;
 };
 
 const ServiceScopeContext = createContext<ServiceScope | null>(null);

@@ -129,3 +129,21 @@
     @apply font-sans;
     }
 }
+/*
+ * Impression d'un ticket ou d'une note de table (T3). Pendant l'impression, seule la pièce part au
+ * papier : tout le reste du document est masqué. Page nommée « ticket » : 80 mm de large, la
+ * largeur des imprimantes thermiques courantes ; la planche de QR (A4) garde sa page par défaut.
+ */
+@page ticket {
+  size: 80mm auto;
+  margin: 3mm;
+}
+
+@media print {
+  body.joliba-printing > *:not(.joliba-print-root) {
+    display: none !important;
+  }
+  .joliba-print-root {
+    page: ticket;
+  }
+}

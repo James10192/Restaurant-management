@@ -45,7 +45,8 @@ function DeviceGate() {
   const navigate = useNavigate();
   const board = useCallback(() => void navigate({ to: "/appareil" }), [navigate]);
   const table = useCallback((tableId: Id<"restaurantTables">) => void navigate({ to: "/appareil/table/$tableId", params: { tableId } }), [navigate]);
-  const nav = useMemo<ServiceNav>(() => ({ board, table }), [board, table]);
+  const cash = useCallback(() => void navigate({ to: "/appareil/caisse" }), [navigate]);
+  const nav = useMemo<ServiceNav>(() => ({ board, table, cash }), [board, table, cash]);
   const lock = useCallback(() => {
     device.lock();
     board();

@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
-import { Bell, Check, ChefHat, Clock, Hand, LayoutGrid, Lock, Users, X } from "lucide-react";
+import { Bell, Check, ChefHat, Clock, Hand, LayoutGrid, Lock, Users, Wallet, X } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
@@ -65,12 +65,20 @@ export function FloorBoard() {
             {scope.name ? ` · ${scope.name}` : ""}
           </p>
         </div>
-        {scope.lock ? (
-          <Button variant="outline" onClick={scope.lock}>
-            <Lock />
-            Verrouiller
-          </Button>
-        ) : null}
+        <div className="flex flex-wrap gap-2">
+          {scope.can("payment.collect") || scope.can("cash_register.open") || scope.can("cash_register.close") ? (
+            <Button variant="outline" onClick={scope.nav.cash}>
+              <Wallet />
+              Caisse
+            </Button>
+          ) : null}
+          {scope.lock ? (
+            <Button variant="outline" onClick={scope.lock}>
+              <Lock />
+              Verrouiller
+            </Button>
+          ) : null}
+        </div>
       </div>
       <ServiceStatus />
       <Tabs value={tab} onValueChange={setTab}>
