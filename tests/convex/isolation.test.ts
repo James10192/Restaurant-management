@@ -13,7 +13,8 @@
 
 import { describe, expect, test } from "vitest";
 import { api } from "../../convex/_generated/api";
-import { expectCode, inviteAndJoin, modules, openOrganization, setup } from "./setup";
+import type { Id } from "../../convex/_generated/dataModel";
+import { expectCode, inviteAndJoin, modules, openOrganization, setup, type Session } from "./setup";
 
 async function twoTenants() {
   const t = setup();
@@ -45,7 +46,54 @@ async function twoTenants() {
     { organizationId: a.organizationId, roleId: a.roleId("waiter"), venueIds: [a.venueId] },
     { email: "serveur@maquis-a.ci" },
   );
-  return { t, a, b, venueA2, waiterA, waiterB, pendingB, invitationB };
+  const catalogA = await catalogFor(a.owner, a.venueId, "A");
+  const catalogB = await catalogFor(b.owner, b.venueId, "B");
+  const ruleB = await b.owner.as.mutation(api.availability.createRule, {
+    venueId: b.venueId,
+    targetType: "product",
+    targetId: catalogB.productId,
+    ruleType: "available",
+    daysOfWeek: [1, 2, 3, 4, 5],
+    startMinute: 420,
+    endMinute: 660,
+  });
+  return { t, a, b, venueA2, waiterA, waiterB, pendingB, invitationB, catalogA, catalogB, ruleB };
+}
+
+/** Une carte complète et publiée : section, produit, variante, groupe d'options. */
+async function catalogFor(owner: Session, venueId: Id<"venues">, tag: string) {
+  const menuId = await owner.as.mutation(api.menus.create, { venueId, name: `Carte ${tag}` });
+  const [sectionId] = await owner.as.mutation(api.menus.createSections, { venueId, menuId, names: [`Plats ${tag}`] });
+  const productId = await owner.as.mutation(api.products.create, {
+    venueId,
+    menuSectionId: sectionId!,
+    name: `Plat ${tag}`,
+    basePrice: 2000,
+  });
+  const variantId = await owner.as.mutation(api.products.addVariant, { venueId, productId, name: "Grand", price: 3000 });
+  const groupId = await owner.as.mutation(api.modifiers.createGroup, {
+    venueId,
+    name: `Cuisson ${tag}`,
+    selectionType: "single",
+    minSelect: 0,
+    maxSelect: 1,
+    isRequired: false,
+    options: [
+      { name: "Saignant", priceDelta: 0 },
+      { name: "À point", priceDelta: 0 },
+    ],
+  });
+  await owner.as.mutation(api.products.setModifierGroups, { venueId, productId, modifierGroupIds: [groupId] });
+  const optionId = (await owner.as.query(api.modifiers.list, { venueId }))[0]!.options[0]!._id;
+  await owner.as.mutation(api.publications.publish, { venueId, menuId });
+  const [publication] = await owner.as.query(api.publications.history, { venueId, menuId });
+  return { menuId, sectionId: sectionId!, productId, variantId, groupId, optionId, publicationId: publication!._id };
+}
+
+/** Les deux formes de franchissement : l'établissement de B, puis le sien avec un objet de B. */
+async function bothRefused(viaForeignVenue: Promise<unknown>, viaCrossedId: Promise<unknown>) {
+  await expectCode(viaForeignVenue, "NOT_FOUND");
+  await expectCode(viaCrossedId, "NOT_FOUND");
 }
 
 /**
@@ -241,6 +289,304 @@ const CASES: Record<string, (w: Awaited<ReturnType<typeof twoTenants>>) => Promi
       "NOT_FOUND",
     );
   },
+  /* ─── Carte ─── */
+  "menus.list": async ({ a, b }) => {
+    await expectCode(a.owner.as.query(api.menus.list, { venueId: b.venueId }), "NOT_FOUND");
+  },
+  "menus.editor": async ({ a, b, catalogB }) => {
+    await bothRefused(
+      a.owner.as.query(api.menus.editor, { venueId: b.venueId, menuId: catalogB.menuId }),
+      a.owner.as.query(api.menus.editor, { venueId: a.venueId, menuId: catalogB.menuId }),
+    );
+  },
+  "menus.create": async ({ a, b }) => {
+    await expectCode(a.owner.as.mutation(api.menus.create, { venueId: b.venueId, name: "Intrus" }), "NOT_FOUND");
+  },
+  "menus.update": async ({ a, b, catalogB }) => {
+    await bothRefused(
+      a.owner.as.mutation(api.menus.update, { venueId: b.venueId, menuId: catalogB.menuId, name: "Piraté" }),
+      a.owner.as.mutation(api.menus.update, { venueId: a.venueId, menuId: catalogB.menuId, name: "Piraté" }),
+    );
+  },
+  "menus.archive": async ({ a, b, catalogB }) => {
+    await bothRefused(
+      a.owner.as.mutation(api.menus.archive, { venueId: b.venueId, menuId: catalogB.menuId }),
+      a.owner.as.mutation(api.menus.archive, { venueId: a.venueId, menuId: catalogB.menuId }),
+    );
+  },
+  "menus.reorder": async ({ a, b, catalogA, catalogB }) => {
+    await bothRefused(
+      a.owner.as.mutation(api.menus.reorder, { venueId: b.venueId, menuIds: [catalogB.menuId] }),
+      a.owner.as.mutation(api.menus.reorder, { venueId: a.venueId, menuIds: [catalogA.menuId, catalogB.menuId] }),
+    );
+  },
+  "menus.createSections": async ({ a, b, catalogB }) => {
+    await bothRefused(
+      a.owner.as.mutation(api.menus.createSections, { venueId: b.venueId, menuId: catalogB.menuId, names: ["X"] }),
+      a.owner.as.mutation(api.menus.createSections, { venueId: a.venueId, menuId: catalogB.menuId, names: ["X"] }),
+    );
+  },
+  "menus.updateSection": async ({ a, b, catalogB }) => {
+    await bothRefused(
+      a.owner.as.mutation(api.menus.updateSection, { venueId: b.venueId, sectionId: catalogB.sectionId, name: "X" }),
+      a.owner.as.mutation(api.menus.updateSection, { venueId: a.venueId, sectionId: catalogB.sectionId, name: "X" }),
+    );
+  },
+  "menus.reorderSections": async ({ a, b, catalogA, catalogB }) => {
+    await bothRefused(
+      a.owner.as.mutation(api.menus.reorderSections, { venueId: b.venueId, menuId: catalogB.menuId, sectionIds: [catalogB.sectionId] }),
+      a.owner.as.mutation(api.menus.reorderSections, {
+        venueId: a.venueId,
+        menuId: catalogA.menuId,
+        sectionIds: [catalogA.sectionId, catalogB.sectionId],
+      }),
+    );
+  },
+  "products.list": async ({ a, b }) => {
+    await expectCode(a.owner.as.query(api.products.list, { venueId: b.venueId }), "NOT_FOUND");
+    const mine = await a.owner.as.query(api.products.list, { venueId: a.venueId, search: "Plat" });
+    expect(mine.map((p) => p.name)).toEqual(["Plat A"]);
+  },
+  "products.get": async ({ a, b, catalogB }) => {
+    await bothRefused(
+      a.owner.as.query(api.products.get, { venueId: b.venueId, productId: catalogB.productId }),
+      a.owner.as.query(api.products.get, { venueId: a.venueId, productId: catalogB.productId }),
+    );
+  },
+  "products.create": async ({ a, b, catalogB }) => {
+    await bothRefused(
+      a.owner.as.mutation(api.products.create, { venueId: b.venueId, menuSectionId: catalogB.sectionId, name: "X", basePrice: 1 }),
+      a.owner.as.mutation(api.products.create, { venueId: a.venueId, menuSectionId: catalogB.sectionId, name: "X", basePrice: 1 }),
+    );
+  },
+  "products.update": async ({ a, b, catalogA, catalogB }) => {
+    await bothRefused(
+      a.owner.as.mutation(api.products.update, { venueId: b.venueId, productId: catalogB.productId, name: "Piraté" }),
+      a.owner.as.mutation(api.products.update, { venueId: a.venueId, productId: catalogB.productId, name: "Piraté" }),
+    );
+    // Son produit, rangé dans la section de B, ou lié à un produit de B.
+    await expectCode(
+      a.owner.as.mutation(api.products.update, { venueId: a.venueId, productId: catalogA.productId, menuSectionId: catalogB.sectionId }),
+      "NOT_FOUND",
+    );
+    await expectCode(
+      a.owner.as.mutation(api.products.update, { venueId: a.venueId, productId: catalogA.productId, relatedProductIds: [catalogB.productId] }),
+      "NOT_FOUND",
+    );
+  },
+  "products.setPrice": async ({ a, b, catalogB }) => {
+    await bothRefused(
+      a.owner.as.mutation(api.products.setPrice, { venueId: b.venueId, productId: catalogB.productId, basePrice: 1 }),
+      a.owner.as.mutation(api.products.setPrice, { venueId: a.venueId, productId: catalogB.productId, basePrice: 1 }),
+    );
+  },
+  "products.setActive": async ({ a, b, catalogB }) => {
+    await bothRefused(
+      a.owner.as.mutation(api.products.setActive, { venueId: b.venueId, productId: catalogB.productId, isActive: false }),
+      a.owner.as.mutation(api.products.setActive, { venueId: a.venueId, productId: catalogB.productId, isActive: false }),
+    );
+  },
+  "products.reorder": async ({ a, b, catalogA, catalogB }) => {
+    await bothRefused(
+      a.owner.as.mutation(api.products.reorder, { venueId: b.venueId, menuSectionId: catalogB.sectionId, productIds: [catalogB.productId] }),
+      a.owner.as.mutation(api.products.reorder, {
+        venueId: a.venueId,
+        menuSectionId: catalogA.sectionId,
+        productIds: [catalogA.productId, catalogB.productId],
+      }),
+    );
+  },
+  "products.duplicate": async ({ a, b, catalogB }) => {
+    await bothRefused(
+      a.owner.as.mutation(api.products.duplicate, { venueId: b.venueId, productId: catalogB.productId }),
+      a.owner.as.mutation(api.products.duplicate, { venueId: a.venueId, productId: catalogB.productId }),
+    );
+  },
+  "products.addVariant": async ({ a, b, catalogB }) => {
+    await bothRefused(
+      a.owner.as.mutation(api.products.addVariant, { venueId: b.venueId, productId: catalogB.productId, name: "X", price: 1 }),
+      a.owner.as.mutation(api.products.addVariant, { venueId: a.venueId, productId: catalogB.productId, name: "X", price: 1 }),
+    );
+  },
+  "products.updateVariant": async ({ a, b, catalogB }) => {
+    await bothRefused(
+      a.owner.as.mutation(api.products.updateVariant, { venueId: b.venueId, variantId: catalogB.variantId, name: "X" }),
+      a.owner.as.mutation(api.products.updateVariant, { venueId: a.venueId, variantId: catalogB.variantId, name: "X" }),
+    );
+  },
+  "products.setVariantPrice": async ({ a, b, catalogB }) => {
+    await bothRefused(
+      a.owner.as.mutation(api.products.setVariantPrice, { venueId: b.venueId, variantId: catalogB.variantId, price: 1 }),
+      a.owner.as.mutation(api.products.setVariantPrice, { venueId: a.venueId, variantId: catalogB.variantId, price: 1 }),
+    );
+  },
+  "products.removeVariant": async ({ a, b, catalogB }) => {
+    await bothRefused(
+      a.owner.as.mutation(api.products.removeVariant, { venueId: b.venueId, variantId: catalogB.variantId }),
+      a.owner.as.mutation(api.products.removeVariant, { venueId: a.venueId, variantId: catalogB.variantId }),
+    );
+  },
+  "products.reorderVariants": async ({ a, b, catalogB }) => {
+    await bothRefused(
+      a.owner.as.mutation(api.products.reorderVariants, { venueId: b.venueId, productId: catalogB.productId, variantIds: [catalogB.variantId] }),
+      a.owner.as.mutation(api.products.reorderVariants, { venueId: a.venueId, productId: catalogB.productId, variantIds: [catalogB.variantId] }),
+    );
+  },
+  "products.setModifierGroups": async ({ a, b, catalogA, catalogB }) => {
+    await bothRefused(
+      a.owner.as.mutation(api.products.setModifierGroups, { venueId: b.venueId, productId: catalogB.productId, modifierGroupIds: [] }),
+      a.owner.as.mutation(api.products.setModifierGroups, {
+        venueId: a.venueId,
+        productId: catalogA.productId,
+        modifierGroupIds: [catalogB.groupId],
+      }),
+    );
+  },
+  "products.generateUploadUrl": async ({ a, b }) => {
+    await expectCode(a.owner.as.mutation(api.products.generateUploadUrl, { venueId: b.venueId }), "NOT_FOUND");
+  },
+  "products.addImage": async ({ t, a, b, catalogB }) => {
+    const file = await t.run((ctx) => ctx.storage.store(new Blob([new Uint8Array([0xff, 0xd8, 0xff, 0])])));
+    const args = { storageId: file, thumbStorageId: file, width: 800, height: 600 };
+    await bothRefused(
+      a.owner.as.action(api.products.addImage, { venueId: b.venueId, productId: catalogB.productId, ...args }),
+      a.owner.as.action(api.products.addImage, { venueId: a.venueId, productId: catalogB.productId, ...args }),
+    );
+    // Refusé, rien n'a été effacé : la garde passe AVANT toute lecture de fichier.
+    expect(await t.run((ctx) => ctx.db.system.get(file))).not.toBeNull();
+  },
+  "products.removeImage": async ({ t, a, b, catalogB }) => {
+    const file = await t.run((ctx) => ctx.storage.store(new Blob(["x"])));
+    await bothRefused(
+      a.owner.as.mutation(api.products.removeImage, { venueId: b.venueId, productId: catalogB.productId, storageId: file }),
+      a.owner.as.mutation(api.products.removeImage, { venueId: a.venueId, productId: catalogB.productId, storageId: file }),
+    );
+  },
+  "modifiers.list": async ({ a, b }) => {
+    await expectCode(a.owner.as.query(api.modifiers.list, { venueId: b.venueId }), "NOT_FOUND");
+    const mine = await a.owner.as.query(api.modifiers.list, { venueId: a.venueId });
+    expect(mine.map((g) => g.name)).toEqual(["Cuisson A"]);
+  },
+  "modifiers.createGroup": async ({ a, b }) => {
+    await expectCode(
+      a.owner.as.mutation(api.modifiers.createGroup, {
+        venueId: b.venueId,
+        name: "X",
+        selectionType: "single",
+        minSelect: 0,
+        maxSelect: 1,
+        isRequired: false,
+        options: [],
+      }),
+      "NOT_FOUND",
+    );
+  },
+  "modifiers.updateGroup": async ({ a, b, catalogB }) => {
+    await bothRefused(
+      a.owner.as.mutation(api.modifiers.updateGroup, { venueId: b.venueId, modifierGroupId: catalogB.groupId, name: "X" }),
+      a.owner.as.mutation(api.modifiers.updateGroup, { venueId: a.venueId, modifierGroupId: catalogB.groupId, name: "X" }),
+    );
+  },
+  "modifiers.deleteGroup": async ({ a, b, catalogB }) => {
+    await bothRefused(
+      a.owner.as.mutation(api.modifiers.deleteGroup, { venueId: b.venueId, modifierGroupId: catalogB.groupId }),
+      a.owner.as.mutation(api.modifiers.deleteGroup, { venueId: a.venueId, modifierGroupId: catalogB.groupId }),
+    );
+  },
+  "modifiers.addOption": async ({ a, b, catalogB }) => {
+    await bothRefused(
+      a.owner.as.mutation(api.modifiers.addOption, { venueId: b.venueId, modifierGroupId: catalogB.groupId, name: "X", priceDelta: 0 }),
+      a.owner.as.mutation(api.modifiers.addOption, { venueId: a.venueId, modifierGroupId: catalogB.groupId, name: "X", priceDelta: 0 }),
+    );
+  },
+  "modifiers.updateOption": async ({ a, b, catalogB }) => {
+    await bothRefused(
+      a.owner.as.mutation(api.modifiers.updateOption, { venueId: b.venueId, optionId: catalogB.optionId, name: "X" }),
+      a.owner.as.mutation(api.modifiers.updateOption, { venueId: a.venueId, optionId: catalogB.optionId, name: "X" }),
+    );
+  },
+  "modifiers.setOptionPrice": async ({ a, b, catalogB }) => {
+    await bothRefused(
+      a.owner.as.mutation(api.modifiers.setOptionPrice, { venueId: b.venueId, optionId: catalogB.optionId, priceDelta: 1 }),
+      a.owner.as.mutation(api.modifiers.setOptionPrice, { venueId: a.venueId, optionId: catalogB.optionId, priceDelta: 1 }),
+    );
+  },
+  "modifiers.removeOption": async ({ a, b, catalogB }) => {
+    await bothRefused(
+      a.owner.as.mutation(api.modifiers.removeOption, { venueId: b.venueId, optionId: catalogB.optionId }),
+      a.owner.as.mutation(api.modifiers.removeOption, { venueId: a.venueId, optionId: catalogB.optionId }),
+    );
+  },
+  "modifiers.reorderOptions": async ({ a, b, catalogB }) => {
+    await bothRefused(
+      a.owner.as.mutation(api.modifiers.reorderOptions, { venueId: b.venueId, modifierGroupId: catalogB.groupId, optionIds: [] }),
+      a.owner.as.mutation(api.modifiers.reorderOptions, { venueId: a.venueId, modifierGroupId: catalogB.groupId, optionIds: [] }),
+    );
+  },
+  "publications.pendingChanges": async ({ a, b, catalogB }) => {
+    await bothRefused(
+      a.owner.as.query(api.publications.pendingChanges, { venueId: b.venueId, menuId: catalogB.menuId }),
+      a.owner.as.query(api.publications.pendingChanges, { venueId: a.venueId, menuId: catalogB.menuId }),
+    );
+  },
+  "publications.publish": async ({ a, b, catalogB }) => {
+    await bothRefused(
+      a.owner.as.mutation(api.publications.publish, { venueId: b.venueId, menuId: catalogB.menuId }),
+      a.owner.as.mutation(api.publications.publish, { venueId: a.venueId, menuId: catalogB.menuId }),
+    );
+  },
+  "publications.history": async ({ a, b, catalogB }) => {
+    await bothRefused(
+      a.owner.as.query(api.publications.history, { venueId: b.venueId, menuId: catalogB.menuId }),
+      a.owner.as.query(api.publications.history, { venueId: a.venueId, menuId: catalogB.menuId }),
+    );
+  },
+  "publications.rollback": async ({ a, b, catalogA, catalogB }) => {
+    await bothRefused(
+      a.owner.as.mutation(api.publications.rollback, { venueId: b.venueId, menuId: catalogB.menuId, publicationId: catalogB.publicationId }),
+      // Sa carte, la version de B : une publication étrangère ne se remet pas en ligne chez soi.
+      a.owner.as.mutation(api.publications.rollback, { venueId: a.venueId, menuId: catalogA.menuId, publicationId: catalogB.publicationId }),
+    );
+  },
+  "availability.board": async ({ a, b }) => {
+    await expectCode(a.owner.as.query(api.availability.board, { venueId: b.venueId }), "NOT_FOUND");
+  },
+  "availability.setProduct": async ({ a, b, catalogB }) => {
+    await bothRefused(
+      a.owner.as.mutation(api.availability.setProduct, { venueId: b.venueId, productId: catalogB.productId, isAvailable: false }),
+      a.owner.as.mutation(api.availability.setProduct, { venueId: a.venueId, productId: catalogB.productId, isAvailable: false }),
+    );
+  },
+  "availability.setVariant": async ({ a, b, catalogB }) => {
+    await bothRefused(
+      a.owner.as.mutation(api.availability.setVariant, { venueId: b.venueId, variantId: catalogB.variantId, isAvailable: false }),
+      a.owner.as.mutation(api.availability.setVariant, { venueId: a.venueId, variantId: catalogB.variantId, isAvailable: false }),
+    );
+  },
+  "availability.setOption": async ({ a, b, catalogB }) => {
+    await bothRefused(
+      a.owner.as.mutation(api.availability.setOption, { venueId: b.venueId, optionId: catalogB.optionId, isAvailable: false }),
+      a.owner.as.mutation(api.availability.setOption, { venueId: a.venueId, optionId: catalogB.optionId, isAvailable: false }),
+    );
+  },
+  "availability.createRule": async ({ a, b, catalogB }) => {
+    const rule = { targetType: "product" as const, ruleType: "unavailable" as const, daysOfWeek: [1], startMinute: 0, endMinute: 60 };
+    await expectCode(
+      a.owner.as.mutation(api.availability.createRule, { venueId: b.venueId, targetId: catalogB.productId, ...rule }),
+      "NOT_FOUND",
+    );
+    // Sa portée, une cible de B : refusée comme cible inconnue, sans confirmer son existence.
+    await expectCode(
+      a.owner.as.mutation(api.availability.createRule, { venueId: a.venueId, targetId: catalogB.productId, ...rule }),
+      "INVALID_ARGUMENT",
+    );
+  },
+  "availability.deleteRule": async ({ a, b, ruleB }) => {
+    await bothRefused(
+      a.owner.as.mutation(api.availability.deleteRule, { venueId: b.venueId, ruleId: ruleB }),
+      a.owner.as.mutation(api.availability.deleteRule, { venueId: a.venueId, ruleId: ruleB }),
+    );
+  },
 };
 
 describe("isolation multi-tenant : A ne voit ni ne touche rien de B", () => {
@@ -255,6 +601,18 @@ describe("isolation multi-tenant : A ne voit ni ne touche rien de B", () => {
       const members = await world.b.owner.as.query(api.team.listMembers, { scope: { organizationId: world.b.organizationId } });
       expect(members.map((m) => m.email).sort()).toEqual(["bakary@lounge-b.ci", "serveur@lounge-b.ci"]);
       expect(members.find((m) => m.email === "serveur@lounge-b.ci")?.status).toBe("active");
+      // Et la carte de B est intacte : produit, prix, disponibilité, version en ligne.
+      const productB = await world.b.owner.as.query(api.products.get, { venueId: world.b.venueId, productId: world.catalogB.productId });
+      expect([productB.name, productB.basePrice, productB.isActive, productB.isAvailable]).toEqual(["Plat B", 2000, true, true]);
+      expect(productB.variants.map((x) => [x.name, x.price])).toEqual([["Grand", 3000]]);
+      const groupsB = await world.b.owner.as.query(api.modifiers.list, { venueId: world.b.venueId });
+      expect(groupsB.map((g) => [g.name, g.options.map((o) => [o.name, o.priceDelta, o.isAvailable])])).toEqual([
+        ["Cuisson B", [["Saignant", 0, true], ["À point", 0, true]]],
+      ]);
+      const historyB = await world.b.owner.as.query(api.publications.history, { venueId: world.b.venueId, menuId: world.catalogB.menuId });
+      expect(historyB.map((h) => [h.version, h.isCurrent])).toEqual([[1, true]]);
+      const boardB = await world.b.owner.as.query(api.availability.board, { venueId: world.b.venueId });
+      expect(boardB.rules).toHaveLength(1);
     });
   }
 

@@ -485,7 +485,20 @@ export default defineSchema({
     promoPrice: v.optional(money),
     promoEndsAt: v.optional(v.number()),
     taxCodes: v.array(v.string()),
-    imageStorageIds: v.array(v.id("_storage")),
+    /**
+     * Photos, dans l'ordre d'affichage. Chacune a sa vignette et ses dimensions : la carte
+     * client réserve la place AVANT le chargement (aucun décalage de mise en page) et ne
+     * télécharge que la vignette en liste — c'est le poste qui coûte le plus sur une 4G
+     * bridée. Réduites dans le navigateur avant l'envoi : Convex ne transforme pas d'images.
+     */
+    images: v.array(
+      v.object({
+        storageId: v.id("_storage"),
+        thumbStorageId: v.id("_storage"),
+        width: v.number(),
+        height: v.number(),
+      }),
+    ),
     prepStationId: v.optional(v.id("prepStations")),
     prepMinutes: v.optional(v.number()),
     tags: v.array(v.string()),

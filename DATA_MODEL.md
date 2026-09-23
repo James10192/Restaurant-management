@@ -319,7 +319,7 @@ menu client.
 | `basePrice`, `currency` | number (entier), string | *(D-004)* |
 | `promoPrice?`, `promoEndsAt?` | | |
 | `taxCodes` | string[] | renvoie à `venueSettings.tax.rates` |
-| `imageStorageIds` | Id<"_storage">[] | |
+| `images` | `{storageId, thumbStorageId, width, height}[]` | photo réduite et sa vignette, dimensions connues : la carte réserve la place avant chargement |
 | `prepStationId?` | Id<"prepStations"> | décide du routage du bon *(R11)* |
 | `prepMinutes?` | number | durée indicative, alimente le retard |
 | `tags`, `allergens` | string[] | **déclarés par le restaurant uniquement** *(R28)* |
