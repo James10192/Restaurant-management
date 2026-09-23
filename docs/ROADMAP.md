@@ -44,6 +44,17 @@ conditionne tout le reste.
 > C'est la seule tranche qui ne sert personne directement. Elle est assumée : construire le
 > contrôle d'accès après coup, c'est le construire faux.
 
+**État (2026-09-23) : livrée.**
+- Porte de sortie franchie : `tests/convex/isolation.test.ts` appelle chacune des 27 fonctions
+  publiques avec les identifiants d'une autre organisation (clés étrangères croisées comprises), et
+  échoue si une fonction nouvelle n'a pas son cas. Contre-épreuve faite : retirer une garde ou un
+  contrôle d'organisation fait tomber le test.
+- « Le collègue ne voit rien d'autre » : prouvé côté serveur (`tests/convex/permissions.test.ts`) et
+  dans un navigateur réel, contre le build de production (`e2e/t0.spec.ts`).
+- Écarts assumés : le PIN de service *(A1)* n'est pas implémenté ; la dernière activité d'un membre
+  n'est pas encore affichée dans l'équipe ; la révocation d'un appareil laisse au plus 15 minutes au
+  jeton déjà émis *(D-038)*.
+
 ### T1 — La carte est en ligne
 
 Cartes, sections, produits, variantes, groupes d'options · disponibilité manuelle et programmée ·

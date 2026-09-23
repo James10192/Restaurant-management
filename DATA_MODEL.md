@@ -107,6 +107,7 @@ avatar, préférences).
 |---|---|---|
 | `authId` | string | identifiant Better Auth — **unique** |
 | `email`, `name`, `avatarStorageId?` | string / Id<"_storage"> | |
+| `emailVerifiedAt?` | number | adresse **prouvée** (code reçu, ou Google qui l'atteste). Absent : aucune invitation ne peut être acceptée *(D-033)* |
 | `locale` | `"fr" \| "en"` | langue d'interface |
 | `status` | `"active" \| "suspended"` | suspension plateforme |
 | `lastSeenAt` | number | |
@@ -150,9 +151,11 @@ renvoie.
 
 ### `organizationInvitations`
 **Objectif.** Une invitation en attente, avant même qu'un compte existe.
-**Champs** : `organizationId`, `email`, `roleId`, `venueIds: Id<"venues">[]`, `token` (opaque),
-`expiresAt`, `status`, `invitedByUserId`.
-**Index** : `by_token ["token"]` · `by_org_status ["organizationId","status"]` ·
+**Champs** : `organizationId`, `email`, `roleId`, `venueIds: Id<"venues">[]` (vide = rôle au niveau
+de l'organisation), `tokenHash` (SHA-256 du jeton — le jeton en clair n'est jamais stocké, il ne
+vit que dans le lien envoyé), `expiresAt`, `status`, `invitedByUserId`, `acceptedByUserId?`,
+`acceptedAt?`.
+**Index** : `by_token ["tokenHash"]` · `by_org_status ["organizationId","status"]` ·
 `by_email ["email"]`
 **Permissions** : `team.manage`.
 **Cycle** : `pending` → `accepted` / `expired` / `revoked`.

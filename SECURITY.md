@@ -107,6 +107,9 @@ ouverte. C'est un choix du restaurant, présenté comme tel dans l'onboarding, a
 **Mitigations** : cookies `httpOnly` + `Secure` + `SameSite` ; rotation de session à l'élévation de
 privilège ; liste des appareils actifs et déconnexion de tous les appareils (§7) ; révocation
 immédiate d'un appareil enrôlé ; `Referrer-Policy: no-referrer` sur les surfaces client.
+**Limite connue (T0)** : révoquer une session l'empêche d'obtenir un nouveau jeton, mais le jeton
+Convex déjà émis reste valable **15 minutes au plus**. L'appartenance à l'organisation, elle, est
+vérifiée à chaque appel : suspendre ou retirer un membre coupe l'accès métier immédiatement (D-038).
 
 ### M6 — Force brute sur le code à usage unique
 
@@ -117,12 +120,22 @@ appareil ; message neutre identique que l'adresse existe ou non (anti-énumérat
 **jamais** journalisé, jamais renvoyé dans une réponse, jamais visible dans un rapport de bogue.
 **Vérification** : test qui épuise le quota et vérifie que le code est invalidé, pas seulement
 ralenti.
+**En place (T0)** : 6 chiffres, 10 minutes, 3 essais puis invalidation, code stocké **haché** ;
+limite par IP (Better Auth, en-têtes posés par Vercel) **et** par adresse (5 codes / 10 min, D-034).
+La limite **par appareil** n'est pas implémentée. Épuisement des essais vérifié dans
+`e2e/t0.spec.ts`.
 
 ### M7 — Rattachement de compte OAuth
 
 **Scénario** : quelqu'un crée un compte Google avec l'adresse d'un manager et récupère son accès.
 **Mitigation** : on ne rattache automatiquement un compte Google à un compte existant **que si le
 fournisseur atteste que l'adresse est vérifiée** ; sinon, on exige une vérification par code.
+**En place (T0)** : liaison de comptes **sans** `trustedProviders` — l'option, reprise du dépôt de
+référence, aurait fait lier même une adresse non vérifiée. Et un compte dont l'adresse n'est pas
+prouvée (`users.emailVerifiedAt` absent) ne peut accepter aucune invitation : sans cela, créer un
+compte Google avec l'adresse d'un invité suffisait à prendre sa place.
+**Vérification** : `tests/convex/permissions.test.ts` — « un compte dont l'adresse n'est pas prouvée
+n'accepte rien ».
 
 ### M8 — Élévation de privilège
 

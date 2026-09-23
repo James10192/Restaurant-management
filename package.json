@@ -6,16 +6,58 @@
     "node": ">=22.17.0"
   },
   "scripts": {
+    "dev": "vite dev --port 3000",
+    "build": "vite build",
+    "start": "node .output/server/index.mjs",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "check:permissions": "node scripts/check-permissions-sync.mjs",
     "check:money": "node --experimental-strip-types scripts/check-money.ts",
-    "check:schema": "node scripts/check-schema.mjs"
+    "check:schema": "node scripts/check-schema.mjs",
+    "check": "pnpm typecheck && pnpm check:permissions && pnpm check:schema && pnpm check:guards && pnpm check:money && pnpm test",
+    "check:guards": "node scripts/check-guards.mjs",
+    "test:e2e": "playwright test"
   },
   "devDependencies": {
+    "@edge-runtime/vm": "5.0.0",
+    "@playwright/test": "1.63.0",
+    "@tailwindcss/vite": "4.3.3",
+    "@tanstack/router-plugin": "1.168.40",
     "@types/node": "^22.20.3",
-    "typescript": "~5.9.3"
+    "@types/react": "~19.2.17",
+    "@types/react-dom": "~19.2.7",
+    "@vitejs/plugin-react": "5.2.0",
+    "convex-test": "0.0.59",
+    "nitro": "3.0.260903-beta",
+    "tailwindcss": "4.3.3",
+    "typescript": "~5.9.3",
+    "vite": "7.3.6",
+    "vite-tsconfig-paths": "^5.1.4",
+    "vitest": "~4.1.11"
   },
   "dependencies": {
-    "convex": "^1.46.0"
+    "@convex-dev/better-auth": "0.12.5",
+    "@convex-dev/rate-limiter": "^0.4.0",
+    "@fontsource-variable/archivo": "5.3.0",
+    "@tanstack/react-router": "1.170.38",
+    "@tanstack/react-start": "1.168.56",
+    "better-auth": "~1.6.33",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "convex": "^1.46.0",
+    "lucide-react": "^1.46.0",
+    "radix-ui": "^1.6.7",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "tailwind-merge": "^3.6.0",
+    "zod": "^4.6.5"
+  },
+  "version": "0.1.0",
+  "packageManager": "pnpm@10.33.0",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
   }
 }

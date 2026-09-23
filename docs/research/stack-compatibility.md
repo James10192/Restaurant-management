@@ -623,3 +623,32 @@ Signalé pour que personne ne prenne ces points pour acquis.
 *Relevé effectué le 17/09/2026 contre `registry.npmjs.org` et les documentations officielles citées.
 Référence de combinaison éprouvée : `/home/user/filon/package.json` (lu en seule lecture).
 Aucun paquet n'a été installé.*
+
+---
+
+## Installation réelle (T0, 2026-09-22) — ce qui a changé par rapport au plan
+
+Constaté à l'installation, avec `strict-peer-dependencies=true` :
+
+| Paquet | Prévu | Installé | Pourquoi |
+|---|---|---|---|
+| `vitest` | `^5.0.1` | `~4.1.11` | `better-auth@1.6.33` déclare `vitest ^2 \|\| ^3 \|\| ^4` en dépendance de pairs : la 5 est refusée (D-037) |
+| `@vitest/coverage-v8` | `5.0.1` | — | Suit vitest ; la couverture n'est pas encore mesurée |
+| `@types/react-dom` | `~19.2.17` | `~19.2.7` | `19.2.17` n'existe pas pour `react-dom` (les deux paquets de types ne sont pas versionnés ensemble) |
+| `@tanstack/react-query`, `@convex-dev/react-query` | prévus | retirés | Les hooks de `convex/react` suffisent en T0 (D-036) |
+| `resend` | `^6.28.1` | retiré | Un `fetch` sur l'API HTTP suffit ; aucune dépendance ajoutée au runtime Convex |
+| `@fontsource-variable/archivo` | — | `5.3.0` | Fichier latin, axe `wght`, 34,9 Ko : sous le budget de 40 Ko (DESIGN.md §2.2) |
+| `convex-test` + `@edge-runtime/vm` | — | `0.0.59` + `5.0.0` | Exécution des vraies fonctions Convex en mémoire pour les tests d'isolation |
+| `@playwright/test` | `^1.63.0` | `1.63.0` | Parcours de bout en bout |
+
+**Observé, non bloquant** : `pnpm dev` affiche « the vite builder requires ^8 » alors que Vite 7.3.6
+est installé. Build, rendu serveur et tests passent ; l'origine exacte de l'avertissement n'a pas
+été identifiée. À réexaminer avant de monter Vite.
+
+**Types de `@convex-dev/better-auth` 0.12.5** : son type `AuthClient` réduit la session à `never`
+dès qu'un plugin tiers (e-mail OTP) est ajouté au client. Contourné par une conversion de type
+documentée dans `src/components/app/convex-providers.tsx` ; le comportement à l'exécution est celui
+attendu (vérifié de bout en bout).
+
+**Générer `convex/_generated` sans compte** : `CONVEX_AGENT_MODE=anonymous pnpm exec convex dev
+--once` démarre un backend local et génère les types. C'est ce que fait la CI.

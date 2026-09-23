@@ -33,3 +33,10 @@ Thumbs.db
 # Scratch
 /tmp/
 *.tmp
+
+# Backend Convex local (déploiement anonyme de développement)
+.convex/
+
+# Playwright
+test-results/
+playwright-report/

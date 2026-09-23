@@ -31,6 +31,7 @@
 
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import { venueType } from "./lib/validators";
 
 /* ────────────────────────────────────────────────────────────────────────────
  * Validateurs partagés
@@ -108,6 +109,12 @@ export default defineSchema({
     email: v.string(),
     name: v.optional(v.string()),
     avatarStorageId: v.optional(v.id("_storage")),
+    /**
+     * Moment où l'adresse a été PROUVÉE (code reçu par e-mail, ou Google qui l'atteste).
+     * Absent = adresse non prouvée : un tel compte ne peut accepter aucune invitation, sans
+     * quoi n'importe qui pourrait se faire passer pour l'invité (D-033, SECURITY.md M7).
+     */
+    emailVerifiedAt: v.optional(v.number()),
     locale: v.union(v.literal("fr"), v.literal("en")),
     status: v.union(v.literal("active"), v.literal("suspended")),
     lastSeenAt: v.optional(v.number()),
@@ -152,8 +159,13 @@ export default defineSchema({
     organizationId: v.id("organizations"),
     email: v.string(),
     roleId: v.id("roles"),
+    /** Vide = rôle attribué au niveau de l'organisation entière. */
     venueIds: v.array(v.id("venues")),
-    token: v.string(),
+    /**
+     * SHA-256 du jeton, jamais le jeton en clair : une fuite de la base ne doit pas
+     * donner de quoi rejoindre une organisation. Même règle que `trustedDevices`.
+     */
+    tokenHash: v.string(),
     status: v.union(
       v.literal("pending"),
       v.literal("accepted"),
@@ -162,8 +174,10 @@ export default defineSchema({
     ),
     invitedByUserId: v.id("users"),
     expiresAt: v.number(),
+    acceptedByUserId: v.optional(v.id("users")),
+    acceptedAt: v.optional(v.number()),
   })
-    .index("by_token", ["token"]) // chemin d'acceptation : le jeton EST la portée
+    .index("by_token", ["tokenHash"]) // chemin d'acceptation : le jeton EST la portée
     .index("by_org_status", ["organizationId", "status"])
     .index("by_email", ["email"]),
 
@@ -203,16 +217,7 @@ export default defineSchema({
     currency: v.string(),
     timezone: v.string(),
     locales: v.array(v.string()),
-    venueType: v.union(
-      v.literal("restaurant"),
-      v.literal("maquis"),
-      v.literal("bar"),
-      v.literal("lounge"),
-      v.literal("cafe"),
-      v.literal("fast_food"),
-      v.literal("hotel"),
-      v.literal("food_court"),
-    ),
+    venueType,
     status: v.union(
       v.literal("setup"),
       v.literal("active"),
@@ -228,7 +233,8 @@ export default defineSchema({
      */
     address: v.optional(
       v.object({
-        line1: v.string(),
+        /** Facultative : beaucoup d'établissements n'ont ni rue ni numéro, le repère en tient lieu. */
+        line1: v.optional(v.string()),
         line2: v.optional(v.string()),
         city: v.string(),
         district: v.optional(v.string()),

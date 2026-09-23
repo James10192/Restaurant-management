@@ -10,6 +10,10 @@ on:
 jobs:
   checks:
     runs-on: ubuntu-latest
+    env:
+      # Backend Convex local, sans compte : il sert à la génération des types et au
+      # parcours de bout en bout. Aucun déploiement réel n'est touché par la CI.
+      CONVEX_AGENT_MODE: anonymous
     steps:
       - uses: actions/checkout@v4
 
@@ -25,15 +29,19 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
-      # Garantit que ce qui est dans le dépôt correspond au schéma Convex.
-      # Sans ce contrôle, du code peut compiler chez son auteur et nulle part ailleurs.
-      # (Étape reprise du dépôt de référence, où elle est en place.)
-      - name: Generate Convex types
-        run: pnpm exec convex codegen
-        continue-on-error: true   # tant que le déploiement Convex n'est pas configuré
+      # D-017 : le composant Convex exige better-auth < 1.7. Le tilde de package.json
+      # l'impose ; ce contrôle vérifie que la résolution l'a respecté.
+      - name: better-auth stays below 1.7
+        run: node -e "const v=require('better-auth/package.json').version; if(!/^1\.6\./.test(v)){console.error('better-auth '+v+' hors de ~1.6'); process.exit(1)}"
 
-      - name: Verify generated Convex files are committed
-        run: git diff --exit-code convex/_generated || echo "::warning::types Convex non committés"
+      # Déploie le schéma et les fonctions sur un backend local, ce qui régénère
+      # `convex/_generated`. S'il diffère de ce qui est commité, quelqu'un a modifié le
+      # backend sans régénérer : le code compilerait chez lui et nulle part ailleurs.
+      - name: Convex codegen (local backend)
+        run: pnpm exec convex dev --once --typecheck disable
+
+      - name: Generated Convex files are committed
+        run: git diff --exit-code convex/_generated
 
       - name: Typecheck
         run: pnpm typecheck
@@ -43,21 +51,55 @@ jobs:
       - name: Permissions catalog matches documentation
         run: pnpm check:permissions
 
-      # CRITIQUE.md B1 : ce contrôle a déjà menti une fois. Il ne vérifie plus que des
-      # propriétés réfutables — doublons d'index, limites Convex, recopie d'organisation,
-      # index SCOPE-CRITIQUE, tables non documentées.
+      # CRITIQUE.md B1 : ce contrôle a déjà menti une fois. Il ne vérifie que des
+      # propriétés réfutables.
       - name: Schema invariants
         run: pnpm check:schema
 
-      # PAYMENTS.md §2 : le franc CFA n'a pas de sous-unité, et une addition
-      # divisée ne perd jamais une unité. Deux affirmations qu'on préfère prouver.
+      # PERMISSIONS.md §6 : toute fonction publique commence par une garde, AVANT toute
+      # lecture. Le contrôle est lui-même testé (il doit échouer sur une fonction fautive).
+      - name: Every public function is guarded
+        run: pnpm check:guards
+
+      # PAYMENTS.md §2 : le franc CFA n'a pas de sous-unité.
       - name: Money invariants
         run: pnpm check:money
 
-      # Ces étapes s'activent au fur et à mesure des tranches (voir docs/ROADMAP.md).
-      # Elles sont déclarées ici dès maintenant pour que leur absence se voie.
-      # - name: Lint
-      # - name: Unit tests
-      # - name: Build
-      # - name: Multi-tenant isolation tests
-      # - name: E2E critical paths
+      # Isolation multi-tenant (porte de sortie de T0), verrous, portée, plan tarifaire.
+      - name: Unit and isolation tests
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+        env:
+          VITE_CONVEX_URL: http://127.0.0.1:3210
+          VITE_CONVEX_SITE_URL: http://127.0.0.1:3211
+
+      # Parcours critique dans un vrai navigateur : connexion par code, ouverture d'un
+      # établissement, invitation, cloisonnement du collègue. Voir e2e/README.md.
+      - name: Install Playwright browser
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: End-to-end (T0)
+        run: |
+          node e2e/mail-sink.mjs "$RUNNER_TEMP/mails.jsonl" &
+          pnpm exec convex dev --typecheck disable > "$RUNNER_TEMP/convex.log" 2>&1 &
+          until grep -q "Convex functions ready" "$RUNNER_TEMP/convex.log"; do sleep 1; done
+          sh scripts/e2e-env.sh
+          # Contre le BUILD de production, pas le serveur de développement : ce dernier
+          # recharge la page quand il optimise ses dépendances, ce qui rend le test aléatoire.
+          # `.env.local`, écrit par `convex dev`, fournit les URL du backend local au build.
+          NITRO_PRESET=node-server pnpm build
+          PORT=3000 node .output/server/index.mjs > "$RUNNER_TEMP/app.log" 2>&1 &
+          until curl -sf http://localhost:3000/api/health > /dev/null; do sleep 1; done
+          # Les en-têtes de sécurité RÉELLEMENT servis (DEPLOYMENT.md §4).
+          curl -sI http://localhost:3000/connexion | grep -qi "x-frame-options: DENY"
+          MAIL_SINK="$RUNNER_TEMP/mails.jsonl" pnpm test:e2e
+
+      - name: Upload Playwright traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: test-results/
+          retention-days: 7

@@ -44,7 +44,8 @@ export function assertInOrganization<T extends Scoped>(
 /**
  * LE GARDE-FOU DE LA DÉNORMALISATION.
  *
- * Une cinquantaine de tables portent à la fois `organizationId` et `venueId`, alors
+ * Quelques tables portent à la fois `organizationId` et un `venueId` FACULTATIF (celles
+ * dont la venue est obligatoire ne portent plus `organizationId`, voir `schema.ts`), alors
  * que `venues.organizationId` fait autorité. Une ligne où les deux désignent DEUX
  * ORGANISATIONS DIFFÉRENTES est une fuite de tenant que rien n'attrape : ni les index,
  * ni les gardes de permission, ni les tests d'accès. Elle naît d'un `organizationId`

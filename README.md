@@ -5,18 +5,34 @@
 Le QR code n'est que la porte d'entrée. Ce qui est construit derrière, c'est la coordination en
 temps réel entre le client à table, le serveur, la cuisine, le bar, la caisse et le gérant.
 
-> `Joliba` est un nom de code. Le nom commercial n'est pas arrêté — voir
-> [`docs/research/naming-study.md`](docs/research/naming-study.md). Rien n'attend cette décision :
-> le code n'utilise qu'un seul littéral, remplaçable en une fois.
+> Le nom **Joliba** (« le grand fleuve », le Niger en mandingue) est retenu depuis le 2026-09-22 —
+> voir [`docs/research/naming-study.md`](docs/research/naming-study.md) §9. La vérification de marque
+> (OAPI) reste à faire avant tout dépôt ou dépense de communication.
 
 ---
 
 ## État du projet
 
-**Phase de conception terminée. L'implémentation n'a pas commencé.**
+**Tranche T0 (fondations) livrée.** Une personne se connecte par code reçu par e-mail (ou Google),
+ouvre son organisation et son premier établissement, invite un collègue avec un rôle limité à cet
+établissement — et le collègue ne voit rien d'autre. Prouvé par un test de bout en bout dans un vrai
+navigateur, et par un test d'isolation multi-tenant qui appelle **chaque** fonction publique avec les
+identifiants d'une autre organisation.
 
-Ce dépôt contient aujourd'hui l'architecture produit complète et le schéma de données. Le seul code
-livré est `convex/schema.ts` — typecheck vert, 59 tables, 141 index.
+| Ce qui existe | Où |
+|---|---|
+| Authentification : code à 6 chiffres par e-mail (haché, 10 min, 3 essais, limité par IP **et** par adresse), Google si configuré, appareils connectés et déconnexion à distance | `convex/auth.ts`, `/connexion`, `/auth/otp`, `/app/account` |
+| Organisations et établissements (devise et fuseau déduits du pays) | `convex/organizations.ts`, `convex/venues.ts`, `/app/onboarding`, `/app/settings/venue` |
+| Équipe : invitations (jeton haché, lien à partager par WhatsApp), rôles par portée, suspension, retrait | `convex/team.ts`, `/invitation/$token`, `/app/team` |
+| Rôles composables, avec les trois verrous contre l'élévation de privilèges | `convex/roles.ts`, `convex/lib/authority.ts`, `/app/roles` |
+| Gardes Convex et résolution des permissions | `convex/lib/guards.ts` |
+| Système de design (jetons, composants, six états d'écran) | `src/styles/app.css`, `src/components/ui/` |
+| Observabilité minimale : point de santé, journaux à liste d'inclusion, erreurs du navigateur reliées à un `traceId` | `convex/lib/log.ts`, `/api/health`, `/api/client-errors` |
+
+Ce qui n'existe pas encore : tout le service (carte, tables, commandes, cuisine, caisse, paiements) —
+voir [`docs/ROADMAP.md`](docs/ROADMAP.md), tranches T1 et suivantes.
+
+### Documents de conception
 
 | Livrable | Fichier | État |
 |---|---|---|
@@ -35,7 +51,7 @@ livré est `convex/schema.ts` — typecheck vert, 59 tables, 141 index.
 | Architecture de l'information | [`docs/INFORMATION_ARCHITECTURE.md`](docs/INFORMATION_ARCHITECTURE.md) | ✅ |
 | Feuille de route | [`docs/ROADMAP.md`](docs/ROADMAP.md) | ✅ |
 | Journal de décisions | [`docs/DECISION_LOG.md`](docs/DECISION_LOG.md) | ✅ |
-| Application (frontend, fonctions Convex) | — | ⬜ à venir |
+| Application | `convex/`, `src/` | 🟡 T0 livrée, T1 à venir |
 
 ---
 
@@ -85,10 +101,26 @@ structurants : voir [`docs/research/stack-compatibility.md`](docs/research/stack
 
 ```bash
 pnpm install
-pnpm typecheck      # tsc --noEmit
+
+# Développement : backend Convex local (sans compte) + application
+CONVEX_AGENT_MODE=anonymous pnpm exec convex dev   # écrit .env.local
+pnpm dev                                            # http://localhost:3000
+
+# Contrôles (ceux de la CI)
+pnpm typecheck
+pnpm check:permissions   # catalogue ↔ PERMISSIONS.md
+pnpm check:schema        # invariants du schéma
+pnpm check:guards        # toute fonction publique commence par une garde
+pnpm check:money         # le franc CFA n'a pas de sous-unité
+pnpm test                # isolation multi-tenant, verrous, portée (convex-test)
+pnpm check               # tout ce qui précède
+
+pnpm test:e2e            # parcours T0 dans un navigateur — voir e2e/README.md
 ```
 
-Le reste des commandes arrivera avec l'implémentation.
+Variables du déploiement Convex : `SITE_URL`, `BETTER_AUTH_SECRET`, `RESEND_API_KEY`, `EMAIL_FROM`
+(sans elles, aucun code de connexion ne part), et `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` pour
+Google (le bouton n'apparaît qu'avec `VITE_AUTH_GOOGLE=true` côté application).
 
 ---
 
@@ -108,7 +140,7 @@ Le reste des commandes arrivera avec l'implémentation.
 
 ## Ce qui attend une décision
 
-Onze questions sont ouvertes dans [`docs/DECISION_LOG.md`](docs/DECISION_LOG.md) partie C. Les trois
+Dix questions restent ouvertes (le nom est tranché) dans [`docs/DECISION_LOG.md`](docs/DECISION_LOG.md) partie C. Les trois
 qui changent le plus de choses :
 
 - **Le hors-ligne** *(A8)* : jusqu'où ? C'est le meilleur différenciateur trouvé, et il est
