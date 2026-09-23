@@ -20,6 +20,7 @@ import { Route as ApiHealthRouteImport } from './routes/api/health'
 import { Route as MenuVenueSlugRouteImport } from './routes/menu.$venueSlug'
 import { Route as AuthAppIndexRouteImport } from './routes/_auth.app.index'
 import { Route as AuthAppAccountRouteImport } from './routes/_auth.app.account'
+import { Route as AuthAppMenuRouteImport } from './routes/_auth.app.menu'
 import { Route as AuthAppOnboardingRouteImport } from './routes/_auth.app.onboarding'
 import { Route as AuthAppTeamRouteImport } from './routes/_auth.app.team'
 import { Route as AuthAuthOtpRouteImport } from './routes/_auth.auth.otp'
@@ -27,10 +28,18 @@ import { Route as AuthInvitationTokenRouteImport } from './routes/_auth.invitati
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth.$'
 import { Route as RVenueSlugIndisponibleRouteImport } from './routes/r.$venueSlug.indisponible'
 import { Route as RVenueSlugTableRouteImport } from './routes/r.$venueSlug.table'
+import { Route as AuthAppFloorIndexRouteImport } from './routes/_auth.app.floor.index'
+import { Route as AuthAppFloorPrintRouteImport } from './routes/_auth.app.floor.print'
+import { Route as AuthAppMenuIndexRouteImport } from './routes/_auth.app.menu.index'
+import { Route as AuthAppMenuAvailabilityRouteImport } from './routes/_auth.app.menu.availability'
+import { Route as AuthAppMenuCategoriesRouteImport } from './routes/_auth.app.menu.categories'
+import { Route as AuthAppMenuOptionsRouteImport } from './routes/_auth.app.menu.options'
 import { Route as AuthAppRolesIndexRouteImport } from './routes/_auth.app.roles.index'
 import { Route as AuthAppRolesRoleIdRouteImport } from './routes/_auth.app.roles.$roleId'
 import { Route as AuthAppSettingsVenueRouteImport } from './routes/_auth.app.settings.venue'
 import { Route as RVenueSlugTTokenRouteImport } from './routes/r.$venueSlug.t.$token'
+import { Route as AuthAppMenuProductsIndexRouteImport } from './routes/_auth.app.menu.products.index'
+import { Route as AuthAppMenuProductsProductIdRouteImport } from './routes/_auth.app.menu.products.$productId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -86,6 +95,11 @@ const AuthAppAccountRoute = AuthAppAccountRouteImport.update({
   path: '/account',
   getParentRoute: () => AuthAppRoute,
 } as any)
+const AuthAppMenuRoute = AuthAppMenuRouteImport.update({
+  id: '/menu',
+  path: '/menu',
+  getParentRoute: () => AuthAppRoute,
+} as any)
 const AuthAppOnboardingRoute = AuthAppOnboardingRouteImport.update({
   id: '/onboarding',
   path: '/onboarding',
@@ -121,6 +135,36 @@ const RVenueSlugTableRoute = RVenueSlugTableRouteImport.update({
   path: '/r/$venueSlug/table',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthAppFloorIndexRoute = AuthAppFloorIndexRouteImport.update({
+  id: '/floor/',
+  path: '/floor/',
+  getParentRoute: () => AuthAppRoute,
+} as any)
+const AuthAppFloorPrintRoute = AuthAppFloorPrintRouteImport.update({
+  id: '/floor/print',
+  path: '/floor/print',
+  getParentRoute: () => AuthAppRoute,
+} as any)
+const AuthAppMenuIndexRoute = AuthAppMenuIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AuthAppMenuRoute,
+} as any)
+const AuthAppMenuAvailabilityRoute = AuthAppMenuAvailabilityRouteImport.update({
+  id: '/availability',
+  path: '/availability',
+  getParentRoute: () => AuthAppMenuRoute,
+} as any)
+const AuthAppMenuCategoriesRoute = AuthAppMenuCategoriesRouteImport.update({
+  id: '/categories',
+  path: '/categories',
+  getParentRoute: () => AuthAppMenuRoute,
+} as any)
+const AuthAppMenuOptionsRoute = AuthAppMenuOptionsRouteImport.update({
+  id: '/options',
+  path: '/options',
+  getParentRoute: () => AuthAppMenuRoute,
+} as any)
 const AuthAppRolesIndexRoute = AuthAppRolesIndexRouteImport.update({
   id: '/roles/',
   path: '/roles/',
@@ -141,6 +185,18 @@ const RVenueSlugTTokenRoute = RVenueSlugTTokenRouteImport.update({
   path: '/r/$venueSlug/t/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthAppMenuProductsIndexRoute =
+  AuthAppMenuProductsIndexRouteImport.update({
+    id: '/products/',
+    path: '/products/',
+    getParentRoute: () => AuthAppMenuRoute,
+  } as any)
+const AuthAppMenuProductsProductIdRoute =
+  AuthAppMenuProductsProductIdRouteImport.update({
+    id: '/products/$productId',
+    path: '/products/$productId',
+    getParentRoute: () => AuthAppMenuRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -152,6 +208,7 @@ export interface FileRoutesByFullPath {
   '/api/health': typeof ApiHealthRoute
   '/menu/$venueSlug': typeof MenuVenueSlugRoute
   '/app/account': typeof AuthAppAccountRoute
+  '/app/menu': typeof AuthAppMenuRouteWithChildren
   '/app/onboarding': typeof AuthAppOnboardingRoute
   '/app/team': typeof AuthAppTeamRoute
   '/auth/otp': typeof AuthAuthOtpRoute
@@ -160,10 +217,18 @@ export interface FileRoutesByFullPath {
   '/r/$venueSlug/indisponible': typeof RVenueSlugIndisponibleRoute
   '/r/$venueSlug/table': typeof RVenueSlugTableRoute
   '/app/': typeof AuthAppIndexRoute
+  '/app/floor/print': typeof AuthAppFloorPrintRoute
+  '/app/menu/availability': typeof AuthAppMenuAvailabilityRoute
+  '/app/menu/categories': typeof AuthAppMenuCategoriesRoute
+  '/app/menu/options': typeof AuthAppMenuOptionsRoute
   '/app/roles/$roleId': typeof AuthAppRolesRoleIdRoute
   '/app/settings/venue': typeof AuthAppSettingsVenueRoute
   '/r/$venueSlug/t/$token': typeof RVenueSlugTTokenRoute
+  '/app/floor/': typeof AuthAppFloorIndexRoute
+  '/app/menu/': typeof AuthAppMenuIndexRoute
   '/app/roles/': typeof AuthAppRolesIndexRoute
+  '/app/menu/products/$productId': typeof AuthAppMenuProductsProductIdRoute
+  '/app/menu/products/': typeof AuthAppMenuProductsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -182,10 +247,18 @@ export interface FileRoutesByTo {
   '/r/$venueSlug/indisponible': typeof RVenueSlugIndisponibleRoute
   '/r/$venueSlug/table': typeof RVenueSlugTableRoute
   '/app': typeof AuthAppIndexRoute
+  '/app/floor/print': typeof AuthAppFloorPrintRoute
+  '/app/menu/availability': typeof AuthAppMenuAvailabilityRoute
+  '/app/menu/categories': typeof AuthAppMenuCategoriesRoute
+  '/app/menu/options': typeof AuthAppMenuOptionsRoute
   '/app/roles/$roleId': typeof AuthAppRolesRoleIdRoute
   '/app/settings/venue': typeof AuthAppSettingsVenueRoute
   '/r/$venueSlug/t/$token': typeof RVenueSlugTTokenRoute
+  '/app/floor': typeof AuthAppFloorIndexRoute
+  '/app/menu': typeof AuthAppMenuIndexRoute
   '/app/roles': typeof AuthAppRolesIndexRoute
+  '/app/menu/products/$productId': typeof AuthAppMenuProductsProductIdRoute
+  '/app/menu/products': typeof AuthAppMenuProductsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -199,6 +272,7 @@ export interface FileRoutesById {
   '/api/health': typeof ApiHealthRoute
   '/menu/$venueSlug': typeof MenuVenueSlugRoute
   '/_auth/app/account': typeof AuthAppAccountRoute
+  '/_auth/app/menu': typeof AuthAppMenuRouteWithChildren
   '/_auth/app/onboarding': typeof AuthAppOnboardingRoute
   '/_auth/app/team': typeof AuthAppTeamRoute
   '/_auth/auth/otp': typeof AuthAuthOtpRoute
@@ -207,10 +281,18 @@ export interface FileRoutesById {
   '/r/$venueSlug/indisponible': typeof RVenueSlugIndisponibleRoute
   '/r/$venueSlug/table': typeof RVenueSlugTableRoute
   '/_auth/app/': typeof AuthAppIndexRoute
+  '/_auth/app/floor/print': typeof AuthAppFloorPrintRoute
+  '/_auth/app/menu/availability': typeof AuthAppMenuAvailabilityRoute
+  '/_auth/app/menu/categories': typeof AuthAppMenuCategoriesRoute
+  '/_auth/app/menu/options': typeof AuthAppMenuOptionsRoute
   '/_auth/app/roles/$roleId': typeof AuthAppRolesRoleIdRoute
   '/_auth/app/settings/venue': typeof AuthAppSettingsVenueRoute
   '/r/$venueSlug/t/$token': typeof RVenueSlugTTokenRoute
+  '/_auth/app/floor/': typeof AuthAppFloorIndexRoute
+  '/_auth/app/menu/': typeof AuthAppMenuIndexRoute
   '/_auth/app/roles/': typeof AuthAppRolesIndexRoute
+  '/_auth/app/menu/products/$productId': typeof AuthAppMenuProductsProductIdRoute
+  '/_auth/app/menu/products/': typeof AuthAppMenuProductsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -224,6 +306,7 @@ export interface FileRouteTypes {
     | '/api/health'
     | '/menu/$venueSlug'
     | '/app/account'
+    | '/app/menu'
     | '/app/onboarding'
     | '/app/team'
     | '/auth/otp'
@@ -232,10 +315,18 @@ export interface FileRouteTypes {
     | '/r/$venueSlug/indisponible'
     | '/r/$venueSlug/table'
     | '/app/'
+    | '/app/floor/print'
+    | '/app/menu/availability'
+    | '/app/menu/categories'
+    | '/app/menu/options'
     | '/app/roles/$roleId'
     | '/app/settings/venue'
     | '/r/$venueSlug/t/$token'
+    | '/app/floor/'
+    | '/app/menu/'
     | '/app/roles/'
+    | '/app/menu/products/$productId'
+    | '/app/menu/products/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -254,10 +345,18 @@ export interface FileRouteTypes {
     | '/r/$venueSlug/indisponible'
     | '/r/$venueSlug/table'
     | '/app'
+    | '/app/floor/print'
+    | '/app/menu/availability'
+    | '/app/menu/categories'
+    | '/app/menu/options'
     | '/app/roles/$roleId'
     | '/app/settings/venue'
     | '/r/$venueSlug/t/$token'
+    | '/app/floor'
+    | '/app/menu'
     | '/app/roles'
+    | '/app/menu/products/$productId'
+    | '/app/menu/products'
   id:
     | '__root__'
     | '/'
@@ -270,6 +369,7 @@ export interface FileRouteTypes {
     | '/api/health'
     | '/menu/$venueSlug'
     | '/_auth/app/account'
+    | '/_auth/app/menu'
     | '/_auth/app/onboarding'
     | '/_auth/app/team'
     | '/_auth/auth/otp'
@@ -278,10 +378,18 @@ export interface FileRouteTypes {
     | '/r/$venueSlug/indisponible'
     | '/r/$venueSlug/table'
     | '/_auth/app/'
+    | '/_auth/app/floor/print'
+    | '/_auth/app/menu/availability'
+    | '/_auth/app/menu/categories'
+    | '/_auth/app/menu/options'
     | '/_auth/app/roles/$roleId'
     | '/_auth/app/settings/venue'
     | '/r/$venueSlug/t/$token'
+    | '/_auth/app/floor/'
+    | '/_auth/app/menu/'
     | '/_auth/app/roles/'
+    | '/_auth/app/menu/products/$productId'
+    | '/_auth/app/menu/products/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -377,6 +485,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthAppAccountRouteImport
       parentRoute: typeof AuthAppRoute
     }
+    '/_auth/app/menu': {
+      id: '/_auth/app/menu'
+      path: '/menu'
+      fullPath: '/app/menu'
+      preLoaderRoute: typeof AuthAppMenuRouteImport
+      parentRoute: typeof AuthAppRoute
+    }
     '/_auth/app/onboarding': {
       id: '/_auth/app/onboarding'
       path: '/onboarding'
@@ -426,6 +541,48 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RVenueSlugTableRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_auth/app/floor/': {
+      id: '/_auth/app/floor/'
+      path: '/floor'
+      fullPath: '/app/floor/'
+      preLoaderRoute: typeof AuthAppFloorIndexRouteImport
+      parentRoute: typeof AuthAppRoute
+    }
+    '/_auth/app/floor/print': {
+      id: '/_auth/app/floor/print'
+      path: '/floor/print'
+      fullPath: '/app/floor/print'
+      preLoaderRoute: typeof AuthAppFloorPrintRouteImport
+      parentRoute: typeof AuthAppRoute
+    }
+    '/_auth/app/menu/': {
+      id: '/_auth/app/menu/'
+      path: '/'
+      fullPath: '/app/menu/'
+      preLoaderRoute: typeof AuthAppMenuIndexRouteImport
+      parentRoute: typeof AuthAppMenuRoute
+    }
+    '/_auth/app/menu/availability': {
+      id: '/_auth/app/menu/availability'
+      path: '/availability'
+      fullPath: '/app/menu/availability'
+      preLoaderRoute: typeof AuthAppMenuAvailabilityRouteImport
+      parentRoute: typeof AuthAppMenuRoute
+    }
+    '/_auth/app/menu/categories': {
+      id: '/_auth/app/menu/categories'
+      path: '/categories'
+      fullPath: '/app/menu/categories'
+      preLoaderRoute: typeof AuthAppMenuCategoriesRouteImport
+      parentRoute: typeof AuthAppMenuRoute
+    }
+    '/_auth/app/menu/options': {
+      id: '/_auth/app/menu/options'
+      path: '/options'
+      fullPath: '/app/menu/options'
+      preLoaderRoute: typeof AuthAppMenuOptionsRouteImport
+      parentRoute: typeof AuthAppMenuRoute
+    }
     '/_auth/app/roles/': {
       id: '/_auth/app/roles/'
       path: '/roles'
@@ -454,26 +611,68 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RVenueSlugTTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_auth/app/menu/products/': {
+      id: '/_auth/app/menu/products/'
+      path: '/products'
+      fullPath: '/app/menu/products/'
+      preLoaderRoute: typeof AuthAppMenuProductsIndexRouteImport
+      parentRoute: typeof AuthAppMenuRoute
+    }
+    '/_auth/app/menu/products/$productId': {
+      id: '/_auth/app/menu/products/$productId'
+      path: '/products/$productId'
+      fullPath: '/app/menu/products/$productId'
+      preLoaderRoute: typeof AuthAppMenuProductsProductIdRouteImport
+      parentRoute: typeof AuthAppMenuRoute
+    }
   }
 }
 
+interface AuthAppMenuRouteChildren {
+  AuthAppMenuAvailabilityRoute: typeof AuthAppMenuAvailabilityRoute
+  AuthAppMenuCategoriesRoute: typeof AuthAppMenuCategoriesRoute
+  AuthAppMenuOptionsRoute: typeof AuthAppMenuOptionsRoute
+  AuthAppMenuIndexRoute: typeof AuthAppMenuIndexRoute
+  AuthAppMenuProductsProductIdRoute: typeof AuthAppMenuProductsProductIdRoute
+  AuthAppMenuProductsIndexRoute: typeof AuthAppMenuProductsIndexRoute
+}
+
+const AuthAppMenuRouteChildren: AuthAppMenuRouteChildren = {
+  AuthAppMenuAvailabilityRoute: AuthAppMenuAvailabilityRoute,
+  AuthAppMenuCategoriesRoute: AuthAppMenuCategoriesRoute,
+  AuthAppMenuOptionsRoute: AuthAppMenuOptionsRoute,
+  AuthAppMenuIndexRoute: AuthAppMenuIndexRoute,
+  AuthAppMenuProductsProductIdRoute: AuthAppMenuProductsProductIdRoute,
+  AuthAppMenuProductsIndexRoute: AuthAppMenuProductsIndexRoute,
+}
+
+const AuthAppMenuRouteWithChildren = AuthAppMenuRoute._addFileChildren(
+  AuthAppMenuRouteChildren,
+)
+
 interface AuthAppRouteChildren {
   AuthAppAccountRoute: typeof AuthAppAccountRoute
+  AuthAppMenuRoute: typeof AuthAppMenuRouteWithChildren
   AuthAppOnboardingRoute: typeof AuthAppOnboardingRoute
   AuthAppTeamRoute: typeof AuthAppTeamRoute
   AuthAppIndexRoute: typeof AuthAppIndexRoute
+  AuthAppFloorPrintRoute: typeof AuthAppFloorPrintRoute
   AuthAppRolesRoleIdRoute: typeof AuthAppRolesRoleIdRoute
   AuthAppSettingsVenueRoute: typeof AuthAppSettingsVenueRoute
+  AuthAppFloorIndexRoute: typeof AuthAppFloorIndexRoute
   AuthAppRolesIndexRoute: typeof AuthAppRolesIndexRoute
 }
 
 const AuthAppRouteChildren: AuthAppRouteChildren = {
   AuthAppAccountRoute: AuthAppAccountRoute,
+  AuthAppMenuRoute: AuthAppMenuRouteWithChildren,
   AuthAppOnboardingRoute: AuthAppOnboardingRoute,
   AuthAppTeamRoute: AuthAppTeamRoute,
   AuthAppIndexRoute: AuthAppIndexRoute,
+  AuthAppFloorPrintRoute: AuthAppFloorPrintRoute,
   AuthAppRolesRoleIdRoute: AuthAppRolesRoleIdRoute,
   AuthAppSettingsVenueRoute: AuthAppSettingsVenueRoute,
+  AuthAppFloorIndexRoute: AuthAppFloorIndexRoute,
   AuthAppRolesIndexRoute: AuthAppRolesIndexRoute,
 }
 

@@ -14,6 +14,7 @@ import { NativeSelect } from "~/components/ui/native-select";
 import { LoadingState, PermissionDeniedState } from "~/components/ui/states";
 import { Textarea } from "~/components/ui/textarea";
 import { describeError } from "~/lib/errors";
+import { OpeningHoursCard, PublicMenuCard } from "~/components/venue/public-settings";
 
 export const Route = createFileRoute("/_auth/app/settings/venue")({
   head: () => ({ meta: [{ title: "Établissement — Joliba" }] }),
@@ -27,7 +28,13 @@ function VenueSettingsPage() {
   const venue = useQuery(api.venues.get, allowed ? { venueId } : "skip");
   if (!allowed) return <PermissionDeniedState venue={w.venue?.name} permission="Configurer l'établissement" />;
   if (!venue) return <LoadingState />;
-  return <VenueForm key={venue._id} venue={venue} />;
+  return (
+    <div className="mx-auto flex max-w-2xl flex-col gap-6">
+      <VenueForm key={venue._id} venue={venue} />
+      <OpeningHoursCard key={`hours-${venue._id}`} venueId={venue._id} hours={venue.openingHours} />
+      <PublicMenuCard venueId={venue._id} enabled={venue.publicMenuEnabled} />
+    </div>
+  );
 }
 
 type VenueData = {

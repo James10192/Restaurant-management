@@ -315,6 +315,9 @@ const CASES: Record<string, (w: Awaited<ReturnType<typeof twoTenants>>) => Promi
       a.owner.as.query(api.menus.editor, { venueId: a.venueId, menuId: catalogB.menuId }),
     );
   },
+  "menus.sectionChoices": async ({ a, b }) => {
+    await expectCode(a.owner.as.query(api.menus.sectionChoices, { venueId: b.venueId }), "NOT_FOUND");
+  },
   "menus.create": async ({ a, b }) => {
     await expectCode(a.owner.as.mutation(api.menus.create, { venueId: b.venueId, name: "Intrus" }), "NOT_FOUND");
   },

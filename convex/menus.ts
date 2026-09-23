@@ -154,6 +154,24 @@ export const editor = query({
   },
 });
 
+/** Toutes les sections des cartes non archivées, pour ranger un produit où qu'il soit. */
+export const sectionChoices = query({
+  args: { venueId: v.id("venues") },
+  handler: async (ctx, args) => {
+    const actor = await requirePermission(ctx, "menu.read", { venueId: args.venueId });
+    const menus = (await menusOf(ctx, actor.venue._id))
+      .filter((m) => m.status !== "archived")
+      .sort((a, b) => a.sortOrder - b.sortOrder);
+    const result = [];
+    for (const menu of menus) {
+      for (const section of await sectionsOf(ctx, menu._id)) {
+        result.push({ _id: section._id, name: section.name, menuId: menu._id, menuName: menu.name, isActive: section.isActive });
+      }
+    }
+    return { currency: actor.venue.currency, sections: result };
+  },
+});
+
 export const create = mutation({
   args: { venueId: v.id("venues"), name: v.string() },
   handler: async (ctx, args) => {

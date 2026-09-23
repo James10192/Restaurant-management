@@ -4,33 +4,13 @@
  * que ce que son rôle permet.
  */
 
-import { expect, test, type Page } from "@playwright/test";
-import { clientHeaders, lastEmailTo, mailCount } from "./mail";
+import { expect, test } from "@playwright/test";
+import { clientHeaders, lastEmailTo } from "./mail";
+import { shot, signIn } from "./session";
 
 const run = Date.now().toString(36);
 const OWNER = `awa-${run}@maquis.test`;
 const WAITER = `koffi-${run}@maquis.test`;
-const SHOTS = process.env.E2E_SCREENSHOTS;
-
-async function shot(page: Page, name: string) {
-  if (SHOTS) await page.screenshot({ path: `${SHOTS}/${name}.png`, fullPage: true });
-}
-
-async function signIn(page: Page, email: string) {
-  const before = mailCount();
-  await page.getByLabel("Adresse e-mail").fill(email);
-  await page.getByRole("button", { name: "Recevoir mon code" }).click();
-  await expect(page).toHaveURL(/\/auth\/otp/);
-  await expect(page.getByText(email)).toBeVisible();
-  const mail = await lastEmailTo(email, before);
-  const code = /(\d{6})/.exec(mail.subject)?.[1];
-  expect(code, "le code doit figurer dans l'objet de l'e-mail").toBeTruthy();
-  await shot(page, `otp-${email.split("@")[0]}`);
-  // Collage d'un code complet, comme depuis l'e-mail.
-  await page.getByRole("textbox", { name: /Chiffre 1/ }).focus();
-  await page.keyboard.insertText(code!);
-}
-
 test("T0 — ouvrir, inviter, cloisonner", async ({ browser }) => {
   // ── Propriétaire ────────────────────────────────────────────────────────────────
   const ownerContext = await browser.newContext({ extraHTTPHeaders: clientHeaders() });

@@ -69,13 +69,15 @@ function Shell() {
       label: "Équipe",
       show: workspace.canInVenue("team.read") || workspace.canInOrganization("team.read"),
     },
+    { to: "/app/menu", label: "Carte", show: workspace.canInVenue("menu.read") || workspace.canInVenue("menu.availability.toggle") },
+    { to: "/app/floor", label: "Salle", show: workspace.canInVenue("table.read") },
     { to: "/app/roles", label: "Rôles", show: workspace.canInOrganization("permissions.manage") },
     { to: "/app/settings/venue", label: "Établissement", show: workspace.canInVenue("venue.manage") },
   ] as const;
 
   return (
     <AppFrame>
-      <header className="sticky top-0 z-(--z-sticky) border-b border-line bg-surface">
+      <header className="sticky top-0 z-(--z-sticky) border-b border-line bg-surface print:hidden">
         <div className="mx-auto flex h-14 max-w-6xl items-center gap-3 px-4">
           <Link to="/app" aria-label="Joliba, accueil">
             <JolibaMark />
@@ -102,7 +104,7 @@ function Shell() {
           </nav>
         ) : null}
       </header>
-      <main className="mx-auto max-w-6xl px-4 py-6">
+      <main className="mx-auto max-w-6xl px-4 py-6 print:max-w-none print:p-0">
         {workspace.status === "loading" ? <LoadingState /> : <Outlet />}
       </main>
     </AppFrame>
