@@ -1189,6 +1189,66 @@ const CASES: Record<string, (w: Awaited<ReturnType<typeof twoTenants>>) => Promi
     const b = await guestAtB(w);
     expect(await w.t.mutation(api.guestService.requestService, { ...b.guest, venueSlug: "maquis-a-cocody", type: "call_waiter" })).toEqual({ ok: false, reason: "invalid_pass" });
   },
+  "guestService.enterCode": async (w) => {
+    const b = await guestAtB(w);
+    expect(await w.t.mutation(api.guestService.enterCode, { ...b.guest, venueSlug: "maquis-a-cocody", code: "1234" })).toEqual({ ok: false, reason: "invalid_pass" });
+    // Le code de B, donné chez A : la table de A n'est pas ouverte, rien n'est admis.
+    const code = (await w.t.run((ctx) => ctx.db.get(b.service.sessionId)))!.activationCode!;
+    const scannedA = await w.t.mutation(api.guest.exchange, { token: w.floorA.token });
+    if (!scannedA.ok) throw new Error("scan refusé");
+    expect(await w.t.mutation(api.guestService.enterCode, { pass: scannedA.pass, venueSlug: scannedA.venueSlug, guestKey: b.guest.guestKey, code })).toEqual({ ok: false, reason: "table_not_open" });
+  },
+  "guestService.submitLines": async (w) => {
+    const b = await guestAtB(w);
+    expect(
+      await w.t.mutation(api.guestService.submitLines, { ...b.guest, venueSlug: "maquis-a-cocody", idempotencyKey: "intrus-000000000012", lines: [] }),
+    ).toEqual({ ok: false, reason: "invalid_pass" });
+  },
+  "guestService.submitFeedback": async (w) => {
+    const b = await guestAtB(w);
+    expect(await w.t.mutation(api.guestService.submitFeedback, { ...b.guest, venueSlug: "maquis-a-cocody", rating: 1, topics: [] })).toEqual({ ok: false, reason: "invalid_pass" });
+  },
+  "sessions.rotateCode": async (w) => {
+    const b = await guestAtB(w);
+    const before = (await w.t.run((ctx) => ctx.db.get(b.service.sessionId)))!.activationCode;
+    await bothRefused(
+      w.a.owner.as.mutation(api.sessions.rotateCode, { venueId: w.b.venueId, sessionId: b.service.sessionId }),
+      w.a.owner.as.mutation(api.sessions.rotateCode, { venueId: w.a.venueId, sessionId: b.service.sessionId }),
+    );
+    expect((await w.t.run((ctx) => ctx.db.get(b.service.sessionId)))!.activationCode).toBe(before);
+  },
+  "sessions.admitGuest": async (w) => {
+    const b = await guestAtB(w);
+    const [guest] = await w.t.run((ctx) => ctx.db.query("guestSessions").collect());
+    await bothRefused(
+      w.a.owner.as.mutation(api.sessions.admitGuest, { venueId: w.b.venueId, sessionId: b.service.sessionId, guestSessionId: guest!._id }),
+      w.a.owner.as.mutation(api.sessions.admitGuest, { venueId: w.a.venueId, sessionId: b.service.sessionId, guestSessionId: guest!._id }),
+    );
+    expect((await w.t.run((ctx) => ctx.db.get(guest!._id)))!.admittedAt).toBeUndefined();
+  },
+  "sessions.removeGuest": async (w) => {
+    const b = await guestAtB(w);
+    const [guest] = await w.t.run((ctx) => ctx.db.query("guestSessions").collect());
+    await bothRefused(
+      w.a.owner.as.mutation(api.sessions.removeGuest, { venueId: w.b.venueId, sessionId: b.service.sessionId, guestSessionId: guest!._id }),
+      w.a.owner.as.mutation(api.sessions.removeGuest, { venueId: w.a.venueId, sessionId: b.service.sessionId, guestSessionId: guest!._id }),
+    );
+    expect((await w.t.run((ctx) => ctx.db.get(guest!._id)))!.removedAt).toBeUndefined();
+  },
+  "feedback.list": async (w) => {
+    await expectCode(w.a.owner.as.query(api.feedback.list, { venueId: w.b.venueId }), "NOT_FOUND");
+    expect((await w.a.owner.as.query(api.feedback.list, { venueId: w.a.venueId })).items).toEqual([]);
+  },
+  "feedback.markSeen": async (w) => {
+    const id = await w.t.run((ctx) =>
+      ctx.db.insert("feedback", { venueId: w.b.venueId, rating: 1, topics: [], isPublicRedirect: false, status: "new", createdAt: Date.now() }),
+    );
+    await bothRefused(
+      w.a.owner.as.mutation(api.feedback.markSeen, { venueId: w.b.venueId, feedbackId: id }),
+      w.a.owner.as.mutation(api.feedback.markSeen, { venueId: w.a.venueId, feedbackId: id }),
+    );
+    expect((await w.t.run((ctx) => ctx.db.get(id)))!.status).toBe("new");
+  },
   "carts.forSession": async (w) => {
     const b = await guestAtB(w);
     await bothRefused(

@@ -135,7 +135,8 @@ export function TableView({ tableId }: { tableId: Id<"restaurantTables"> }) {
       args: {
         venueId: scope.venueId,
         ...target,
-        lines: d.lines.map((l) => l.request),
+        lines: d.lines.map((l) => (l.guestSessionId ? { ...l.request, guestSessionId: l.guestSessionId } : l.request)),
+        ...(d.fromCartIds && d.fromCartIds.length > 0 ? { fromCartIds: d.fromCartIds } : {}),
         heldCourses: d.held,
         ...(d.notes.trim() ? { notes: d.notes.trim() } : {}),
         idempotencyKey: opId,
@@ -195,9 +196,17 @@ export function TableView({ tableId }: { tableId: Id<"restaurantTables"> }) {
       {sessionId ? (
         <GuestCarts
           sessionId={sessionId}
-          onTake={(lines) => {
+          onTake={(taken) => {
             // Le panier du client rejoint la saisie du serveur : il relit, retire, retient un service.
-            setDraft((d) => ({ ...d, lines: [...d.lines, ...lines.map((request) => ({ key: crypto.randomUUID(), request }))] }));
+            // Chaque ligne garde son convive, et la commande pointera vers le panier (D-101).
+            setDraft((d) => ({
+              ...d,
+              lines: [
+                ...d.lines,
+                ...taken.lines.map((request) => ({ key: crypto.randomUUID(), request, ...(taken.guestSessionId ? { guestSessionId: taken.guestSessionId } : {}) })),
+              ],
+              fromCartIds: [...(d.fromCartIds ?? []), taken.cartId],
+            }));
             setComposing(true);
           }}
         />
@@ -545,7 +554,7 @@ function CancelItemDialog({ item, afterFire, onClose }: { item: Order["items"][n
  * « Panier préparé : 3 articles » — le client montre, le serveur le reprend dans SA saisie
  * (D-061) : il relit, retire, fait attendre le dessert, puis envoie comme d'habitude.
  */
-function GuestCarts({ sessionId, onTake }: { sessionId: Id<"tableSessions">; onTake: (lines: LineRequest[]) => void }) {
+function GuestCarts({ sessionId, onTake }: { sessionId: Id<"tableSessions">; onTake: (taken: { cartId: string; guestSessionId: string | null; lines: LineRequest[] }) => void }) {
   const scope = useServiceScope();
   const money = useMoney();
   const carts = useQuery(api.carts.forSession, scope.can("order.create") ? { venueId: scope.venueId, sessionId } : "skip");

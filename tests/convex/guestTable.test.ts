@@ -115,7 +115,7 @@ describe("la validation par le serveur (réglage)", () => {
   test("le mode se règle avec son droit ; la commande directe reste refusée", async () => {
     const s = await tableWithGuest();
     await expectCode(s.waiter.as.mutation(api.venues.setOrderingMode, { venueId: s.cocody, orderingMode: "guest_with_approval" }), "FORBIDDEN");
-    await expectCode(s.owner.as.mutation(api.venues.setOrderingMode, { venueId: s.cocody, orderingMode: "guest_direct" }), "INVALID_ARGUMENT");
+    await expectCode(s.owner.as.mutation(api.venues.setOrderingMode, { venueId: s.cocody, orderingMode: "hybrid" }), "INVALID_ARGUMENT");
     await expectCode(s.owner.as.mutation(api.venues.setOrderingMode, { venueId: s.cocody, orderingMode: "hybrid" }), "INVALID_ARGUMENT");
     await s.owner.as.mutation(api.venues.setOrderingMode, { venueId: s.cocody, orderingMode: "guest_with_approval" });
     const audit = await s.t.run((ctx) => ctx.db.query("auditLogs").collect());

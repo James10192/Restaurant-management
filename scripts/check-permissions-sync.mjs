@@ -18,7 +18,7 @@ const KNOWN_PREFIX = [
   "organization.", "venue.", "menu.", "table.", "order.", "kitchen.", "service_request.",
   "payment.", "check.", "cash_register.", "customer.", "loyalty.", "reservation.",
   "inventory.", "team.", "permissions.", "device.", "analytics.", "audit.", "export.",
-  "bill.", "report.",
+  "bill.", "report.", "feedback.",
   "ai.", "platform.",
 ];
 const looksLikePermission = (p) => KNOWN_PREFIX.some((prefix) => p.startsWith(prefix));

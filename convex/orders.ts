@@ -64,6 +64,8 @@ const lineArg = v.object({
   quantity: v.number(),
   instructions: v.optional(v.string()),
   courseNumber: v.number(),
+  /** Reprise d'un panier montré : le convive à qui la ligne revient (D-101). Chaîne : la file hors ligne ne connaît pas les types. */
+  guestSessionId: v.optional(v.string()),
 });
 
 const REASON_MIN = 3;
@@ -135,6 +137,11 @@ export async function createOrder(
     /** Préparée et servie sur papier pendant une coupure : enregistrée, jamais envoyée en cuisine. */
     enteredOffline?: boolean;
     clientCreatedAt?: number;
+    /**
+     * Le convive de chaque ligne, dans l'ordre des lignes : celui dont le panier a été repris
+     * par le serveur (D-101). Absent : le convive qui envoie, ou personne.
+     */
+    lineGuests?: readonly (Id<"guestSessions"> | undefined)[];
   },
 ): Promise<{ orderId: Id<"orders">; reference: string }> {
   const { venue, session, now } = params;
@@ -169,7 +176,8 @@ export async function createOrder(
     ...(params.enteredOffline ? { enteredOffline: true, ...(anyHeld ? {} : { servedAt: now, readyAt: now }) } : {}),
   });
   const itemIds: Id<"orderItems">[] = [];
-  for (const line of lines) {
+  for (const [index, line] of lines.entries()) {
+    const guest = params.lineGuests?.[index] ?? params.placedByGuestSessionId;
     itemIds.push(
       await ctx.db.insert("orderItems", {
         venueId: venue._id,
@@ -188,7 +196,7 @@ export async function createOrder(
         ...(line.instructions ? { instructions: line.instructions } : {}),
         courseNumber: line.courseNumber,
         status: servedOnPaper(line.courseNumber) ? "served" : "ordered",
-        assignedGuestSessionIds: params.placedByGuestSessionId ? [params.placedByGuestSessionId] : [],
+        assignedGuestSessionIds: guest ? [guest] : [],
       }),
     );
   }
@@ -334,6 +342,8 @@ export const submit = mutation({
     /** Une personne a relu cette commande restée plus de 3 min en file, et l'envoie quand même. */
     lateConfirmed: v.optional(v.boolean()),
     actingMemberId: v.optional(v.id("organizationMembers")),
+    /** Les paniers montrés repris dans cette saisie : ils pointeront vers la commande (D-101). */
+    fromCartIds: v.optional(v.array(v.string())),
   },
   handler: async (
     ctx,
@@ -371,12 +381,14 @@ export const submit = mutation({
     if (heldCourses.some((c) => !Number.isInteger(c) || c < 2 || c > ORDER_LIMITS.courses)) {
       throw invalid("Seuls les services 2 à 4 peuvent attendre.");
     }
-    const priced = await priceRequest(ctx, actor.venue, args.lines, now);
+    const priced = await priceRequest(ctx, actor.venue, args.lines.map(({ guestSessionId: _g, ...line }) => line), now);
     if (priced.problems.length > 0) return { ok: false, problems: priced.problems };
+    const lineGuests = await guestsOfLines(ctx, session, args.lines);
     const created = await createOrder(ctx, {
       venue: actor.venue,
       session,
       lines: priced.lines,
+      lineGuests,
       heldCourses,
       ...(notes ? { notes } : {}),
       idempotencyKey: args.idempotencyKey,
@@ -388,9 +400,43 @@ export const submit = mutation({
       ...(args.recordOnly ? { enteredOffline: true } : {}),
       ...(args.clientCreatedAt !== undefined ? { clientCreatedAt: args.clientCreatedAt } : {}),
     });
+    await linkTakenCarts(ctx, session, args.fromCartIds ?? [], created.orderId);
     return { ok: true, ...created, replayed: false };
   },
 });
+
+/**
+ * Le convive de chaque ligne reprise d'un panier. Une référence qui ne désigne pas un convive de
+ * CETTE tablée est ignorée, sans échec : la saisie vient peut-être d'une file hors ligne rejouée.
+ */
+async function guestsOfLines(ctx: MutationCtx, session: Doc<"tableSessions">, lines: readonly { guestSessionId?: string }[]) {
+  const known = new Map<string, Id<"guestSessions"> | undefined>();
+  const result: (Id<"guestSessions"> | undefined)[] = [];
+  for (const line of lines) {
+    const raw = line.guestSessionId;
+    if (raw === undefined) {
+      result.push(undefined);
+      continue;
+    }
+    if (!known.has(raw)) {
+      const id = ctx.db.normalizeId("guestSessions", raw);
+      const guest = id ? await ctx.db.get(id) : null;
+      known.set(raw, guest && guest.tableSessionId === session._id ? guest._id : undefined);
+    }
+    result.push(known.get(raw));
+  }
+  return result;
+}
+
+/** Le panier repris pointe vers la commande : le client la retrouve dans « Mes commandes » (D-101). */
+async function linkTakenCarts(ctx: MutationCtx, session: Doc<"tableSessions">, cartIds: readonly string[], orderId: Id<"orders">) {
+  for (const raw of cartIds.slice(0, 10)) {
+    const id = ctx.db.normalizeId("carts", raw);
+    const cart = id ? await ctx.db.get(id) : null;
+    if (!cart || cart.tableSessionId !== session._id || cart.status !== "submitted" || cart.orderId !== undefined) continue;
+    await ctx.db.patch(cart._id, { orderId });
+  }
+}
 
 /** « Envoyez la suite » : les bons en attente d'un service partent en cuisine. */
 export const fireCourse = mutation({

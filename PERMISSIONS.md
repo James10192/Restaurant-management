@@ -141,6 +141,7 @@ fichier ; les deux doivent rester alignés (un test le vérifie — voir §9).
 | Permission | Ce qu'elle autorise | Scope |
 |---|---|---|
 | `customer.read` | Voir les profils clients | venue |
+| `feedback.read` | Lire les avis laissés après le repas — qu'aucun plan ne retire | venue |
 | `customer.manage` | Modifier, fusionner, supprimer (RGPD) | venue |
 | `loyalty.manage` | Configurer points, récompenses, coupons | venue |
 | `reservation.read` / `reservation.manage` | Réservations et liste d'attente | venue |

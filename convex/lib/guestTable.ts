@@ -9,6 +9,10 @@
  *  - la SESSION D'INVITÉ, une par téléphone : une clé aléatoire tirée par le navigateur, dont seul
  *    le SHA-256 est gardé. Elle sépare les paniers des convives d'une même table. Ce n'est pas
  *    une identité : la perdre, c'est seulement repartir d'un panier vide.
+ *
+ * Et deux niveaux pour un convive (D-095) : REJOINT (montrer un panier, appeler) et ADMIS, par le
+ * code de la tablée ou par un serveur — seul niveau qui envoie lui-même en cuisine. Le QR prouve
+ * la table ; le code, renouvelé à chaque ouverture, prouve la tablée.
  */
 
 import { rateLimiter } from "./rateLimits";
@@ -94,6 +98,23 @@ export async function joinSession(
     joinedAt: now,
     lastSeenAt: now,
     status: "active",
+    guestNumber: count + 1,
   });
   return { session, guest: (await ctx.db.get(id))! };
 }
+
+/** Quatre chiffres, tirés à chaque ouverture de table (D-095). */
+export function drawTableCode(): string {
+  const buf = new Uint32Array(1);
+  crypto.getRandomValues(buf);
+  // 2^32 n'est pas un multiple de 10 000 : le biais est de l'ordre de 10⁻⁶, sans effet ici.
+  return String(buf[0]! % 10_000).padStart(4, "0");
+}
+
+/** Le convive peut-il envoyer lui-même ? Admis et pas retiré. */
+export function isAdmitted(guest: Doc<"guestSessions">): boolean {
+  return guest.admittedAt !== undefined && guest.removedAt === undefined;
+}
+
+/** Codes faux sur une tablée avant qu'il se renouvelle de lui-même (D-096). */
+export const CODE_FAILURES_BEFORE_ROTATION = 10;

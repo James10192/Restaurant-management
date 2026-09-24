@@ -37,7 +37,8 @@ type VenueScopedTable =
   | "payments"
   | "bills"
   | "cashRegisters"
-  | "cashRegisterSessions";
+  | "cashRegisterSessions"
+  | "feedback";
 
 export async function getInVenue<T extends VenueScopedTable & TableNames>(
   ctx: ReadCtx,

@@ -39,9 +39,10 @@ import { useMinuteClock } from "./time";
 type Product = GuestMenu["sections"][number]["products"][number];
 
 /** Une ligne en cours de saisie. La clé sert à l'écran ; le prix affiché est une estimation, le serveur rechiffre. */
-export type DraftLine = { key: string; request: LineRequest };
+/** `guestSessionId` : ligne reprise du panier d'un convive — elle reste à lui (D-101). */
+export type DraftLine = { key: string; request: LineRequest; guestSessionId?: string };
 
-export type Draft = { lines: DraftLine[]; notes: string; held: number[] };
+export type Draft = { lines: DraftLine[]; notes: string; held: number[]; fromCartIds?: string[] };
 export const EMPTY_DRAFT: Draft = { lines: [], notes: "", held: [] };
 
 const COURSES = [1, 2, 3, 4] as const;
@@ -157,7 +158,8 @@ export function OrderComposer({
   }
 
   function add(request: LineRequest) {
-    const existing = draft.lines.find((l) => sameRequest(l.request, { ...request, quantity: l.request.quantity }));
+    // Une ligne reprise d'un convive reste à lui : on n'y ajoute pas ce que le serveur saisit.
+    const existing = draft.lines.find((l) => l.guestSessionId === undefined && sameRequest(l.request, { ...request, quantity: l.request.quantity }));
     const lines = existing
       ? draft.lines.map((l) => (l === existing ? { ...l, request: { ...l.request, quantity: Math.min(ORDER_LIMITS.quantity, l.request.quantity + request.quantity) } } : l))
       : [...draft.lines, { key: crypto.randomUUID(), request }];

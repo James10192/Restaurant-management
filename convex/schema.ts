@@ -301,6 +301,8 @@ export default defineSchema({
        * week-end règle 6 : sinon ses derniers encaissements tombent sur le lendemain.
        */
       serviceDayStartHour: v.optional(v.number()),
+      /** Quantité au plus par ligne dans un envoi du client (D-098) ; 10 par défaut. */
+      guestMaxQuantityPerLine: v.optional(v.number()),
     }),
     tax: v.object({
       pricesIncludeTax: v.boolean(),
@@ -817,7 +819,16 @@ export default defineSchema({
      * peut pas être faux.
      */
     currency: v.string(),
+    /**
+     * Le code de table (D-095) : quatre chiffres tirés à CHAQUE ouverture, que le serveur donne à
+     * voix haute. Il prouve qu'un téléphone est à cette tablée — le QR, lui, ne prouve que la table.
+     * En clair : il ne protège qu'une tablée de quelques heures, et le personnel doit le lire.
+     */
     activationCode: v.optional(v.string()),
+    /** Codes faux sur cette tablée depuis le dernier tirage : à 10, le code se renouvelle seul. */
+    codeFailures: v.optional(v.number()),
+    /** Renouvelé après trop d'essais faux : la salle le voit. */
+    codeAlertAt: v.optional(v.number()),
     /**
      * Référence choisie par l'appareil (UUIDv7) quand la table s'ouvre hors ligne : les commandes
      * saisies ensuite la désignent avant que le serveur ait attribué un `_id` (D-062).
@@ -863,6 +874,16 @@ export default defineSchema({
     lastSeenAt: v.number(),
     status: v.union(v.literal("active"), v.literal("left")),
     customerProfileId: v.optional(v.id("customerProfiles")),
+    /** « Convive 1, 2, 3… » dans l'ordre d'arrivée : jamais la couleur seule pour se reconnaître. */
+    guestNumber: v.optional(v.number()),
+    /**
+     * Admis à envoyer lui-même (D-095) : par le code de la table, ou par un serveur depuis son
+     * panier montré. Sans admission, le convive montre son panier et appelle, rien de plus.
+     */
+    admittedAt: v.optional(v.number()),
+    admittedBy: v.optional(v.union(v.literal("code"), v.literal("staff"))),
+    /** Retiré par le personnel (code qui a fuité) : ce téléphone ne peut plus envoyer. */
+    removedAt: v.optional(v.number()),
   })
     .index("by_session", ["tableSessionId"])
     .index("by_session_status", ["tableSessionId", "status"]),
@@ -908,6 +929,8 @@ export default defineSchema({
     updatedAt: v.number(),
     /** La commande qu'il est devenu, s'il a été importé ou envoyé. */
     orderId: v.optional(v.id("orders")),
+    /** Repris par un serveur dans sa saisie (D-101) : le client lit « pris par votre serveur ». */
+    takenAt: v.optional(v.number()),
   })
     .index("by_session", ["tableSessionId"])
     .index("by_guest", ["guestSessionId"]),
@@ -1563,6 +1586,8 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index("by_venue_createdAt", ["venueId", "createdAt"])
+    // Un avis par convive (D-105).
+    .index("by_guest_session", ["guestSessionId"])
     .index("by_venue_rating", ["venueId", "rating"]),
 
   /* ══════════════════════════════════════════════════════════════════════════

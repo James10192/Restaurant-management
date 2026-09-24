@@ -21,6 +21,7 @@ import { getInVenue } from "./lib/catalogAccess";
 import { conflict, invalid, notFound } from "./lib/errors";
 import { memberCoversVenue, type MutationCtx, type ReadCtx } from "./lib/guards";
 import { requireServiceActor, requireServiceMutation } from "./lib/serviceActor";
+import { drawTableCode } from "./lib/guestTable";
 import { ACTIVE_ORDER, isClientRef, type OrderStatus } from "./lib/ordering";
 import { activeSessionOf, isOpenSession, memberName, nextCounter, OPEN_SESSION, settingsOf } from "./lib/service";
 
@@ -112,6 +113,10 @@ export const open = mutation({
       openedAt: now,
       currency: actor.venue.currency,
       ...(args.clientRef !== undefined ? { clientRef: args.clientRef } : {}),
+      // Tiré à CHAQUE ouverture, quel que soit le mode (D-095) : passer en commande directe en
+      // plein service ne laisse aucune tablée sans code.
+      activationCode: drawTableCode(),
+      codeFailures: 0,
       lastActivityAt: now,
       isSimulation: actor.venue.isSimulation,
     });
@@ -289,6 +294,15 @@ export const floor = query({
       .query("orders")
       .withIndex("by_venue_status_submitted", (q) => q.eq("venueId", venueId).eq("status", "pending_acceptance"))
       .collect();
+    // Une commande envoyée par un client en direct (D-107) : le serveur la voit sur le plan, cinq
+    // minutes durant. Calculé à la lecture, rien n'est écrit.
+    const now = Date.now();
+    const recentGuestOrders = (
+      await ctx.db
+        .query("orders")
+        .withIndex("by_venue_submittedAt", (q) => q.eq("venueId", venueId).gte("submittedAt", now - GUEST_ORDER_BADGE_MS))
+        .collect()
+    ).filter((o) => o.channel === "guest" && o.status !== "pending_acceptance" && o.status !== "rejected");
     const bySession = new Map(sessions.map((s) => [s._id, s]));
     const names = new Map<Id<"organizationMembers">, string | null>();
     const nameOf = async (id: Id<"organizationMembers"> | undefined) => {
@@ -328,6 +342,9 @@ export const floor = query({
                 readyCount: readyTickets.filter((t) => t.tableSessionId === session._id).length,
                 requestCount: openRequests.filter((r) => r.tableId === table._id).length,
                 pendingCount: pendingOrders.filter((o) => o.tableSessionId === session._id).length,
+                guestOrderCount: recentGuestOrders.filter((o) => o.tableSessionId === session._id).length,
+                /** Trop de codes faux : le code s'est renouvelé seul (D-096). */
+                codeAlert: session.codeAlertAt !== undefined && now - session.codeAlertAt < CODE_ALERT_MS,
               }
             : null,
         });
@@ -404,8 +421,26 @@ export const detail = query({
       });
     }
     const live = result.flatMap((o) => o.items).filter((i) => i.status !== "cancelled");
+    const guestRows = await ctx.db
+      .query("guestSessions")
+      .withIndex("by_session", (q) => q.eq("tableSessionId", session._id))
+      .collect();
     return {
       _id: session._id,
+      /** Le code de la tablée, que le serveur donne à voix haute (D-095). */
+      code: session.activationCode ?? null,
+      codeAlertAt: session.codeAlertAt ?? null,
+      guests: guestRows
+        .sort((a, b) => a.joinedAt - b.joinedAt)
+        .map((g) => ({
+          _id: g._id,
+          number: g.guestNumber ?? null,
+          colorKey: g.colorKey,
+          admitted: g.admittedAt !== undefined && g.removedAt === undefined,
+          admittedBy: g.admittedBy ?? null,
+          removed: g.removedAt !== undefined,
+          joinedAt: g.joinedAt,
+        })),
       reference: session.reference,
       status: session.status,
       tableNumber: table?.number ?? "?",
@@ -427,6 +462,7 @@ export const detail = query({
         cancel: actor.permissions.has("order.cancel"),
         accept: actor.permissions.has("order.accept"),
         close: actor.permissions.has("table.session.close") && isOpenSession(session),
+        manageGuests: actor.permissions.has("table.session.open") && isOpenSession(session),
       },
     };
   },
@@ -469,3 +505,85 @@ export const debts = query({
 });
 
 const DEBT_WINDOW_MS = 180 * 24 * 3_600_000;
+const GUEST_ORDER_BADGE_MS = 5 * 60_000;
+const CODE_ALERT_MS = 30 * 60_000;
+
+async function openSessionForGuests(ctx: MutationCtx, venueId: Id<"venues">, sessionId: Id<"tableSessions">) {
+  const session = await getInVenue(ctx, sessionId, venueId, "Cette table");
+  if (!isOpenSession(session)) throw conflict("Cette table est clôturée.");
+  return session;
+}
+
+/**
+ * Renouveler le code de la tablée (D-096) : il a fuité, ou quelqu'un s'amuse à l'essayer. Les
+ * convives déjà admis le restent ; seuls les nouveaux arrivants auront besoin du nouveau.
+ */
+export const rotateCode = mutation({
+  args: { venueId: v.id("venues"), actingMemberId: v.optional(v.id("organizationMembers")), sessionId: v.id("tableSessions") },
+  handler: async (ctx, args) => {
+    const actor = await requireServiceMutation(ctx, "table.session.open", { venueId: args.venueId, actingMemberId: args.actingMemberId });
+    const session = await openSessionForGuests(ctx, actor.venue._id, args.sessionId);
+    const code = drawTableCode();
+    await ctx.db.patch(session._id, { activationCode: code, codeFailures: 0 });
+    await writeAudit(ctx, {
+      organizationId: actor.organization._id,
+      venueId: actor.venue._id,
+      ...actor.audit,
+      action: "table.session.rotate_code",
+      resourceType: "tableSession",
+      resourceId: session._id,
+    });
+    return code;
+  },
+});
+
+async function guestAtTable(ctx: MutationCtx, session: Doc<"tableSessions">, guestSessionId: Id<"guestSessions">) {
+  const guest = await ctx.db.get(guestSessionId);
+  if (!guest || guest.tableSessionId !== session._id) throw notFound("Ce convive");
+  return guest;
+}
+
+/**
+ * Admettre un téléphone depuis son panier montré (D-096) : la roue de secours quand le code ne
+ * passe pas — oublié, ou épuisé par quelqu'un qui bloque la table. Seulement pour un téléphone
+ * que le serveur voit à la table.
+ */
+export const admitGuest = mutation({
+  args: { venueId: v.id("venues"), actingMemberId: v.optional(v.id("organizationMembers")), sessionId: v.id("tableSessions"), guestSessionId: v.id("guestSessions") },
+  handler: async (ctx, args) => {
+    const actor = await requireServiceMutation(ctx, "table.session.open", { venueId: args.venueId, actingMemberId: args.actingMemberId });
+    const session = await openSessionForGuests(ctx, actor.venue._id, args.sessionId);
+    const guest = await guestAtTable(ctx, session, args.guestSessionId);
+    if (guest.removedAt !== undefined) throw conflict("Ce téléphone a été retiré de la table.");
+    if (guest.admittedAt !== undefined) return;
+    await ctx.db.patch(guest._id, { admittedAt: Date.now(), admittedBy: "staff" });
+    await writeAudit(ctx, {
+      organizationId: actor.organization._id,
+      venueId: actor.venue._id,
+      ...actor.audit,
+      action: "table.guest.admit",
+      resourceType: "guestSession",
+      resourceId: guest._id,
+    });
+  },
+});
+
+/** Retirer un téléphone (le code a fuité) : il ne peut plus envoyer, ni montrer de panier. */
+export const removeGuest = mutation({
+  args: { venueId: v.id("venues"), actingMemberId: v.optional(v.id("organizationMembers")), sessionId: v.id("tableSessions"), guestSessionId: v.id("guestSessions") },
+  handler: async (ctx, args) => {
+    const actor = await requireServiceMutation(ctx, "table.session.open", { venueId: args.venueId, actingMemberId: args.actingMemberId });
+    const session = await openSessionForGuests(ctx, actor.venue._id, args.sessionId);
+    const guest = await guestAtTable(ctx, session, args.guestSessionId);
+    if (guest.removedAt !== undefined) return;
+    await ctx.db.patch(guest._id, { removedAt: Date.now(), status: "left" });
+    await writeAudit(ctx, {
+      organizationId: actor.organization._id,
+      venueId: actor.venue._id,
+      ...actor.audit,
+      action: "table.guest.remove",
+      resourceType: "guestSession",
+      resourceId: guest._id,
+    });
+  },
+});

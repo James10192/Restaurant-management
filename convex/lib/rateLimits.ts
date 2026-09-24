@@ -31,9 +31,16 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
   pinActivation: { kind: "fixed window", rate: 10, period: 10 * MINUTE },
   // Côté client, par QR : une photo du code qui circule ne doit pas inonder la salle.
   guestRequest: { kind: "fixed window", rate: 12, period: 10 * MINUTE },
-  guestOrder: { kind: "fixed window", rate: 6, period: 10 * MINUTE },
-  // Paniers montrés, par QR : de quoi corriger souvent, pas de quoi inonder le serveur.
-  guestCart: { kind: "fixed window", rate: 40, period: 10 * MINUTE },
+  // Envois du client (D-098) : PAR CONVIVE d'abord — quatre personnes qui recommandent chacune à
+  // boire ne doivent pas se gêner —, et par QR comme filet.
+  guestOrderPerGuest: { kind: "fixed window", rate: 4, period: 10 * MINUTE },
+  guestOrder: { kind: "fixed window", rate: 20, period: 10 * MINUTE },
+  // Paniers montrés : de quoi corriger souvent, pas de quoi inonder le serveur.
+  guestCartPerGuest: { kind: "fixed window", rate: 40, period: 10 * MINUTE },
+  guestCart: { kind: "fixed window", rate: 120, period: 10 * MINUTE },
+  // Code de table (D-096) : cinq essais faux par QR et par 10 minutes. 10 000 codes : moins de
+  // 1 % de chances sur une tablée de deux heures.
+  guestCode: { kind: "fixed window", rate: 5, period: 10 * MINUTE },
   // Nouveaux convives, par tablée : une photo du QR ne doit pas remplir la table de faux invités.
   guestJoin: { kind: "fixed window", rate: 15, period: 10 * MINUTE },
 });

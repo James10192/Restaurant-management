@@ -126,6 +126,8 @@ export const PERMISSIONS = {
 
   /* ── Clients ─────────────────────────────────────────────────────────── */
   "customer.read": { label: "Voir les clients", group: "Clients", scope: "venue" },
+  // Les avis laissés après le repas (D-105) : lus par le gérant, qu'aucun plan ne retire.
+  "feedback.read": { label: "Lire les avis des clients", group: "Clients", scope: "venue" },
   "customer.manage": { label: "Gérer les clients", group: "Clients", scope: "venue", audited: true },
   "loyalty.manage": { label: "Gérer la fidélité", group: "Clients", scope: "venue" },
   "reservation.read": { label: "Voir les réservations", group: "Clients", scope: "venue" },
@@ -234,7 +236,7 @@ export const ROLE_TEMPLATES = {
       "service_request.read", "service_request.handle",
       "payment.read", "payment.collect", "payment.refund", "payment.void", "check.manage", "bill.reissue",
       "cash_register.open", "cash_register.close", "cash_register.adjust", "report.service_day.read",
-      "customer.read", "customer.manage", "reservation.read", "reservation.manage",
+      "customer.read", "feedback.read", "customer.manage", "reservation.read", "reservation.manage",
       "team.read", "team.manage", "device.manage",
       "analytics.read", "analytics.financial.read", "audit.read", "export.data",
       "ai.use", "ai.actions.propose", "ai.actions.approve",

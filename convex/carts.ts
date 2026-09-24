@@ -99,7 +99,7 @@ export const importCart = mutation({
       accepted: true,
       now,
     });
-    await ctx.db.patch(cart._id, { status: "submitted", orderId: created.orderId, updatedAt: now });
+    await ctx.db.patch(cart._id, { status: "submitted", orderId: created.orderId, takenAt: now, updatedAt: now });
     return { ok: true, ...created };
   },
 });
@@ -121,8 +121,15 @@ export const takeCart = mutation({
       .query("cartItems")
       .withIndex("by_cart", (q) => q.eq("cartId", cart._id))
       .collect();
-    await ctx.db.patch(cart._id, { status: "submitted", updatedAt: Date.now() });
-    return cartLineRequests(items);
+    const now = Date.now();
+    await ctx.db.patch(cart._id, { status: "submitted", takenAt: now, updatedAt: now });
+    // Le convive voyage avec ses lignes jusqu'à la commande : sans lui, le client ne la retrouve
+    // pas, et remontre un panier déjà commandé (D-101).
+    return {
+      cartId: cart._id,
+      guestSessionId: cart.guestSessionId ?? null,
+      lines: cartLineRequests(items),
+    };
   },
 });
 

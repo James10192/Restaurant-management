@@ -236,8 +236,11 @@ export const setOrderingMode = mutation({
   args: { venueId: v.id("venues"), orderingMode: v.union(v.literal("staff_only"), v.literal("guest_with_approval"), v.literal("guest_direct"), v.literal("hybrid")) },
   handler: async (ctx, args) => {
     const actor = await requirePermission(ctx, "venue.settings.service", { venueId: args.venueId });
-    if (args.orderingMode === "guest_direct" || args.orderingMode === "hybrid") {
-      throw invalid("La commande directe par le client n'est pas encore disponible : le serveur garde la main.");
+    // `guest_direct` n'est ouvert qu'avec le code de la tablée (D-095, D-106) : il est toujours
+    // tiré à l'ouverture, et `submitLines` refuse un convive qui ne l'a pas donné. `hybrid` reste
+    // refusé (D-094) : une commande à moitié partie est ce que D-061 condamne.
+    if (args.orderingMode === "hybrid") {
+      throw invalid("Ce mode n'est pas disponible : choisissez l'envoi direct avec le code de la table, ou la validation par un serveur.");
     }
     const settings = await ctx.db
       .query("venueSettings")

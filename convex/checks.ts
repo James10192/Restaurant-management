@@ -109,6 +109,18 @@ export const forSession = query({
     const table = await ctx.db.get(session.tableId);
     const mode = cashModeOf(settings);
     const cash = actor.member ? await resolveCashSession(ctx, actor.venue._id, mode, actor.member) : null;
+    const guests = await ctx.db
+      .query("guestSessions")
+      .withIndex("by_session", (q) => q.eq("tableSessionId", session._id))
+      .collect();
+    const numberOf = new Map(guests.map((g) => [g._id as string, g.guestNumber ?? null]));
+    // Une ligne n'a de convive que s'il est UNIQUE : partagée ou saisie par le serveur, elle reste
+    // sur le reste de la table.
+    const guestOfItem = new Map<string, number | null>();
+    for (const item of billing.items) {
+      const [only, ...others] = item.assignedGuestSessionIds;
+      guestOfItem.set(item._id, only && others.length === 0 ? (numberOf.get(only) ?? null) : null);
+    }
     const checks = [];
     for (const c of billing.checks) {
       const payments = [];
@@ -142,7 +154,8 @@ export const forSession = query({
         reference: c.check?.reference ?? null,
         kind: c.kind,
         label: c.check?.label ?? (c.kind === "remainder" ? "Table" : null),
-        lines: c.lines,
+        // Le convive de chaque ligne (D-102) : « Articles du convive 2 » présélectionne le partage.
+        lines: c.lines.map((l) => ({ ...l, guestNumber: guestOfItem.get(l.orderItemId) ?? null })),
         adjustments,
         payments,
         balance: c.balance,
