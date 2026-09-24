@@ -539,3 +539,44 @@ describe("revue adverse de T3", () => {
     await expectCode(v.waiter.as.mutation(api.bills.recordPrint, { venueId: v.cocody, billId }), "FORBIDDEN");
   });
 });
+
+describe("les restes de T3", () => {
+  test("un impayé se recouvre : le client revient, on encaisse, la dette s'éteint à zéro", async () => {
+    const v = await venue();
+    const a = await tableWithOrder(v);
+    await serveAll(v, a.orderId);
+    await collect(v, a.sessionId, { method: "card", amount: 3500 });
+    await v.owner.as.mutation(api.sessions.closeWithDebt, { venueId: v.cocody, sessionId: a.sessionId, reason: "Parti sans finir de payer" });
+    expect((await v.cashier.as.query(api.sessions.debts, { venueId: v.cocody })).map((d) => [d.table, d.debtAmount, d.owed])).toEqual([["1", 10000, 10000]]);
+    // La table est libérée : on n'y commande plus, mais on y encaisse la dette.
+    await expectCode(v.owner.as.mutation(api.checks.discount, { venueId: v.cocody, sessionId: a.sessionId, checkId: null, amount: 100, reason: "Geste commercial" }), "CONFLICT");
+    await collect(v, a.sessionId, { method: "mobile_money", wallet: "Wave", amount: 4000 });
+    expect((await v.cashier.as.query(api.sessions.debts, { venueId: v.cocody }))[0]!.owed).toBe(6000);
+    await expectCode(
+      v.cashier.as.mutation(api.payments.collect, { venueId: v.cocody, sessionId: a.sessionId, checkId: null, method: "card", amount: 7000, idempotencyKey: key() }),
+      "CONFLICT",
+    );
+    await collect(v, a.sessionId, { method: "card", amount: 6000 });
+    expect(await v.cashier.as.query(api.sessions.debts, { venueId: v.cocody })).toEqual([]);
+    const session = await v.t.run((ctx) => ctx.db.get(a.sessionId));
+    expect([session!.status, session!.debtAmount, typeof session!.debtSettledAt]).toEqual(["closed_with_debt", 10000, "number"]);
+    const report = await v.owner.as.query(api.reports.serviceDay, { venueId: v.cocody });
+    expect(report.debts.map((d) => [d.amount, d.recovered])).toEqual([[10000, 10000]]);
+    // Éteinte : plus rien ne s'encaisse sur cette table.
+    await expectCode(
+      v.cashier.as.mutation(api.payments.collect, { venueId: v.cocody, sessionId: a.sessionId, checkId: null, method: "card", amount: 1, idempotencyKey: key() }),
+      "CONFLICT",
+    );
+  });
+
+  test("annuler un Wave dont la monnaie a été rendue : elle reste sortie de la caisse, et la caisse tombe juste", async () => {
+    const v = await venue();
+    const { sessionId } = await tableWithOrder(v);
+    const drawer = await v.cashier.as.mutation(api.cash.open, { venueId: v.cocody, openingFloat: 5000 });
+    const paid = await collect(v, sessionId, { method: "mobile_money", wallet: "Wave", amount: 9500, changeAmount: 500 });
+    await expectCode(v.owner.as.mutation(api.payments.voidPayment, { venueId: v.cocody, paymentId: paid.paymentId, reason: "Mauvais portefeuille" }), "INVALID_ARGUMENT");
+    await v.owner.as.mutation(api.payments.voidPayment, { venueId: v.cocody, paymentId: paid.paymentId, reason: "Mauvais portefeuille", changeGiven: true });
+    await v.owner.as.mutation(api.cash.startCount, { venueId: v.cocody, sessionId: drawer });
+    expect(await v.owner.as.mutation(api.cash.submitCount, { venueId: v.cocody, sessionId: drawer, countedAmount: 4500 })).toEqual({ expected: 4500, counted: 4500, discrepancy: 0 });
+  });
+});

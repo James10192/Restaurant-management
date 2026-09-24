@@ -19,7 +19,7 @@ import { v } from "convex/values";
 import { mutation } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { writeAudit } from "./lib/audit";
-import { loadSessionBilling } from "./lib/billing";
+import { closingState, loadSessionBilling } from "./lib/billing";
 import { getInVenue } from "./lib/catalogAccess";
 import { conflict, invalid, notFound } from "./lib/errors";
 import type { MutationCtx } from "./lib/guards";
@@ -82,7 +82,10 @@ export async function applyPayment(ctx: MutationCtx, actor: ServiceActor, sessio
     const after = await loadSessionBilling(ctx, session);
     return { ok: true, paymentId: replay._id, due: after.checks.find((c) => c.check?._id === replay.checkId)?.balance.due ?? 0, changeAmount: replay.changeAmount ?? 0 };
   }
-  assertBillable(session);
+  // Une table partie sans payer reste encaissable : le client revient régler sa dette. Le reste de
+  // l'addition, lui, est figé — on n'y commande plus rien, on n'y offre plus rien.
+  const recovering = session.status === "closed_with_debt" && session.debtSettledAt === undefined;
+  if (!recovering) assertBillable(session);
   const settings = await settingsOf(ctx, session.venueId);
   const amount = requireAmount(input.amount, "Le montant");
 
@@ -150,15 +153,20 @@ export async function applyPayment(ctx: MutationCtx, actor: ServiceActor, sessio
     isSimulation: session.isSimulation,
     createdAt: now,
   });
-  await ctx.db.patch(session._id, {
-    lastActivityAt: now,
-    ...(session.status === "settling" ? {} : { status: "settling" as const }),
-  });
+  if (recovering) {
+    const { owed } = await closingState(ctx, await loadSessionBilling(ctx, session));
+    if (owed === 0) await ctx.db.patch(session._id, { debtSettledAt: now });
+  } else {
+    await ctx.db.patch(session._id, {
+      lastActivityAt: now,
+      ...(session.status === "settling" ? {} : { status: "settling" as const }),
+    });
+  }
   await writeAudit(ctx, {
     organizationId: actor.organization._id,
     venueId: actor.venue._id,
     ...actor.audit,
-    action: "payment.collect",
+    action: recovering ? "payment.debt_recovery" : "payment.collect",
     resourceType: "payment",
     resourceId: paymentId,
     after: { method: input.method, wallet: wallet ?? null, amount, check: check.reference },
@@ -208,7 +216,14 @@ async function saleBillFor(ctx: MutationCtx, checkId: Id<"checks">) {
  * obligatoire. L'auteur d'un encaissement ne l'annule pas lui-même.
  */
 export const voidPayment = mutation({
-  args: { venueId: v.id("venues"), actingMemberId: v.optional(v.id("organizationMembers")), paymentId: v.id("payments"), reason: v.string() },
+  args: {
+    venueId: v.id("venues"),
+    actingMemberId: v.optional(v.id("organizationMembers")),
+    paymentId: v.id("payments"),
+    reason: v.string(),
+    /** Paiement non espèces avec monnaie rendue : cette monnaie est-elle vraiment sortie du tiroir ? */
+    changeGiven: v.optional(v.boolean()),
+  },
   handler: async (ctx, args) => {
     const actor = await requireServiceMutation(ctx, "payment.void", { venueId: args.venueId, actingMemberId: args.actingMemberId });
     const member = memberOf(actor);
@@ -228,7 +243,23 @@ export const voidPayment = mutation({
       const cash = await ctx.db.get(payment.cashRegisterSessionId);
       if (cash && cash.status !== "open") throw conflict("La caisse de ce paiement est comptée ou close : remboursez plutôt qu'annuler.");
     }
-    await ctx.db.patch(payment._id, { status: "voided", voidedReason: reason, voidedByMemberId: member._id, voidedAt: Date.now() });
+    // Wave 10 000 pour 9 500, 500 rendus en billets, puis la saisie est annulée : si les 500 sont
+    // vraiment partis, ils restent une sortie de la caisse — sinon l'attendu les réclamerait.
+    const change = payment.method !== "cash" ? (payment.changeAmount ?? 0) : 0;
+    if (change > 0 && args.changeGiven === undefined) throw invalid("Dites si la monnaie de ce paiement a vraiment été rendue.");
+    const now = Date.now();
+    await ctx.db.patch(payment._id, { status: "voided", voidedReason: reason, voidedByMemberId: member._id, voidedAt: now });
+    if (change > 0 && args.changeGiven && payment.cashRegisterSessionId) {
+      await ctx.db.insert("cashMovements", {
+        venueId: actor.venue._id,
+        registerSessionId: payment.cashRegisterSessionId,
+        type: "payout",
+        amount: change,
+        reason: `Monnaie rendue sur un paiement annulé : ${reason}`.slice(0, 300),
+        createdByMemberId: member._id,
+        createdAt: now,
+      });
+    }
     await writeAudit(ctx, {
       organizationId: actor.organization._id,
       venueId: actor.venue._id,

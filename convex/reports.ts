@@ -200,7 +200,18 @@ export const serviceDay = query({
       .collect()).filter((s) => !hide(s.isSimulation) && (s.closedAt ?? 0) >= from && (s.closedAt ?? 0) < to);
     const debts = [];
     for (const s of debtRows) {
-      debts.push({ _id: s._id, table: await tableOf(s._id), reference: s.reference, amount: s.debtAmount ?? 0, reason: s.closeReason ?? null, by: await nameOf(s.closedByMemberId), at: s.closedAt ?? 0 });
+      const { owed } = await closingState(ctx, await loadSessionBilling(ctx, s));
+      debts.push({
+        _id: s._id,
+        table: await tableOf(s._id),
+        reference: s.reference,
+        amount: s.debtAmount ?? 0,
+        /** Ce que le client est revenu payer depuis. */
+        recovered: Math.max(0, (s.debtAmount ?? 0) - owed),
+        reason: s.closeReason ?? null,
+        by: await nameOf(s.closedByMemberId),
+        at: s.closedAt ?? 0,
+      });
     }
     const openTables = [];
     for (const status of OPEN_SESSION) {

@@ -431,3 +431,41 @@ export const detail = query({
     };
   },
 });
+
+/**
+ * Les impayés à recouvrer : les tables parties sans payer dont la dette n'est pas éteinte. Le
+ * client revient régler — le lendemain, la semaine suivante : on encaisse depuis la caisse, et la
+ * dette se referme d'elle-même à zéro. Six mois au plus : au-delà, c'est une décision de gérant.
+ */
+export const debts = query({
+  args: { venueId: v.id("venues") },
+  handler: async (ctx, args) => {
+    const actor = await requireServiceActor(ctx, "payment.collect", { venueId: args.venueId });
+    const since = Date.now() - DEBT_WINDOW_MS;
+    const rows = (await ctx.db
+      .query("tableSessions")
+      .withIndex("by_venue_status", (q) => q.eq("venueId", actor.venue._id).eq("status", "closed_with_debt"))
+      .collect())
+      .filter((s) => s.debtSettledAt === undefined && (s.closedAt ?? 0) >= since && !(s.isSimulation && !actor.venue.isSimulation))
+      .sort((a, b) => (b.closedAt ?? 0) - (a.closedAt ?? 0))
+      .slice(0, 50);
+    const result = [];
+    for (const s of rows) {
+      const { owed } = await closingState(ctx, await loadSessionBilling(ctx, s));
+      const table = await ctx.db.get(s.tableId);
+      result.push({
+        _id: s._id,
+        table: table?.number ?? "?",
+        reference: s.reference,
+        debtAmount: s.debtAmount ?? owed,
+        owed,
+        reason: s.closeReason ?? null,
+        closedAt: s.closedAt ?? 0,
+        closedBy: await memberName(ctx, s.closedByMemberId),
+      });
+    }
+    return result;
+  },
+});
+
+const DEBT_WINDOW_MS = 180 * 24 * 3_600_000;

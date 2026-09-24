@@ -839,6 +839,11 @@ export default defineSchema({
      * dit qu'une table est partie sans payer, pas combien.
      */
     debtAmount: v.optional(money),
+    /**
+     * L'impayé entièrement recouvré : le client est revenu payer. La table reste
+     * `closed_with_debt` — l'histoire est qu'elle est partie sans payer — mais la dette est éteinte.
+     */
+    debtSettledAt: v.optional(v.number()),
   })
     .index("by_venue_status", ["venueId", "status"])
     .index("by_table_status", ["tableId", "status"]) // garantit R1

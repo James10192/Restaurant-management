@@ -4,8 +4,10 @@ Les parcours `t0.spec.ts` (ouvrir, inviter, cloisonner) et `t1.spec.ts` (compose
 publier, imprimer un QR, le scanner, couper un plat en direct, régénérer le QR) et `t2.spec.ts` (le service : saisir, préparer, porter, envoyer la suite, couper le réseau ;
 le client compose et le serveur reprend son panier ; tablette partagée avec PIN, écran de cuisine,
 révocation) et `t3.spec.ts` (l'argent : encaisser en deux fois, ouvrir la caisse sur place,
-imprimer le ticket, compter une caisse juste, puis provoquer un écart et le retrouver au rapport
-avec son auteur et son motif) s'exécutent dans un vrai navigateur, contre le build de production et un
+imprimer le ticket et vérifier qu'il part en 80 mm, compter une caisse juste, puis provoquer un
+écart et le retrouver au rapport avec son auteur et son motif ; puis, en pochettes, encaisser sous
+PIN sur une tablette partagée, faire compter la pochette par un responsable, et recouvrer un
+impayé) s'exécutent dans un vrai navigateur, contre le build de production et un
 backend Convex **local** (sans compte). Aucun service extérieur n'est appelé : les e-mails, codes
 de connexion compris, sont recueillis par un faux serveur de courrier.
 
@@ -13,7 +15,8 @@ de connexion compris, sont recueillis par un faux serveur de courrier.
 # 1. Faux serveur de courrier (écoute sur 127.0.0.1:4010)
 node e2e/mail-sink.mjs /tmp/joliba-mails.jsonl &
 
-# 2. Backend Convex local, puis ses variables d'environnement de test
+# 2. Backend Convex local, puis ses variables d'environnement de test (les secrets déjà posés
+#    sont gardés : les régénérer rendrait illisible la clé de connexion déjà enregistrée)
 CONVEX_AGENT_MODE=anonymous pnpm exec convex dev &
 sh scripts/e2e-env.sh
 

@@ -37,6 +37,7 @@ import { Input } from "~/components/ui/input";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemTitle } from "~/components/ui/item";
 import { describeError } from "~/lib/errors";
 import { amountToText, parseAmount } from "./amount";
+import { PaymentDialog } from "./payment-dialog";
 import { ReasonDialog } from "./reason-dialog";
 
 type Overview = FunctionReturnType<typeof api.cash.overview>;
@@ -139,9 +140,66 @@ export function CashScreen() {
         </Card>
       ) : null}
 
+      {scope.can("payment.collect") ? <DebtsCard /> : null}
+
       <OpenDialog target={opening} onClose={() => setOpening(null)} />
     </div>
   );
+}
+
+const day = new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "short" });
+
+/**
+ * Les tables parties sans payer, tant que la dette n'est pas éteinte. Le client revient : on
+ * encaisse ici, comme à table — espèces dans la caisse ouverte, portefeuille nommé.
+ */
+function DebtsCard() {
+  const scope = useServiceScope();
+  const money = useMoney();
+  const debts = useQuery(api.sessions.debts, { venueId: scope.venueId });
+  const [collecting, setCollecting] = useState<Id<"tableSessions"> | null>(null);
+  if (!debts || debts.length === 0) return null;
+  return (
+    <Card size="sm">
+      <CardHeader>
+        <CardTitle>Impayés à recouvrer</CardTitle>
+        <CardDescription>Le client revient payer : encaissez ici. La dette s'éteint à zéro, et le rapport le dit.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <ItemGroup className="gap-1">
+          {debts.map((d) => (
+            <Item key={d._id} size="sm" variant="outline">
+              <ItemContent>
+                <ItemTitle>
+                  Table {d.table} · {money(d.owed)}
+                </ItemTitle>
+                <ItemDescription>
+                  Partie le {day.format(d.closedAt)}
+                  {d.reason ? ` · ${d.reason}` : ""}
+                  {d.owed < d.debtAmount ? ` · déjà recouvré ${money(d.debtAmount - d.owed)}` : ""}
+                </ItemDescription>
+              </ItemContent>
+              <ItemActions>
+                <Button size="sm" onClick={() => setCollecting(d._id)}>
+                  <Wallet />
+                  Encaisser
+                </Button>
+              </ItemActions>
+            </Item>
+          ))}
+        </ItemGroup>
+      </CardContent>
+      {collecting ? <DebtPayment sessionId={collecting} onClose={() => setCollecting(null)} /> : null}
+    </Card>
+  );
+}
+
+function DebtPayment({ sessionId, onClose }: { sessionId: Id<"tableSessions">; onClose: () => void }) {
+  const scope = useServiceScope();
+  const bill = useQuery(api.checks.forSession, { venueId: scope.venueId, sessionId });
+  if (!bill) return null;
+  const check = bill.checks.find((c) => c.balance.due > 0) ?? null;
+  return <PaymentDialog bill={bill} check={check} open={check !== null} onOpenChange={(o) => !o && onClose()} />;
 }
 
 function CashCard({ session: s, overview }: { session: CashSession; overview: Overview }) {

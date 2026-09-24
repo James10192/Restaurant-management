@@ -41,6 +41,7 @@ import {
   ItemGroup,
   ItemTitle,
 } from "~/components/ui/item";
+import { Checkbox } from "~/components/ui/checkbox";
 import { Field, FieldLabel } from "~/components/ui/field";
 import { Separator } from "~/components/ui/separator";
 import { ToggleGroup, ToggleGroupItem } from "~/components/ui/toggle-group";
@@ -86,6 +87,9 @@ export function BillPanel({ sessionId }: { sessionId: Id<"tableSessions"> }) {
     line: Line;
   } | null>(null);
   const [voiding, setVoiding] = useState<Payment | null>(null);
+  // Un paiement Mobile Money ou carte annulé : la monnaie rendue en billets est-elle vraiment sortie ?
+  const [changeGiven, setChangeGiven] = useState(true);
+  const voidChange = voiding && voiding.method !== "cash" ? (voiding.changeAmount ?? 0) : 0;
   const [refunding, setRefunding] = useState<Payment | null>(null);
   const [printDoc, setPrintDoc] = useState<PaperDoc | null>(null);
   const [printBill, setPrintBill] = useState<Id<"bills"> | null>(null);
@@ -274,11 +278,22 @@ export function BillPanel({ sessionId }: { sessionId: Id<"tableSessions"> }) {
             ...scope.acting,
             paymentId: voiding._id,
             reason,
+            ...(voidChange > 0 ? { changeGiven } : {}),
           });
           toast.success("Saisie annulée.");
           setVoiding(null);
+          setChangeGiven(true);
         }}
-      />
+      >
+        {voidChange > 0 ? (
+          <Field orientation="horizontal">
+            <Checkbox id="void-change-given" checked={changeGiven} onCheckedChange={(v) => setChangeGiven(v === true)} />
+            <FieldLabel htmlFor="void-change-given" className="font-normal">
+              Les {money(voidChange)} de monnaie ont bien été rendus en espèces : ils restent sortis de la caisse
+            </FieldLabel>
+          </Field>
+        ) : null}
+      </ReasonDialog>
       <RefundDialog
         payment={refunding}
         currency={bill.currency}

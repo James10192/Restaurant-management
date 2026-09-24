@@ -174,7 +174,7 @@ export const forSession = query({
             ? { status: "ready" as const, sessionId: cash.session._id, options: [] }
             : { status: cash.reason, sessionId: null, options: await Promise.all(cash.options.map(async (o) => ({ _id: o._id, name: await registerName(ctx, o) }))) },
       can: {
-        collect: actor.permissions.has("payment.collect") && isOpenSession(session),
+        collect: actor.permissions.has("payment.collect") && (isOpenSession(session) || (session.status === "closed_with_debt" && session.debtSettledAt === undefined)),
         manage: actor.permissions.has("check.manage") && isOpenSession(session),
         discount: actor.permissions.has("order.discount.apply") && isOpenSession(session),
         void: actor.permissions.has("payment.void"),

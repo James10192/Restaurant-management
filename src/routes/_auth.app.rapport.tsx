@@ -130,7 +130,13 @@ function ReportView({ venueId }: { venueId: Id<"venues"> }) {
 
       <Section title="Impayés" empty={report.debts.length === 0} emptyText="Aucune table partie sans payer.">
         {report.debts.map((d) => (
-          <Row key={d._id} title={`Table ${d.table} · ${d.reason ?? ""}`} description={`${d.by ?? "?"} à ${clock.format(d.at)}`} value={money(d.amount)} destructive />
+          <Row
+            key={d._id}
+            title={`Table ${d.table} · ${d.reason ?? ""}`}
+            description={`${d.by ?? "?"} à ${clock.format(d.at)}${d.recovered > 0 ? ` · recouvré depuis ${money(d.recovered)}` : ""}`}
+            value={money(d.amount)}
+            destructive={d.recovered < d.amount}
+          />
         ))}
       </Section>
 

@@ -513,6 +513,7 @@ l'installation à la clôture. Ni la table, ni la commande, ni l'addition.
 | `openedByMemberId?`, `openedAt`, `closedAt?`, `closedByMemberId?` | | |
 | `closeReason?` | string | **obligatoire** si `closed_with_debt` |
 | `debtAmount?` | number | le dû abandonné à une clôture `closed_with_debt`, **figé** — sans lui, le rapport dit qu'une table est partie sans payer, pas combien (T3) |
+| `debtSettledAt?` | number | la dette entièrement recouvrée (le client est revenu payer) ; la table reste `closed_with_debt`, D-093 |
 | `currency` | string | figé à l'ouverture |
 | `activationCode?` | string | mode « code de présence » (§9) |
 | `clientRef?` | string | UUID choisi par l'appareil quand la table s'ouvre hors ligne ; index `by_venue_clientRef` (D-062) |

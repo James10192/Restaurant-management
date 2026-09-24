@@ -1426,6 +1426,11 @@ const CASES: Record<string, (w: Awaited<ReturnType<typeof twoTenants>>) => Promi
       w.a.owner.as.mutation(api.sessions.closeWithDebt, { venueId: w.a.venueId, sessionId: s.sessionId, reason: "intrusion de A" }),
     );
   },
+  "sessions.debts": async (w) => {
+    await moneyAtB(w);
+    await expectCode(w.a.owner.as.query(api.sessions.debts, { venueId: w.b.venueId }), "NOT_FOUND");
+    expect(await w.a.owner.as.query(api.sessions.debts, { venueId: w.a.venueId })).toEqual([]);
+  },
   "reports.serviceDay": async (w) => {
     await moneyAtB(w);
     await expectCode(w.a.owner.as.query(api.reports.serviceDay, { venueId: w.b.venueId }), "NOT_FOUND");

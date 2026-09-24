@@ -10,6 +10,8 @@
  */
 
 import { execFileSync } from "node:child_process";
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { clientHeaders } from "./mail";
 import { shot, signIn } from "./session";
@@ -42,6 +44,9 @@ async function orderAt(page: Page, table: string, dishes: { search: string; name
   }
   await page.getByRole("button", { name: /^Vérifier/ }).click();
   await page.getByRole("button", { name: "Envoyer" }).click();
+  // La commande doit être ARRIVÉE (sa carte apparaît) avant de quitter l'écran : partir pendant
+  // l'envoi laisserait la file le reprendre plus tard, et la cuisine ne verrait rien.
+  await expect(page.getByText(/^(Envoyée|En cuisine|En préparation)$/).first()).toBeVisible({ timeout: 20_000 });
   await expect(page.getByText(/En attente d'envoi/)).toHaveCount(0, { timeout: 20_000 });
 }
 
@@ -79,6 +84,8 @@ test("encaisser en deux fois, ticket, clôture de caisse juste ; puis un écart 
   // Réglages : l'établissement reçoit du Wave.
   await page.goto("/app/settings/payments");
   await expect(page.getByRole("heading", { name: "Encaissement" })).toBeVisible();
+  // Une caisse centrale (le second parcours passe en pochettes : on revient au mode de ce parcours-ci).
+  await page.getByRole("radio", { name: /Une caisse centrale/ }).click();
   await page.getByLabel("Ajouter un portefeuille").fill("Wave");
   await page.getByRole("button", { name: "Ajouter" }).first().click();
   await page.getByRole("button", { name: "Enregistrer" }).click();
@@ -127,6 +134,12 @@ test("encaisser en deux fois, ticket, clôture de caisse juste ; puis un écart 
   await page.emulateMedia({ media: "print" });
   await expect(page.getByText("Document interne — ne vaut pas reçu fiscal")).toBeVisible();
   await shot(page, "t3-06-ticket-imprime");
+  // Le vrai rendu d'impression : la page part en 80 mm de large (226,77 points), pas en A4.
+  const pdf = await page.pdf({ preferCSSPageSize: true });
+  const box = /\/MediaBox\s*\[\s*0 0 ([\d.]+) ([\d.]+)\s*\]/.exec(pdf.toString("latin1"));
+  expect(box).not.toBeNull();
+  expect(Math.abs(Number(box![1]) - (80 / 25.4) * 72)).toBeLessThan(1);
+  if (process.env.E2E_SCREENSHOTS) writeFileSync(join(process.env.E2E_SCREENSHOTS, "t3-ticket-80mm.pdf"), pdf);
   await page.emulateMedia({ media: "screen" });
 
   // La table se clôt : elle est soldée.
@@ -190,6 +203,145 @@ test("encaisser en deux fois, ticket, clôture de caisse juste ; puis un écart 
   await expect(page.getByText("Juste", { exact: true })).toBeVisible();
   await expect(page.getByText("Wave", { exact: true })).toBeVisible();
   await shot(page, "t3-10-rapport");
+
+  expect(errors).toEqual([]);
+});
+
+async function codeFrom(page: Page, label: string): Promise<string> {
+  const input = page.getByRole("textbox", { name: label });
+  await expect(input).toHaveValue(/^[A-Z2-9]{4}-[A-Z2-9]{4}$/);
+  return input.inputValue();
+}
+
+test("pochettes sur la tablette partagée : Awa encaisse sous PIN, ne compte pas sa pochette, un responsable la compte", async ({ browser }) => {
+  const OWNER_P = `pochette-${run}@maquis.test`;
+  // Un nom propre à ce passage : le restaurant de démonstration garde les membres des passages précédents.
+  const AWA = `Awa ${run.slice(-5)}`;
+  const ctx = await browser.newContext({ extraHTTPHeaders: clientHeaders(), viewport: { width: 1280, height: 900 } });
+  const page = await ctx.newPage();
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(String(e)));
+  await page.goto("/connexion");
+  await page.waitForLoadState("networkidle");
+  await signIn(page, OWNER_P);
+  await page.waitForURL(/\/app/);
+  convexRun("devSeed:joinDemo", { email: OWNER_P });
+
+  // Chaque serveur encaisse dans sa pochette. (Le premier parcours a déjà ajouté Wave.)
+  await page.goto("/app/settings/payments");
+  await page.getByRole("radio", { name: /Chaque serveur a sa pochette/ }).click();
+  await page.getByRole("button", { name: "Enregistrer" }).click();
+  await expect(page.getByText("Réglages d'encaissement enregistrés.")).toBeVisible();
+
+  // Awa, chef de rang sans compte : un PIN sur la tablette partagée.
+  await page.goto("/app/team");
+  await page.getByRole("button", { name: "Ajouter un membre sans compte (PIN)" }).click();
+  await page.getByLabel("Nom").fill(AWA);
+  await page.getByLabel("Rôle").selectOption({ label: "Chef de rang" });
+  await page.getByRole("button", { name: "Ajouter et obtenir un code" }).click();
+  const activation = await codeFrom(page, "Code d'activation");
+  await page.getByRole("button", { name: "Terminé" }).click();
+  await page.goto("/app/settings/devices");
+  await page.getByRole("button", { name: "Ajouter un appareil" }).click();
+  await page.getByLabel("Appareil partagé").check();
+  await page.getByLabel("Nom de l'appareil").fill("Tablette caisse");
+  await page.getByRole("button", { name: "Obtenir un code" }).click();
+  const enroll = await codeFrom(page, "Code d'enrôlement");
+  await page.getByRole("button", { name: "Terminé" }).click();
+
+  const tablet = await (await browser.newContext({ extraHTTPHeaders: clientHeaders(), viewport: { width: 820, height: 1180 }, hasTouch: true })).newPage();
+  tablet.on("pageerror", (e) => errors.push(String(e)));
+  await tablet.goto("/appareil");
+  await tablet.getByLabel("Code d'enrôlement").fill(enroll);
+  await tablet.getByRole("button", { name: "Enrôler" }).click();
+  await tablet.getByRole("button", { name: "Activer mon PIN" }).click();
+  await tablet.getByLabel("Code d'activation").fill(activation);
+  await tablet.getByLabel("Nouveau PIN (4 chiffres)").fill("4826");
+  await tablet.getByLabel("Le même, encore une fois").fill("4826");
+  await tablet.getByRole("button", { name: "Enregistrer mon PIN" }).click();
+  await tablet.getByRole("button", { name: "Continuer" }).click();
+  await tablet.getByRole("button", { name: new RegExp(AWA) }).click();
+  for (const d of "4826") await tablet.getByRole("button", { name: d, exact: true }).click();
+  await expect(tablet.getByRole("heading", { name: "Service" })).toBeVisible({ timeout: 20_000 });
+
+  // Table 5 : un Soda (700), sur la tablette, au nom d'Awa.
+  await tablet.getByRole("button", { name: /^Table 5,/ }).click();
+  await tablet.getByRole("textbox", { name: /Couverts/ }).press("Enter");
+  await tablet.getByRole("button", { name: /^Commander/ }).click();
+  await tablet.getByLabel("Chercher un plat").fill("soda");
+  await tablet.getByRole("button", { name: /^Soda/ }).click();
+  await tablet.getByRole("button", { name: /^Vérifier/ }).click();
+  await tablet.getByRole("button", { name: "Envoyer" }).click();
+  await expect(tablet.getByText(/En attente d'envoi/)).toHaveCount(0, { timeout: 20_000 });
+
+  // La cuisine prépare, Awa porte.
+  await page.goto("/app/cuisine");
+  await page.getByRole("button", { name: "Commencer" }).first().click();
+  await page.getByRole("button", { name: "Prêt" }).first().click();
+  await tablet.getByRole("button", { name: "Retour aux tables" }).click();
+  await tablet.getByRole("tab", { name: /À servir/ }).click();
+  await tablet.getByRole("button", { name: "Servi" }).first().click();
+  await expect(tablet.getByText("Rien à porter")).toBeVisible({ timeout: 20_000 });
+  await tablet.getByRole("tab", { name: /Tables/ }).click();
+  await tablet.getByRole("button", { name: /^Table 5,/ }).click();
+  await openBill(tablet);
+
+  // Espèces, pochette fermée : elle l'ouvre d'un geste, avec 1 000 de monnaie.
+  await tablet.getByRole("button", { name: "Encaisser" }).click();
+  await expect(tablet.getByText("Votre pochette n'est pas ouverte")).toBeVisible();
+  await tablet.getByLabel("Fonds de départ").fill("1000");
+  await tablet.getByRole("button", { name: "Ouvrir", exact: true }).click();
+  await expect(tablet.getByText("Votre pochette est ouverte.")).toBeVisible();
+  await tablet.getByRole("button", { name: "Continuer" }).click();
+  await tablet.getByRole("button", { name: "Confirmer l'encaissement" }).click();
+  await expect(tablet.getByText("Addition soldée.")).toBeVisible();
+  await tablet.getByRole("button", { name: "Clôturer" }).click();
+  await tablet.getByRole("alertdialog").getByRole("button", { name: "Clôturer" }).click();
+  await expect(tablet.getByText("Table 5 clôturée.")).toBeVisible();
+
+  // Sa pochette : ni comptage, ni sortie d'argent sous PIN sur son propre argent. (La table
+  // clôturée, l'écran est déjà revenu aux tables.)
+  await tablet.getByRole("button", { name: "Caisse" }).click();
+  await expect(tablet.getByText(`Pochette de ${AWA}`)).toBeVisible();
+  await expect(tablet.getByRole("button", { name: "Commencer le comptage" })).toHaveCount(0);
+  await expect(tablet.getByRole("button", { name: "Sortie" })).toHaveCount(0);
+  await shot(tablet, "t3-11-pochette-tablette");
+
+  // Le responsable, depuis son compte, compte la pochette : 1 000 + 700 = 1 700.
+  await page.goto("/app/service/caisse");
+  await expect(page.getByText(`Pochette de ${AWA}`)).toBeVisible();
+  await page.getByRole("button", { name: "Commencer le comptage" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Commencer" }).click();
+  await page.getByRole("button", { name: "Saisir le compté" }).click();
+  await page.getByLabel("Total compté").fill("1700");
+  await page.getByRole("button", { name: "Valider le compté" }).click();
+  await expect(page.getByText("La caisse tombe juste.")).toBeVisible();
+  await page.getByRole("button", { name: "Clôturer", exact: true }).click();
+  await expect(page.getByText(new RegExp(`Pochette de ${AWA} clôturée : la caisse tombe juste`))).toBeVisible();
+
+  // Table 11 : le client part sans payer son Soda. Le lendemain, il revient.
+  await orderAt(page, "11", [{ search: "soda", name: /^Soda/ }]);
+  await cookAndServe(page, "11");
+  await page.getByRole("button", { name: "Clôturer" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Clôturer avec un impayé" }).click();
+  await page.getByLabel("Motif").fill("Client parti sans payer, il repasse demain");
+  await page.getByRole("button", { name: "Clôturer avec l'impayé" }).click();
+  await expect(page.getByText("Table 11 clôturée avec un impayé.")).toBeVisible();
+  await page.goto("/app/service/caisse");
+  await expect(page.getByText("Impayés à recouvrer")).toBeVisible();
+  await shot(page, "t3-12-impaye-a-recouvrer");
+  await page.locator("[data-slot=item]").filter({ hasText: "Table 11" }).first().getByRole("button", { name: "Encaisser" }).click();
+  await page.getByRole("radio", { name: "Carte" }).click();
+  await page.getByRole("button", { name: "Continuer" }).click();
+  await page.getByRole("button", { name: "Confirmer l'encaissement" }).click();
+  await expect(page.getByText("Addition soldée.")).toBeVisible();
+  await expect(page.getByText("Impayés à recouvrer")).toHaveCount(0);
+
+  await page.goto("/app/rapport");
+  await expect(page.getByText(`Pochette de ${AWA}`)).toBeVisible();
+  await expect(page.getByText(AWA, { exact: true })).toBeVisible();
+  await expect(page.getByText(/recouvré depuis 700/)).toBeVisible();
+  await shot(page, "t3-13-rapport-pochette");
 
   expect(errors).toEqual([]);
 });
