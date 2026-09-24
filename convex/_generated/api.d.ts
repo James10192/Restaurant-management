@@ -16,6 +16,7 @@ import type * as cash from "../cash.js";
 import type * as checks from "../checks.js";
 import type * as devSeed from "../devSeed.js";
 import type * as devices from "../devices.js";
+import type * as feedback from "../feedback.js";
 import type * as floor from "../floor.js";
 import type * as guest from "../guest.js";
 import type * as guestService from "../guestService.js";
@@ -91,6 +92,7 @@ declare const fullApi: ApiFromModules<{
   checks: typeof checks;
   devSeed: typeof devSeed;
   devices: typeof devices;
+  feedback: typeof feedback;
   floor: typeof floor;
   guest: typeof guest;
   guestService: typeof guestService;
