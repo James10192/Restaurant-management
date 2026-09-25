@@ -12,14 +12,14 @@
 import { v } from "convex/values";
 import { query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
-import { countsInFigures, serviceDayOf, startHourOf } from "./lib/analytics";
-import { closingState, loadSessionBilling, serviceDayWindow } from "./lib/billing";
+import { countsInFigures, serviceDayOf } from "./lib/analytics";
+import { closingState, loadSessionBilling } from "./lib/billing";
 import { invalid } from "./lib/errors";
 import { requirePermission, type ReadCtx } from "./lib/guards";
-import { blindCountingSessions, loadDayMoney } from "./lib/serviceDay";
+import { blindCountingSessions, dayWindow, loadDayAdjustments, loadDayDebts, loadDayLosses, loadDayMoney, loadDayVoids } from "./lib/serviceDay";
 import { memberName, OPEN_SESSION, settingsOf } from "./lib/service";
 import { methodLabel } from "./checks";
-import { initialDiscrepancyOf } from "./cash";
+import { initialDiscrepancyOf } from "./lib/cashCount";
 
 function names(ctx: ReadCtx) {
   const cache = new Map<string, string | null>();
@@ -48,11 +48,11 @@ export const serviceDay = query({
     const actor = await requirePermission(ctx, "report.service_day.read", { venueId: args.venueId });
     const venue = actor.venue;
     const settings = await settingsOf(ctx, venue._id);
-    const startHour = startHourOf(settings);
     const today = serviceDayOf(Date.now(), venue, settings);
     const day = args.day ?? today;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw invalid("Jour invalide.");
-    const { from, to } = serviceDayWindow(day, venue.timezone, startHour);
+    // La même fenêtre que les analyses : un jour clos garde la sienne même si l'heure de début a changé.
+    const { from, to } = await dayWindow(ctx, venue, day, settings);
     const nameOf = names(ctx);
     const hide = (isSimulation: boolean) => !countsInFigures(isSimulation, venue);
     const tableOf = tables(ctx);
@@ -80,12 +80,8 @@ export const serviceDay = query({
       c.count += 1;
       byCollector.set(key, c);
     }
-    const voidedRows = (await ctx.db
-      .query("payments")
-      .withIndex("by_venue_voidedAt", (q) => q.eq("venueId", venue._id).gte("voidedAt", from).lt("voidedAt", to))
-      .collect()).filter((p) => p.status === "voided" && !hide(p.isSimulation));
     const voids = [];
-    for (const p of voidedRows) {
+    for (const p of await loadDayVoids(ctx, venue, from, to)) {
       voids.push({
         _id: p._id,
         table: await tableOf(p.tableSessionId),
@@ -113,14 +109,8 @@ export const serviceDay = query({
     }
 
     // ── Offerts, remises ───────────────────────────────────────────────────
-    const adjustmentRows = await ctx.db
-      .query("orderAdjustments")
-      .withIndex("by_venue_createdAt", (q) => q.eq("venueId", venue._id).gte("createdAt", from).lt("createdAt", to))
-      .collect();
     const adjustments = [];
-    for (const a of adjustmentRows) {
-      const session = await ctx.db.get(a.tableSessionId);
-      if (session && hide(session.isSimulation)) continue;
+    for (const a of await loadDayAdjustments(ctx, venue, from, to)) {
       adjustments.push({
         _id: a._id,
         type: a.type,
@@ -187,12 +177,8 @@ export const serviceDay = query({
     }
 
     // ── Impayés, tables encore ouvertes ────────────────────────────────────
-    const debtRows = (await ctx.db
-      .query("tableSessions")
-      .withIndex("by_venue_status", (q) => q.eq("venueId", venue._id).eq("status", "closed_with_debt"))
-      .collect()).filter((s) => !hide(s.isSimulation) && (s.closedAt ?? 0) >= from && (s.closedAt ?? 0) < to);
     const debts = [];
-    for (const s of debtRows) {
+    for (const s of await loadDayDebts(ctx, venue, from, to)) {
       const { owed } = await closingState(ctx, await loadSessionBilling(ctx, s));
       debts.push({
         _id: s._id,
@@ -220,27 +206,17 @@ export const serviceDay = query({
     }
 
     // ── Pertes : plats annulés après envoi en cuisine ──────────────────────
-    const cancelEvents = await ctx.db
-      .query("orderEvents")
-      .withIndex("by_venue_type_at", (q) => q.eq("venueId", venue._id).eq("type", "item_cancelled").gte("at", from).lt("at", to))
-      .collect();
     const cancellations = [];
-    for (const e of cancelEvents) {
-      const payload = (e.payload ?? {}) as { item?: string; quantity?: number; amount?: number; afterFire?: boolean; reason?: string };
-      if (payload.afterFire !== true) continue;
-      const order = await ctx.db.get(e.orderId);
-      if (!order) continue;
-      const session = await ctx.db.get(order.tableSessionId);
-      if (session && hide(session.isSimulation)) continue;
+    for (const l of await loadDayLosses(ctx, venue, from, to)) {
       cancellations.push({
-        _id: e._id,
-        table: await tableOf(order.tableSessionId),
-        item: payload.item ?? "?",
-        quantity: payload.quantity ?? 1,
-        amount: payload.amount ?? null,
-        reason: payload.reason ?? null,
-        by: await nameOf(e.actorMemberId),
-        at: e.at,
+        _id: l.event._id,
+        table: await tableOf(l.order.tableSessionId),
+        item: l.name,
+        quantity: l.quantity,
+        amount: l.amount,
+        reason: l.reason,
+        by: await nameOf(l.event.actorMemberId),
+        at: l.event.at,
       });
     }
 

@@ -860,6 +860,7 @@ export default defineSchema({
     debtSettledAt: v.optional(v.number()),
   })
     .index("by_venue_status", ["venueId", "status"])
+    .index("by_venue_status_closedAt", ["venueId", "status", "closedAt"])
     .index("by_table_status", ["tableId", "status"]) // garantit R1
     .index("by_venue_openedAt", ["venueId", "openedAt"])
     .index("by_waiter", ["assignedWaiterMemberId"])

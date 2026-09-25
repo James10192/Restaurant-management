@@ -31,11 +31,12 @@ export function delayText(d: { median: number | null; count: number }, unit: str
 }
 
 /** L'écart à l'habitude, dit en mots, sans couleur criarde : « +12 % par rapport à d'habitude ». */
-export function versusUsual(now: number, usual: number): string {
-  if (usual === 0) return now === 0 ? "comme d'habitude" : "d'habitude : rien";
+/** « +12 % par rapport à d'habitude », ou à la période précédente (`against`). */
+export function versusUsual(now: number, usual: number, against = "d'habitude"): string {
+  if (usual === 0) return now === 0 ? `comme ${against}` : `${against} : rien`;
   const pct = Math.round(((now - usual) / usual) * 100);
-  if (Math.abs(pct) < 5) return "comme d'habitude";
-  return `${pct > 0 ? "+" : ""}${pct} % par rapport à d'habitude`;
+  if (Math.abs(pct) < 5) return `comme ${against}`;
+  return `${pct > 0 ? "+" : ""}${pct} % par rapport à ${against}`;
 }
 
 /**

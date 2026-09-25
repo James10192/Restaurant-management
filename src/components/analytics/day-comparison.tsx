@@ -2,9 +2,11 @@ import { useQuery } from "convex/react";
 import { TriangleAlert } from "lucide-react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
-import { weekdayOf } from "../../../convex/lib/analytics";
+import { SLOT_MS, weekdayOf } from "../../../convex/lib/analytics";
 import { formatMoney, type CurrencyCode } from "../../../convex/lib/money";
+import { useMinuteClock } from "~/components/service/time";
 import { Alert, AlertDescription, AlertTitle } from "~/components/ui/alert";
+import { Skeleton } from "~/components/ui/skeleton";
 import { Figure, versusUsual } from "./figures";
 
 const WEEKDAYS = ["dimanches", "lundis", "mardis", "mercredis", "jeudis", "vendredis", "samedis"];
@@ -15,14 +17,19 @@ const WEEKDAYS = ["dimanches", "lundis", "mardis", "mercredis", "jeudis", "vendr
  * un chiffre sous la moyenne des mardis n'appelle aucun geste au coup de feu (IA §4.2).
  */
 export function DayComparison({ venueId, day }: { venueId: Id<"venues">; day: string }) {
-  const data = useQuery(api.analytics.day, { venueId, day });
-  if (!data) return null;
+  // L'heure de l'écran, à la demi-heure : « à la même heure » avance sans recharger (D-048).
+  const at = Math.floor(useMinuteClock(60_000) / SLOT_MS) * SLOT_MS;
+  const data = useQuery(api.analytics.day, { venueId, day, at });
+  // Réserve la place pendant le chargement : le rapport ne saute pas quand le bloc arrive.
+  if (data === undefined) return <Skeleton className="h-40 w-full" data-day-comparison-loading />;
+  // Un jour à venir (adresse tapée à la main) : rien à comparer, et rien à casser.
+  if (data === null) return null;
   const money = (amount: number) => formatMoney({ amount, currency: data.currency as CurrencyCode });
   const weekdays = WEEKDAYS[weekdayOf(data.day)]!;
   const cmp = data.comparison;
-  const when = data.inProgress ? " à cette heure" : "";
-  const usual = (now: number, ref: { usual: number } | null, format: (n: number) => string) =>
-    ref ? `${versusUsual(now, ref.usual)} (${format(ref.usual)} les ${weekdays} habituels${when})` : undefined;
+  // Seules les commandes se comparent en cours de journée, jusqu'à la dernière demi-heure écoulée.
+  const usual = (now: number, ref: { usual: number } | null, format: (n: number) => string, sameHour = false) =>
+    ref ? `${versusUsual(now, ref.usual)} (${format(ref.usual)} les ${weekdays} habituels${sameHour ? " à la même heure" : ""})` : undefined;
 
   return (
     <section aria-labelledby="jour-titre" className="flex flex-col gap-3" data-day-comparison>
@@ -30,10 +37,10 @@ export function DayComparison({ venueId, day }: { venueId: Id<"venues">; day: st
         La journée
       </h2>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <Figure label="Commandes" value={String(data.orders.count)} hint={usual(cmp.orders?.now ?? data.orders.count, cmp.orders, String)} />
+        <Figure label="Commandes" value={String(data.orders.count)} hint={usual(cmp.orders?.now ?? data.orders.count, cmp.orders, String, data.inProgress)} />
         {data.money ? (
           <>
-            <Figure label="Ventes" value={money(data.money.sales)} hint={usual(cmp.sales?.now ?? data.money.sales, cmp.sales, money)} />
+            <Figure label="Ventes" value={money(data.money.sales)} hint={data.inProgress ? "comparées une fois la journée finie" : usual(cmp.sales?.now ?? data.money.sales, cmp.sales, money)} />
             <Figure
               label="Ticket moyen par table"
               value={data.money.averageTicket === null ? "—" : money(data.money.averageTicket)}

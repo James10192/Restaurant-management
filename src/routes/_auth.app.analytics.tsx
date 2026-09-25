@@ -8,10 +8,13 @@ const DAY = /^\d{4}-\d{2}-\d{2}$/;
 export const Route = createFileRoute("/_auth/app/analytics")({
   head: () => ({ meta: [{ title: "Données — Joliba" }] }),
   // La période vit dans l'adresse : l'écran exact s'envoie à un associé.
-  validateSearch: (search: Record<string, unknown>): { du?: string; au?: string } => ({
-    ...(typeof search.du === "string" && DAY.test(search.du) ? { du: search.du } : {}),
-    ...(typeof search.au === "string" && DAY.test(search.au) ? { au: search.au } : {}),
-  }),
+  // Deux dates à l'envers (adresse tapée à la main) se remettent dans l'ordre plutôt que de casser la page.
+  validateSearch: (search: Record<string, unknown>): { du?: string; au?: string } => {
+    const du = typeof search.du === "string" && DAY.test(search.du) ? search.du : undefined;
+    const au = typeof search.au === "string" && DAY.test(search.au) ? search.au : undefined;
+    const [from, to] = du && au && du > au ? [au, du] : [du, au];
+    return { ...(from ? { du: from } : {}), ...(to ? { au: to } : {}) };
+  },
   component: AnalyticsPage,
 });
 

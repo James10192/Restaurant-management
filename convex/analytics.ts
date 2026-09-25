@@ -7,14 +7,19 @@
  *   - la clôture horaire, qui écrit `dailyMetrics` pour J-1 puis recalcule J-2 (D-141).
  *
  * Un montant exige `analytics.financial.read`, un compte ou un délai `analytics.read` (D-137).
- * Pendant un comptage à l'aveugle, aucune somme du jour ne sort (D-138).
+ * Pendant un comptage à l'aveugle, aucun montant ne sort, quel que soit le jour (D-138).
+ *
+ * L'heure vient de l'écran (`at`) : une requête Convex ne se réévalue pas quand l'heure passe
+ * (D-048), c'est donc l'écran, avec son horloge, qui fait avancer « aujourd'hui » et « à la même
+ * heure ». Le serveur ne la croit que si elle est plausible.
  */
 
 import { v } from "convex/values";
-import { internalMutation, query, type QueryCtx } from "./_generated/server";
+import { internalMutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
+  clockOf,
   comparableValue,
   dayCount,
   delaySummary,
@@ -26,6 +31,7 @@ import {
   serviceDayOf,
   shiftDay,
   slotOf,
+  SLOT_MS,
   SLOTS,
   startHourOf,
   sumUntil,
@@ -35,9 +41,9 @@ import {
 import { serviceDayWindow } from "./lib/billing";
 import type { DayMetrics } from "./lib/dayMetrics";
 import { invalid } from "./lib/errors";
-import { requirePermission, type ReadCtx } from "./lib/guards";
+import { requirePermission } from "./lib/guards";
 import { settingsOf } from "./lib/service";
-import { blindCountingSessions, computeServiceDay, METRICS_VERSION } from "./lib/serviceDay";
+import { computeServiceDay, dayWindow, METRICS_VERSION, moneyAccess, storedDay } from "./lib/serviceDay";
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 /** Au-delà, la lecture d'une période coûterait trop pour un seul écran. */
@@ -47,21 +53,15 @@ const MAX_PERIOD_DAYS = 92;
  * jours comparables se signale (D-148 : constante documentée, réglable quand le terrain le dira).
  */
 const EXCEPTION_FACTOR = 2;
+/**
+ * Un établissement qui n'annule, n'offre et ne remet jamais rien n'est pas pour autant à l'abri :
+ * sa part habituelle se lit comme au moins 2 %, donc l'alerte part au-delà de 4 % (D-148).
+ */
+const EXCEPTION_FLOOR = 0.02;
+/** L'heure donnée par l'écran est arrondie à la demi-heure : au-delà de cet écart, elle ment. */
+const CLOCK_SLACK = SLOT_MS + 5 * 60_000;
 
-type Access = { money: boolean; hidden: "permission" | "blind" | null };
-
-async function accessOf(ctx: ReadCtx, actor: Awaited<ReturnType<typeof requirePermission>>, venue: Doc<"venues">, includesToday: boolean): Promise<Access> {
-  if (!actor.permissions.has("analytics.financial.read")) return { money: false, hidden: "permission" };
-  if (includesToday && (await blindCountingSessions(ctx, venue)).length > 0) return { money: false, hidden: "blind" };
-  return { money: true, hidden: null };
-}
-
-async function storedDay(ctx: ReadCtx, venueId: Id<"venues">, day: string): Promise<Doc<"dailyMetrics"> | null> {
-  return ctx.db
-    .query("dailyMetrics")
-    .withIndex("by_venue_date", (q) => q.eq("venueId", venueId).eq("businessDate", day))
-    .unique();
-}
+const clock = (at: number | undefined) => clockOf(at, Date.now(), CLOCK_SLACK);
 
 function delays(m: Pick<DayMetrics, "delays">) {
   const d = m.delays;
@@ -86,22 +86,25 @@ function delays(m: Pick<DayMetrics, "delays">) {
  * même heure des jours comparables, un jour clos à leur journée entière.
  */
 export const day = query({
-  args: { venueId: v.id("venues"), day: v.optional(v.string()) },
+  args: { venueId: v.id("venues"), day: v.optional(v.string()), at: v.optional(v.number()) },
   handler: async (ctx, args) => {
     const actor = await requirePermission(ctx, "analytics.read", { venueId: args.venueId });
     const venue = actor.venue;
     const settings = await settingsOf(ctx, venue._id);
-    const now = Date.now();
+    const now = clock(args.at);
     const today = serviceDayOf(now, venue, settings);
     const target = args.day ?? today;
-    if (!DAY.test(target) || target > today) throw invalid("Jour invalide.");
+    if (!DAY.test(target)) throw invalid("Jour invalide.");
+    // Un jour à venir (adresse tapée, heure de début déplacée) n'a rien à comparer : pas une erreur.
+    if (target > today) return null;
     const inProgress = target === today;
     const stored = inProgress ? null : await storedDay(ctx, venue._id, target);
-    const m: DayMetrics = stored ?? (await computeServiceDay(ctx, venue, target, startHourOf(settings)));
-    const access = await accessOf(ctx, actor, venue, inProgress);
+    const m: DayMetrics = stored ?? (await computeServiceDay(ctx, venue, await dayWindow(ctx, venue, target, settings)));
+    const access = await moneyAccess(ctx, venue, actor.permissions.has("analytics.financial.read"));
 
-    // « À la même heure » : le créneau d'une demi-heure où l'on se trouve, compté depuis le début du jour.
-    const untilSlot = inProgress ? slotOf(now, m.from) : SLOTS - 1;
+    // « À la même heure » : jusqu'au dernier créneau TERMINÉ. Le créneau en cours ne fait que
+    // commencer aujourd'hui, alors qu'il est entier pour les jours comparables.
+    const untilSlot = inProgress ? slotOf(now, m.from) - 1 : SLOTS - 1;
     const comparables: DayMetrics[] = [];
     for (const d of sameWeekdaysBefore(target)) {
       const row = await storedDay(ctx, venue._id, d);
@@ -111,48 +114,29 @@ export const day = query({
       comparableValue(comparables.map((row) => ({ orders: row.orders.count, value: pick(row) })));
     const exceptionShare = (row: DayMetrics) =>
       row.sales.amount > 0 ? (row.exceptions.lostAmount + row.exceptions.comps + row.exceptions.discounts) / row.sales.amount : 0;
-    const orders = reference((row) => sumUntil(row.slots.orders, untilSlot));
+    const orders = untilSlot >= 0 ? reference((row) => sumUntil(row.slots.orders, untilSlot)) : null;
     const shareRef = inProgress ? null : reference((row) => Math.round(exceptionShare(row) * 10_000));
+    const threshold = shareRef ? EXCEPTION_FACTOR * Math.max(shareRef.value / 10_000, EXCEPTION_FLOOR) : null;
 
+    // Exactement ce que l'écran affiche (le bloc « La journée » du rapport), rien de plus.
     return {
       day: target,
-      today,
       inProgress,
-      timezone: venue.timezone,
       currency: venue.currency,
-      startHour: m.startHour,
-      from: m.from,
-      to: m.to,
-      orders: m.orders,
-      tables: { count: m.sales.tables, withCovers: m.sales.tablesWithCovers, covers: m.sales.covers, abandoned: m.sales.abandoned, debts: m.tables.debts },
-      duration: delaySummary(m.tables.duration),
-      delays: delays(m),
-      stations: m.stations.map((s) => ({ name: s.name, prep: delaySummary(s.prep), waitStart: delaySummary(s.waitStart) })),
-      ordersBySlot: m.slots.orders,
-      products: m.products.slice(0, 10).map((p) => ({ name: p.name, quantity: p.quantity, lostQuantity: p.lostQuantity, amount: access.money ? p.amount : null })),
+      orders: { count: m.orders.count },
+      tables: { count: m.sales.tables, withCovers: m.sales.tablesWithCovers, covers: m.sales.covers },
       moneyHidden: access.hidden,
-      money: access.money
-        ? {
-            sales: m.sales.amount,
-            averageTicket: m.sales.tables > 0 ? Math.round(m.sales.amount / m.sales.tables) : null,
-            collected: m.collected,
-            byMethod: m.byMethod,
-            exceptions: m.exceptions,
-            debtAmount: m.tables.debtAmount,
-          }
-        : null,
+      money: access.money ? { sales: m.sales.amount, averageTicket: m.sales.tables > 0 ? Math.round(m.sales.amount / m.sales.tables) : null } : null,
       comparison: {
         /** Combien de jours comparables ont servi ; en dessous de 3, rien ne se compare (D-142). */
         days: orders?.days ?? comparables.filter((row) => row.orders.count > 0).length,
-        untilSlot,
         orders: orders ? { now: sumUntil(m.slots.orders, untilSlot), usual: orders.value } : null,
-        sales: access.money ? pair(reference((row) => sumUntil(row.slots.sales, untilSlot)), sumUntil(m.slots.sales, untilSlot)) : null,
-        collected: access.money ? pair(reference((row) => sumUntil(row.slots.collected, untilSlot)), sumUntil(m.slots.collected, untilSlot)) : null,
+        // Les Ventes ne se comparent qu'une journée finie : à 20 h, les tables installées à 19 h
+        // n'ont pas fini de commander, alors que celles des jours comparables ont payé.
+        sales: access.money && !inProgress ? pair(reference((row) => row.sales.amount), m.sales.amount) : null,
         /** La seule règle comparative (D-134) : trop d'annulations en cuisine, d'offerts et de remises. */
         exceptionsAlert:
-          access.money && shareRef !== null && shareRef.value > 0 && exceptionShare(m) * 10_000 > EXCEPTION_FACTOR * shareRef.value
-            ? { share: exceptionShare(m), usual: shareRef.value / 10_000 }
-            : null,
+          access.money && threshold !== null && exceptionShare(m) > threshold ? { share: exceptionShare(m), usual: shareRef!.value / 10_000 } : null,
       },
     };
   },
@@ -186,14 +170,14 @@ function emptyAggregate() {
     duration: [] as Histogram[],
     debts: 0,
     debtAmount: 0,
-    exceptions: { comps: 0, discounts: 0, lostAmount: 0, refunds: 0, voids: 0, cashDiscrepancy: 0, cashDiscrepancies: 0 },
+    exceptions: { comps: 0, discounts: 0, lostAmount: 0, refunds: 0, voids: 0, cashShort: 0, cashOver: 0, cashDiscrepancies: 0 },
     /** Commandes par créneau, cumulées par jour de semaine, et le nombre de jours ouverts. */
     weekdays: Array.from({ length: 7 }, () => ({ days: 0, orders: emptySlots() })),
     startHour: null as number | null,
   };
 }
 
-function add(agg: Aggregate, day: string, m: DayMetrics) {
+function add(agg: Aggregate, day: string, m: DayMetrics, closed = true) {
   agg.days.push({ day, orders: m.orders.count, sales: m.sales.amount, collected: m.collected.net });
   agg.orders += m.orders.count;
   agg.fromGuests += m.orders.fromGuests;
@@ -231,8 +215,9 @@ function add(agg: Aggregate, day: string, m: DayMetrics) {
   agg.debts += m.tables.debts;
   agg.debtAmount += m.tables.debtAmount;
   for (const k of Object.keys(agg.exceptions) as (keyof Aggregate["exceptions"])[]) agg.exceptions[k] += m.exceptions[k];
-  // Un jour sans commande est un jour fermé : il ne tire pas la moyenne de son jour de semaine vers zéro.
-  if (m.orders.count > 0) {
+  // Un jour sans commande est un jour fermé : il ne tire pas la moyenne de son jour de semaine vers
+  // zéro. Le jour en cours non plus : entamé, il la tirerait vers le bas.
+  if (closed && m.orders.count > 0) {
     const w = agg.weekdays[weekdayOf(day)]!;
     w.days += 1;
     m.slots.orders.forEach((n, i) => (w.orders[i]! += n));
@@ -252,12 +237,14 @@ async function aggregate(ctx: QueryCtx, venue: Doc<"venues">, settings: Doc<"ven
     seen.add(row.businessDate);
   }
   if (from <= today && today <= to) {
-    add(agg, today, await computeServiceDay(ctx, venue, today, startHourOf(settings)));
+    add(agg, today, await computeServiceDay(ctx, venue, await dayWindow(ctx, venue, today, settings)), false);
     seen.add(today);
   }
   agg.days.sort((a, b) => a.day.localeCompare(b.day));
   const missing = dayCount(from, to) - seen.size;
-  return { agg, missing };
+  /** Une période qui mêle deux définitions des chiffres le dit (voir `METRICS_VERSION`). */
+  const mixedVersions = rows.some((row) => row.sourceVersion !== METRICS_VERSION);
+  return { agg, missing, mixedVersions };
 }
 
 /**
@@ -267,25 +254,29 @@ async function aggregate(ctx: QueryCtx, venue: Doc<"venues">, settings: Doc<"ven
  */
 export const period = query({
   /** Sans dates : les 7 derniers jours, aujourd'hui compris. */
-  args: { venueId: v.id("venues"), from: v.optional(v.string()), to: v.optional(v.string()) },
+  args: { venueId: v.id("venues"), from: v.optional(v.string()), to: v.optional(v.string()), at: v.optional(v.number()) },
   handler: async (ctx, a) => {
     const actor = await requirePermission(ctx, "analytics.read", { venueId: a.venueId });
     const venue = actor.venue;
     const settings = await settingsOf(ctx, venue._id);
-    const today = serviceDayOf(Date.now(), venue, settings);
+    const today = serviceDayOf(clock(a.at), venue, settings);
     const to = a.to ?? today;
     const args = { from: a.from ?? shiftDay(to, -6), to };
     if (!DAY.test(args.from) || !DAY.test(args.to) || args.from > args.to) throw invalid("Période invalide.");
     const length = dayCount(args.from, args.to);
     if (length > MAX_PERIOD_DAYS) throw invalid(`Une période compte au plus ${MAX_PERIOD_DAYS} jours.`);
-    const access = await accessOf(ctx, actor, venue, args.from <= today && today <= args.to);
-    const { agg, missing } = await aggregate(ctx, venue, settings, args.from, args.to, today);
+    const includesToday = args.from <= today && today <= args.to;
+    const access = await moneyAccess(ctx, venue, actor.permissions.has("analytics.financial.read"));
+    const { agg, missing, mixedVersions } = await aggregate(ctx, venue, settings, args.from, args.to, today);
 
-    // La période précédente, de même longueur, seulement si elle est de même nature (D-142).
+    // La période précédente (D-142), seulement entre périodes de même nature et entièrement
+    // connues. Pas pour une période qui contient aujourd'hui : un jour entamé contre des jours
+    // pleins dirait « −60 % » à midi. Pas pour un seul jour : un jour se compare à ses mêmes
+    // jours de semaine, dans le rapport, pas à la veille.
     let previous = null;
-    if (isComparablePeriod(length)) {
+    if (!includesToday && length > 1 && isComparablePeriod(length) && missing === 0) {
       const prev = await aggregate(ctx, venue, settings, shiftDay(args.from, -length), shiftDay(args.to, -length), today);
-      previous = {
+      if (prev.missing === 0) previous = {
         from: shiftDay(args.from, -length),
         to: shiftDay(args.to, -length),
         missing: prev.missing,
@@ -304,6 +295,7 @@ export const period = query({
       length,
       /** Jours de la période sans ligne calculée (avant la mise en service, ou pas encore clos). */
       missing,
+      mixedVersions,
       currency: venue.currency,
       timezone: venue.timezone,
       startHour: agg.startHour ?? startHourOf(settings),
@@ -356,31 +348,44 @@ export const closeDays = internalMutation({
   handler: async (ctx) => {
     const now = Date.now();
     let scheduled = 0;
+    const failed: string[] = [];
     for (const venue of await ctx.db.query("venues").collect()) {
       if (venue.status === "archived") continue;
-      const settings = await settingsOf(ctx, venue._id);
-      const today = serviceDayOf(now, venue, settings);
-      for (const [lag, delay] of [
-        [1, HOUR],
-        [2, 25 * HOUR],
-      ] as const) {
-        const d = shiftDay(today, -lag);
-        const row = await storedDay(ctx, venue._id, d);
-        const startHour = row?.startHour ?? startHourOf(settings);
-        const due = serviceDayWindow(d, venue.timezone, startHour).to + delay;
-        if (now < due) continue;
-        if (row && row.computedAt >= due && row.sourceVersion === METRICS_VERSION) continue;
-        await ctx.scheduler.runAfter(0, internal.analytics.computeDay, { venueId: venue._id, day: d });
-        scheduled += 1;
+      // Un établissement mal réglé ne doit pas arrêter la clôture de tous les autres.
+      try {
+        scheduled += await scheduleClosures(ctx, venue, now);
+      } catch (e) {
+        failed.push(venue._id);
+        console.error(`Clôture des jours impossible pour ${venue._id} : ${e instanceof Error ? e.message : String(e)}`);
       }
     }
-    return { scheduled };
+    return { scheduled, failed };
   },
 });
 
+async function scheduleClosures(ctx: MutationCtx, venue: Doc<"venues">, now: number): Promise<number> {
+  const settings = await settingsOf(ctx, venue._id);
+  const today = serviceDayOf(now, venue, settings);
+  let scheduled = 0;
+  for (const [lag, delay] of [
+    [1, HOUR],
+    [2, 25 * HOUR],
+  ] as const) {
+    const d = shiftDay(today, -lag);
+    const row = await storedDay(ctx, venue._id, d);
+    const to = row?.to ?? serviceDayWindow(d, venue.timezone, startHourOf(settings)).to;
+    const due = to + delay;
+    if (now < due) continue;
+    if (row && row.computedAt >= due && row.sourceVersion === METRICS_VERSION) continue;
+    await ctx.scheduler.runAfter(0, internal.analytics.computeDay, { venueId: venue._id, day: d });
+    scheduled += 1;
+  }
+  return scheduled;
+}
+
 /**
  * Calcule et écrit un jour. Idempotent : recalculer écrase la ligne. Un jour déjà écrit garde
- * son heure de début : changer le réglage ne redécoupe pas le passé.
+ * sa fenêtre : changer le réglage ne redécoupe pas le passé.
  */
 export const computeDay = internalMutation({
   args: { venueId: v.id("venues"), day: v.string() },
@@ -391,7 +396,7 @@ export const computeDay = internalMutation({
     const settings = await settingsOf(ctx, venue._id);
     if (args.day >= serviceDayOf(Date.now(), venue, settings)) throw invalid("Ce jour n'est pas encore clos.");
     const existing = await storedDay(ctx, venue._id, args.day);
-    const metrics = await computeServiceDay(ctx, venue, args.day, existing?.startHour ?? startHourOf(settings));
+    const metrics = await computeServiceDay(ctx, venue, await dayWindow(ctx, venue, args.day, settings));
     const row = { venueId: venue._id, businessDate: args.day, computedAt: Date.now(), ...metrics };
     if (existing) await ctx.db.replace(existing._id, row);
     else await ctx.db.insert("dailyMetrics", row);

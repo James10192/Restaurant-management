@@ -22,9 +22,11 @@ import { computeExpectedCash } from "./lib/billing";
 import { getInVenue } from "./lib/catalogAccess";
 import { conflict, forbidden, invalid } from "./lib/errors";
 import { startHourOf } from "./lib/analytics";
+import { initialDiscrepancyOf } from "./lib/cashCount";
 import { requirePermission, type ReadCtx } from "./lib/guards";
 import { requireServiceActor, requireServiceMutation, type ServiceActor } from "./lib/serviceActor";
 import { memberName, settingsOf } from "./lib/service";
+import { refreshClosedDay } from "./lib/serviceDay";
 
 export type CashMode = "central" | "per_waiter";
 
@@ -98,15 +100,6 @@ function expectedVisible(session: Doc<"cashRegisterSessions">): boolean {
   return session.status === "balanced" || session.status === "discrepancy" || session.status === "closed";
 }
 
-/**
- * L'écart du premier comptage quand il y en a eu deux. Recompter une fois l'attendu connu, c'est
- * pouvoir taper l'attendu : le premier écart reste donc la donnée, et il exige un motif.
- */
-export function initialDiscrepancyOf(session: Doc<"cashRegisterSessions">): number | null {
-  const first = session.counts[0];
-  if (session.counts.length < 2 || !first || session.expectedAmount === undefined) return null;
-  return first.amount - session.expectedAmount;
-}
 
 async function summarize(ctx: ReadCtx, session: Doc<"cashRegisterSessions">) {
   const movements = await ctx.db
@@ -368,6 +361,7 @@ export const submitCount = mutation({
       discrepancy,
       counts: [...session.counts, { amount: counted, countedByMemberId: member._id, at: now }],
     });
+    await refreshClosedDay(ctx, session.venueId, session.openedAt);
     await writeAudit(ctx, {
       organizationId: actor.organization._id,
       venueId: actor.venue._id,

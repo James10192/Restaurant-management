@@ -26,6 +26,7 @@ import { conflict, invalid, notFound } from "./lib/errors";
 import type { MutationCtx } from "./lib/guards";
 import { requireServiceMutation, type ServiceActor } from "./lib/serviceActor";
 import { isOpenSession, settingsOf } from "./lib/service";
+import { refreshClosedDay } from "./lib/serviceDay";
 import { expireOpenIntentsOf, openIntentsOfCheck, resolveOverpaidIfCovered } from "./lib/intents";
 import { cashModeOf, memberOf, requireAmount, requireReason, resolveCashSession } from "./cash";
 import { assertBillable, ensureRemainder } from "./checks";
@@ -335,6 +336,7 @@ export const voidPayment = mutation({
     if (change > 0 && args.changeGiven === undefined) throw invalid("Dites si la monnaie de ce paiement a vraiment été rendue.");
     const now = Date.now();
     await ctx.db.patch(payment._id, { status: "voided", voidedReason: reason, voidedByMemberId: member._id, voidedAt: now });
+    await refreshClosedDay(ctx, payment.venueId, payment.createdAt);
     if (change > 0 && args.changeGiven && payment.cashRegisterSessionId) {
       await ctx.db.insert("cashMovements", {
         venueId: actor.venue._id,

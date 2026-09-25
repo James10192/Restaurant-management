@@ -5,9 +5,10 @@ import type { FunctionReturnType } from "convex/server";
 import { Info } from "lucide-react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
-import { shiftDay } from "../../../convex/lib/analytics";
+import { shiftDay, SLOT_MS } from "../../../convex/lib/analytics";
 import { formatMoney, type CurrencyCode } from "../../../convex/lib/money";
 import { LoadingState } from "~/components/app/states";
+import { useMinuteClock } from "~/components/service/time";
 import { Alert, AlertDescription } from "~/components/ui/alert";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/ui/card";
@@ -29,7 +30,9 @@ const PRESETS = [
 ] as const;
 
 export function PeriodView(props: { venueId: Id<"venues">; from?: string; to?: string; onChange: (from: string, to: string) => void }) {
-  const data = useQuery(api.analytics.period, { venueId: props.venueId, ...(props.from ? { from: props.from } : {}), ...(props.to ? { to: props.to } : {}) });
+  // L'heure de l'écran, à la demi-heure : « aujourd'hui » avance sans recharger (D-048).
+  const at = Math.floor(useMinuteClock(60_000) / SLOT_MS) * SLOT_MS;
+  const data = useQuery(api.analytics.period, { venueId: props.venueId, at, ...(props.from ? { from: props.from } : {}), ...(props.to ? { to: props.to } : {}) });
   if (data === undefined) return <LoadingState />;
   const money = (amount: number) => formatMoney({ amount, currency: data.currency as CurrencyCode });
   const preset = PRESETS.find((p) => data.to === data.today && data.length === p.days)?.key ?? "";
@@ -73,6 +76,13 @@ export function PeriodView(props: { venueId: Id<"venues">; from?: string; to?: s
             {data.missing === 1 ? "Un jour de cette période n'a pas encore de chiffres" : `${data.missing} jours de cette période n'ont pas encore de chiffres`} : un jour se clôt une heure
             après sa fin, et les jours d'avant la mise en service ne sont pas calculés.
           </AlertDescription>
+        </Alert>
+      ) : null}
+
+      {data.mixedVersions ? (
+        <Alert>
+          <Info />
+          <AlertDescription>Une partie de cette période a été calculée avant une mise à jour de la façon de compter : des écarts de quelques unités sont possibles.</AlertDescription>
         </Alert>
       ) : null}
 
@@ -123,8 +133,10 @@ function Row({ title, description, value }: { title: string; description?: strin
 
 function Summary({ data, money }: { data: Period; money: (n: number) => string }) {
   const prev = data.previous;
-  const vs = (now: number, before: number | null | undefined) => (prev && before !== null && before !== undefined && prev.missing === 0 ? versusUsual(now, before).replace("d'habitude", "la période précédente") : undefined);
+  const vs = (now: number, before: number | null | undefined) => (prev && before !== null && before !== undefined ? versusUsual(now, before, "la période précédente") : undefined);
+  const inProgress = data.from <= data.today && data.today <= data.to;
   return (
+    <div className="flex flex-col gap-2">
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
       <Figure label="Commandes" value={String(data.orders.count)} hint={vs(data.orders.count, prev?.orders)} />
       {data.money ? (
@@ -136,6 +148,19 @@ function Summary({ data, money }: { data: Period; money: (n: number) => string }
       ) : (
         <Figure label="Tables servies" value={String(data.tables.count)} />
       )}
+    </div>
+      {/* Ce qui ne se compare pas le dit (D-142) : un jour entamé contre des jours pleins mentirait. */}
+      {data.length === 1 ? (
+        <p className="text-sm text-muted-foreground">
+          Un jour se compare aux mêmes jours de la semaine :{" "}
+          <Link to="/app/rapport" search={{ jour: data.from }} className="underline underline-offset-4">
+            voir le rapport
+          </Link>
+          .
+        </p>
+      ) : inProgress ? (
+        <p className="text-sm text-muted-foreground">La comparaison avec la période précédente viendra une fois la période terminée.</p>
+      ) : null}
     </div>
   );
 }
@@ -154,7 +179,7 @@ function Selling({ data, money }: { data: Period; money: (n: number) => string }
       ) : (
         <ItemGroup className="gap-2" data-top-products>
           {shown.map((p, i) => (
-            <Row key={p.name} title={`${i + 1}. ${p.name}`} description={`${p.quantity} vendu${p.quantity > 1 ? "s" : ""}`} value={p.amount !== null ? money(p.amount) : undefined} />
+            <Row key={`${i}-${p.name}`} title={`${i + 1}. ${p.name}`} description={`${p.quantity} vendu${p.quantity > 1 ? "s" : ""}`} value={p.amount !== null ? money(p.amount) : undefined} />
           ))}
         </ItemGroup>
       )}
@@ -167,8 +192,8 @@ function Selling({ data, money }: { data: Period; money: (n: number) => string }
         <div className="flex flex-col gap-2">
           <h3 className="text-sm font-medium">Annulés alors qu'ils étaient en cuisine</h3>
           <ItemGroup className="gap-2">
-            {lost.slice(0, 5).map((p) => (
-              <Row key={p.name} title={p.name} description={`${p.lostQuantity} perdu${p.lostQuantity > 1 ? "s" : ""}`} value={p.lostAmount !== null ? money(p.lostAmount) : undefined} />
+            {lost.slice(0, 5).map((p, i) => (
+              <Row key={`${i}-${p.name}`} title={p.name} description={`${p.lostQuantity} perdu${p.lostQuantity > 1 ? "s" : ""}`} value={p.lostAmount !== null ? money(p.lostAmount) : undefined} />
             ))}
           </ItemGroup>
         </div>
@@ -180,7 +205,8 @@ function Selling({ data, money }: { data: Period; money: (n: number) => string }
 /* ─────────────────────────── Quand suis-je chargé ─────────────────────────── */
 
 function Busy({ data }: { data: Period }) {
-  const open = data.weekdays.filter((w) => w.days > 0 && w.averageOrders !== null);
+  // Une moyenne sur un seul jour est du bruit : il en faut au moins deux (D-142).
+  const open = data.weekdays.filter((w) => w.days >= 2 && w.averageOrders !== null);
   const [picked, setPicked] = useState<number | null>(null);
   const weekday = open.find((w) => w.weekday === picked) ?? [...open].sort((a, b) => b.days - a.days)[0];
   // Les créneaux partent du début du jour de service : 4 h, 4 h 30…
@@ -191,7 +217,7 @@ function Busy({ data }: { data: Period }) {
   return (
     <Section title="Quand êtes-vous chargé ?" question="Commandes moyennes par demi-heure, pour un jour de semaine.">
       {!weekday ? (
-        <p className="text-sm text-muted-foreground">Aucune commande sur la période.</p>
+        <p className="text-sm text-muted-foreground">Il faut au moins deux mêmes jours de semaine clos, avec des commandes, pour dessiner une tendance.</p>
       ) : (
         <>
           <ToggleGroup type="single" variant="outline" size="sm" value={String(weekday.weekday)} onValueChange={(v) => v && setPicked(Number(v))} aria-label="Jour de la semaine" className="flex-wrap">
@@ -294,7 +320,15 @@ function MoneyCheck({ data, m, money }: { data: Period; m: NonNullable<Period["m
         <Row title="Offerts" value={money(e.comps)} />
         <Row title="Remises" value={money(e.discounts)} />
         <Row title="Pertes (annulés en cuisine)" value={money(e.lostAmount)} />
-        <Row title="Écarts de caisse" description={e.cashDiscrepancies > 0 ? `${e.cashDiscrepancies} caisse${e.cashDiscrepancies > 1 ? "s" : ""} avec un écart` : "Aucune caisse avec un écart"} value={money(e.cashDiscrepancy)} />
+        {e.cashDiscrepancies > 0 ? (
+          <>
+            {/* Au premier comptage : un recomptage fait une fois l'attendu connu ne l'efface pas. */}
+            <Row title="Manquant en caisse" description={`${e.cashDiscrepancies} caisse${e.cashDiscrepancies > 1 ? "s" : ""} avec un écart au premier comptage`} value={money(e.cashShort)} />
+            {e.cashOver > 0 ? <Row title="Excédent en caisse" value={money(e.cashOver)} /> : null}
+          </>
+        ) : (
+          <Row title="Écarts de caisse" description="Aucune caisse avec un écart" />
+        )}
         {e.voids > 0 ? <Row title="Encaissements annulés" description={`${e.voids} annulation${e.voids > 1 ? "s" : ""}`} /> : null}
       </ItemGroup>
       {data.length === 1 ? (

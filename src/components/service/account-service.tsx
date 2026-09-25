@@ -16,7 +16,8 @@ export function AccountService({ permission, children }: { permission: "table.re
   const board = useCallback(() => void navigate({ to: "/app/service" }), [navigate]);
   const table = useCallback((tableId: Id<"restaurantTables">) => void navigate({ to: "/app/service/table/$tableId", params: { tableId } }), [navigate]);
   const cash = useCallback(() => void navigate({ to: "/app/service/caisse" }), [navigate]);
-  const nav = useMemo<ServiceNav>(() => ({ board, table, cash }), [board, table, cash]);
+  const availability = useCallback(() => void navigate({ to: "/app/menu/availability" }), [navigate]);
+  const nav = useMemo<ServiceNav>(() => ({ board, table, cash, availability }), [board, table, cash, availability]);
   if (!workspace.venue) return <LoadingState />;
   if (!workspace.canInVenue(permission)) return <PermissionDeniedState />;
   return (

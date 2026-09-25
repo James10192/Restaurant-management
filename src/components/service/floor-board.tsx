@@ -183,7 +183,9 @@ function QueueBadge({ count, age, urgent = false }: { count: number; age: string
  */
 function ServiceAlerts() {
   const scope = useServiceScope();
-  const alerts = useQuery(api.tower.alerts, { venueId: scope.venueId });
+  // L'heure de l'écran, à la minute : la caisse d'hier apparaît même sur une tablette allumée toute la nuit.
+  const minute = Math.floor(useMinuteClock(60_000) / 60_000) * 60_000;
+  const alerts = useQuery(api.tower.alerts, scope.can("order.read") ? { venueId: scope.venueId, at: minute } : "skip");
   if (!alerts) return null;
   const { staleCash, soldOut, paymentAlerts } = alerts;
   if (staleCash.length === 0 && soldOut.length === 0 && !paymentAlerts) return null;
@@ -216,7 +218,14 @@ function ServiceAlerts() {
         <Alert>
           <UtensilsCrossedIcon />
           <AlertTitle>{soldOut.length === 1 ? "Un plat est en rupture jusqu'à nouvel ordre" : `${soldOut.length} plats sont en rupture jusqu'à nouvel ordre`}</AlertTitle>
-          <AlertDescription>{soldOut.map((p) => p.name).join(", ")} — à remettre en vente dans la carte quand ils reviennent.</AlertDescription>
+          <AlertDescription>
+            <p>{soldOut.map((p) => p.name).join(", ")} — à remettre en vente quand ils reviennent.</p>
+            {scope.nav.availability ? (
+              <Button size="sm" variant="outline" className="mt-2" onClick={scope.nav.availability}>
+                Remettre en vente
+              </Button>
+            ) : null}
+          </AlertDescription>
         </Alert>
       ) : null}
     </div>

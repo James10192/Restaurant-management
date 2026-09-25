@@ -35,6 +35,7 @@ import { ProviderError, type ProviderSession, type ProviderTransaction } from ".
 import { rateLimiter } from "./lib/rateLimits";
 import { requireServiceActor, requireServiceMutation } from "./lib/serviceActor";
 import { isOpenSession } from "./lib/service";
+import { refreshClosedDay } from "./lib/serviceDay";
 import { generateToken } from "./lib/tokens";
 import { writeAudit } from "./lib/audit";
 import { activeAccountOf, providerFor } from "./paymentAccounts";
@@ -872,6 +873,8 @@ export const completeRefund = internalMutation({
       return;
     }
     await ctx.db.patch(refund._id, { status: "succeeded", completedAt: now });
+    // Un remboursement se date à sa demande : confirmé des jours plus tard, il corrige ce jour-là.
+    await refreshClosedDay(ctx, refund.venueId, refund.createdAt);
     const others = (await ctx.db.query("refunds").withIndex("by_payment", (q) => q.eq("paymentId", payment._id)).collect()).filter((r) => r.status === "succeeded");
     const total = others.reduce((s, r) => s + r.amount, 0);
     await ctx.db.patch(payment._id, { status: total >= payment.amount ? "refunded" : "partially_refunded" });

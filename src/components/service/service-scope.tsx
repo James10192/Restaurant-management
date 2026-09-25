@@ -41,6 +41,8 @@ export type ServiceNav = {
   table: (tableId: Id<"restaurantTables">) => void;
   /** La caisse : ouvrir, sortir de l'argent, compter, clôturer (T3). */
   cash: () => void;
+  /** Les disponibilités de la carte : absent sur une tablette partagée, qui n'a pas la carte. */
+  availability?: () => void;
 };
 
 const ServiceScopeContext = createContext<ServiceScope | null>(null);

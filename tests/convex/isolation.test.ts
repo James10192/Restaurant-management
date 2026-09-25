@@ -1650,12 +1650,12 @@ const CASES: Record<string, (w: Awaited<ReturnType<typeof twoTenants>>) => Promi
   "analytics.day": async (w) => {
     await moneyAtB(w);
     await expectCode(w.a.owner.as.query(api.analytics.day, { venueId: w.b.venueId }), "NOT_FOUND");
-    const mine = await w.a.owner.as.query(api.analytics.day, { venueId: w.a.venueId });
-    expect([mine.orders.count, mine.money!.collected.net, mine.products]).toEqual([0, 0, []]);
+    const mine = (await w.a.owner.as.query(api.analytics.day, { venueId: w.a.venueId }))!;
+    expect([mine.orders.count, mine.tables.count, mine.money!.sales]).toEqual([0, 0, 0]);
   },
   "analytics.period": async (w) => {
     await moneyAtB(w);
-    const { today } = await w.a.owner.as.query(api.analytics.day, { venueId: w.a.venueId });
+    const { today } = await w.a.owner.as.query(api.analytics.period, { venueId: w.a.venueId });
     await expectCode(w.a.owner.as.query(api.analytics.period, { venueId: w.b.venueId, from: today, to: today }), "NOT_FOUND");
     const mine = await w.a.owner.as.query(api.analytics.period, { venueId: w.a.venueId, from: today, to: today });
     expect([mine.orders.count, mine.money!.collected.net, mine.products]).toEqual([0, 0, []]);

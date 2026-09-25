@@ -25,6 +25,7 @@ import { conflict, invalid, notFound } from "./lib/errors";
 import type { MutationCtx, ReadCtx } from "./lib/guards";
 import { requireServiceActor, requireServiceMutation, type ServiceActor } from "./lib/serviceActor";
 import { isOpenSession, memberName, settingsOf } from "./lib/service";
+import { refreshClosedDay } from "./lib/serviceDay";
 import { cashModeOf, memberOf, registerName, requireAmount, requireReason, resolveCashSession } from "./cash";
 
 /** « TS-2026-000123-2 » : la session, puis le rang de l'addition dans la session. */
@@ -392,6 +393,8 @@ export const comp = mutation({
     if (line.comped) return;
     if (line.amount > target.balance.due) throw conflict("Cette ligne est déjà payée : remboursez plutôt que d'offrir.");
     const item = (await ctx.db.get(args.orderItemId))!;
+    // Les Ventes d'une table se comptent au jour où elle s'est installée : ce jour-là se corrige.
+    await refreshClosedDay(ctx, session.venueId, session.openedAt);
     const id = await ctx.db.insert("orderAdjustments", {
       venueId: session.venueId,
       tableSessionId: session._id,
@@ -435,6 +438,8 @@ export const discount = mutation({
     const amount = requireAmount(args.amount, "La remise");
     const { member, session, target, check } = await adjustmentTarget(ctx, actor, args.sessionId, args.checkId);
     if (amount > target.balance.due) throw conflict("La remise dépasse ce qui reste à payer.");
+    // Les Ventes d'une table se comptent au jour où elle s'est installée : ce jour-là se corrige.
+    await refreshClosedDay(ctx, session.venueId, session.openedAt);
     const id = await ctx.db.insert("orderAdjustments", {
       venueId: session.venueId,
       tableSessionId: session._id,

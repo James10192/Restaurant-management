@@ -126,31 +126,30 @@ export function delaySummary(h: Histogram): { median: number | null; p90: number
  * Les délais du service, avec leurs exclusions (D-143)
  * ──────────────────────────────────────────────────────────────────────────── */
 
-type TicketTimes = Pick<Doc<"kitchenTickets">, "queuedAt" | "startedAt" | "readyAt" | "servedAt">;
+type TicketTimes = Pick<Doc<"kitchenTickets">, "queuedAt" | "startedAt" | "readyAt" | "servedAt" | "recalledAt">;
 
 /**
- * Un bon marqué prêt sans avoir été démarré porte `startedAt = readyAt` : sa préparation
- * mesurerait zéro. On l'exclut des délais de cuisine, et on dit combien il y en a.
+ * Sous ce seuil, une préparation n'a pas eu lieu entre les deux gestes : bon marqué prêt sans
+ * avoir été démarré (`startedAt = readyAt`), ou « Commencer » puis « Prêt » rejoués à la suite par
+ * la file hors ligne au retour du réseau, datés à la réception (D-143, constante D-148).
  */
-export function readyWithoutStart(t: TicketTimes): boolean {
-  return t.readyAt !== undefined && t.startedAt !== undefined && t.startedAt === t.readyAt;
-}
+export const MIN_PREP_MS = 30_000;
 
-/** Envoi → début : le délai part de l'envoi en cuisine, pas de l'acceptation (un service retenu attendait). */
+/** Un bon dont le début de préparation n'est pas une vraie mesure. Compté à part, jamais dans les délais de cuisine. */
+export function readyWithoutStart(t: TicketTimes): boolean {
+  return t.readyAt !== undefined && t.startedAt !== undefined && t.readyAt - t.startedAt < MIN_PREP_MS;
+}
 export function waitBeforeStart(t: TicketTimes): number | null {
   if (t.queuedAt === undefined || t.startedAt === undefined || readyWithoutStart(t)) return null;
   return t.startedAt - t.queuedAt;
 }
-
-/** Début → prêt. */
+/** Un bon rappelé garde son premier début et prend un second « prêt » : sa préparation et son passage ne mesurent plus rien. */
 export function prepTime(t: TicketTimes): number | null {
-  if (t.startedAt === undefined || t.readyAt === undefined || readyWithoutStart(t)) return null;
+  if (t.startedAt === undefined || t.readyAt === undefined || readyWithoutStart(t) || t.recalledAt !== undefined) return null;
   return t.readyAt - t.startedAt;
 }
-
-/** Prêt → servi. */
 export function passTime(t: TicketTimes): number | null {
-  if (t.readyAt === undefined || t.servedAt === undefined) return null;
+  if (t.readyAt === undefined || t.servedAt === undefined || t.recalledAt !== undefined) return null;
   return t.servedAt - t.readyAt;
 }
 
@@ -175,6 +174,15 @@ export function requestResponseTime(r: Pick<Doc<"serviceRequests">, "status" | "
  * ──────────────────────────────────────────────────────────────────────────── */
 
 export const SLOT_MS = 30 * 60_000;
+
+/**
+ * L'heure donnée par l'écran. Une requête Convex ne se réévalue pas quand l'heure passe (D-048) :
+ * c'est l'écran, avec son horloge, qui fait avancer « aujourd'hui ». Le serveur ne la croit que
+ * si elle est plausible ; au-delà de `slack`, il prend la sienne.
+ */
+export function clockOf(at: number | undefined, now: number, slack: number): number {
+  return at !== undefined && Math.abs(at - now) <= slack ? at : now;
+}
 /** 48 créneaux d'une demi-heure ; un jour de changement d'heure en a un de plus, rangé dans le dernier. */
 export const SLOTS = 48;
 

@@ -18,6 +18,7 @@ import { mutation, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { writeAudit } from "./lib/audit";
 import { serviceDayOf } from "./lib/analytics";
+import { refreshClosedDay } from "./lib/serviceDay";
 import { lineGross, loadSessionBilling, negativeCheck } from "./lib/billing";
 import { assertIntentsStillCovered } from "./lib/intents";
 import { getInVenue } from "./lib/catalogAccess";
@@ -158,6 +159,8 @@ export async function createOrder(
   // (le dessert « à suivre ») attend toujours l'appel du serveur.
   const servedOnPaper = (course: number) => params.enteredOffline === true && !params.heldCourses.includes(course);
   const anyHeld = params.lines.some((l) => params.heldCourses.includes(l.courseNumber));
+  // Une table d'un jour clos qui commande encore corrige les Ventes de ce jour-là.
+  await refreshClosedDay(ctx, venue._id, session.openedAt);
   const orderId = await ctx.db.insert("orders", {
     venueId: venue._id,
     tableSessionId: session._id,
@@ -576,6 +579,8 @@ async function cancelLine(
   afterFire: boolean,
   auditLine: boolean = afterFire,
 ) {
+  const session = await ctx.db.get(item.tableSessionId);
+  if (session) await refreshClosedDay(ctx, session.venueId, session.openedAt);
   await ctx.db.patch(item._id, {
     status: "cancelled",
     ...(actor.member ? { cancelledByMemberId: actor.member._id } : {}),
@@ -597,6 +602,8 @@ async function cancelLine(
   totals.total -= lineGross(item);
   await ctx.db.patch(order._id, { totals });
   await writeOrderEvent(ctx, order, "item_cancelled", actor.event, {
+    /** La ligne elle-même : deux lignes du même plat ne se confondent pas dans les pertes. */
+    orderItemId: item._id,
     item: item.nameSnapshot,
     quantity: item.quantity,
     amount: lineGross(item),

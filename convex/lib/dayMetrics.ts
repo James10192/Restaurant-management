@@ -56,8 +56,12 @@ export const dayMetricsFields = {
     lostAmount: amount,
     refunds: amount,
     voids: v.number(),
-    /** Somme signée des écarts des caisses ouvertes ce jour-là, et leur nombre. */
-    cashDiscrepancy: amount,
+    /**
+     * Les écarts des caisses ouvertes ce jour-là, au PREMIER comptage (un recomptage fait une fois
+     * l'attendu connu ne l'efface pas), manquants et excédents séparés : ils ne se compensent pas.
+     */
+    cashShort: amount,
+    cashOver: amount,
     cashDiscrepancies: v.number(),
   }),
 };

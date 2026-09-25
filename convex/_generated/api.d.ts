@@ -32,6 +32,7 @@ import type * as lib_authority from "../lib/authority.js";
 import type * as lib_availability from "../lib/availability.js";
 import type * as lib_availabilityIndex from "../lib/availabilityIndex.js";
 import type * as lib_billing from "../lib/billing.js";
+import type * as lib_cashCount from "../lib/cashCount.js";
 import type * as lib_catalog from "../lib/catalog.js";
 import type * as lib_catalogAccess from "../lib/catalogAccess.js";
 import type * as lib_countries from "../lib/countries.js";
@@ -124,6 +125,7 @@ declare const fullApi: ApiFromModules<{
   "lib/availability": typeof lib_availability;
   "lib/availabilityIndex": typeof lib_availabilityIndex;
   "lib/billing": typeof lib_billing;
+  "lib/cashCount": typeof lib_cashCount;
   "lib/catalog": typeof lib_catalog;
   "lib/catalogAccess": typeof lib_catalogAccess;
   "lib/countries": typeof lib_countries;

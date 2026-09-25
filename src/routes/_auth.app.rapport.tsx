@@ -5,6 +5,7 @@ import type { FunctionReturnType } from "convex/server";
 import { ChevronLeft, ChevronRight, EyeOff } from "lucide-react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
+import { shiftDay } from "../../convex/lib/analytics";
 import { formatMoney, type CurrencyCode } from "../../convex/lib/money";
 import { LoadingState, PermissionDeniedState } from "~/components/app/states";
 import { useWorkspace } from "~/components/app/workspace";
@@ -35,12 +36,6 @@ function ReportPage() {
     return <PermissionDeniedState venue={w.venue?.name} permission="lire les chiffres de l'établissement" />;
   }
   return <ReportView key={venueId} venueId={venueId} />;
-}
-
-function shiftDay(day: string, delta: number): string {
-  const [y, m, d] = day.split("-").map(Number) as [number, number, number];
-  const date = new Date(Date.UTC(y, m - 1, d + delta));
-  return date.toISOString().slice(0, 10);
 }
 
 /**
