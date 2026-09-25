@@ -578,7 +578,11 @@ function GuestCarts({ sessionId, onTake }: { sessionId: Id<"tableSessions">; onT
           <Item key={cart._id} variant="outline">
             <ItemContent>
               <ItemTitle>
-                {cart.items.reduce((s, i) => s + i.quantity, 0)} articles · environ {money(cart.estimatedTotal)}
+                {(() => {
+                  const n = cart.items.reduce((s, i) => s + i.quantity, 0);
+                  return `${n} article${n > 1 ? "s" : ""}`;
+                })()}{" "}
+                · environ {money(cart.estimatedTotal)}
               </ItemTitle>
               <ItemDescription className="line-clamp-none">
                 {cart.items.map((i) => `${i.quantity} × ${i.name}${i.variantName ? ` (${i.variantName})` : ""}${i.instructions ? ` « ${i.instructions} »` : ""}`).join(" · ")}

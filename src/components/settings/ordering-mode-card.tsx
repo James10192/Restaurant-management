@@ -86,7 +86,7 @@ export function OrderingModeCard({ venueId, current }: { venueId: Id<"venues">; 
           ))}
         </RadioGroup>
         <p className="text-sm text-muted-foreground">
-          La commande directe, sans validation d'un serveur, n'est pas encore proposée.
+          Quel que soit le mode, seul le personnel ouvre une table, et le client règle à la fin du repas.
         </p>
         {error ? (
           <Alert variant="destructive">

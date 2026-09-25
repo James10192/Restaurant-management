@@ -171,6 +171,13 @@ test("le client compose, montre ; le serveur importe", async ({ browser }) => {
   await page.getByRole("button", { name: "Envoyer" }).click();
   await expect(page.getByText(/1 × Brochettes de bœuf/)).toBeVisible({ timeout: 20_000 });
   await expect(page.getByText(/Panier préparé par les clients/)).toHaveCount(0);
+
+  // Le client retrouve sa commande, reprise par le serveur, dans « Mes commandes » (D-101).
+  await guest.keyboard.press("Escape");
+  await guest.getByRole("button", { name: /Mes commandes/ }).click({ timeout: 20_000 });
+  await expect(dialog().getByText("Pris par votre serveur")).toBeVisible({ timeout: 20_000 });
+  await expect(dialog().getByText(/Brochettes de bœuf/)).toBeVisible();
+  await shot(guest, "t2-09b-client-pris", false);
 });
 
 test("appareils : tablette partagée avec PIN, écran de cuisine, révocation", async ({ browser }) => {

@@ -412,7 +412,8 @@ export default function TableOrdering(props: TableOrderingProps) {
       const idempotencyKey = cart.beginSubmit();
       const res = await callTable({ action: "submitLines", guestKey, idempotencyKey, lines: wire(cartState().lines) });
       if (!res.ok) {
-        setNotice({ tone: "error", text: res.error === "no_pass" ? o.noPass : o.lockedNote });
+        // Le panier reste figé : l'encart du verrou dit pourquoi et comment reprendre.
+        setNotice({ tone: "error", text: res.error === "no_pass" ? o.noPass : o.networkError });
         return;
       }
       const r = res.value;

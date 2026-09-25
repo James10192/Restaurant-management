@@ -3,8 +3,8 @@ import { lastEmailTo, mailCount } from "./mail";
 
 const SHOTS = process.env.E2E_SCREENSHOTS;
 
-export async function shot(page: Page, name: string) {
-  if (SHOTS) await page.screenshot({ path: `${SHOTS}/${name}.png`, fullPage: true });
+export async function shot(page: Page, name: string, fullPage = true) {
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/${name}.png`, fullPage });
 }
 
 /** Connexion par code à usage unique, lu dans le faux serveur de courrier. */
