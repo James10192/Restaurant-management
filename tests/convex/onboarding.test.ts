@@ -6,7 +6,7 @@
 import { describe, expect, test } from "vitest";
 import { api, internal } from "../../convex/_generated/api";
 import { restaurantWithMenu } from "./catalogFixtures";
-import { expectCode, openOrganization, setup } from "./setup";
+import { expectCode, inviteAndJoin, openOrganization, setup } from "./setup";
 
 const stateOf = (p: { steps: { key: string; state: string }[] } | null) =>
   Object.fromEntries((p?.steps ?? []).map((s) => [s.key, s.state]));
@@ -56,6 +56,32 @@ describe("progression dérivée", () => {
   });
 });
 
+describe("l'équipe se compte par établissement", () => {
+  test("le personnel de Cocody ne coche pas « équipe » au Plateau ; une invitation pour le Plateau, si", async () => {
+    const r = await restaurantWithMenu();
+    expect(stateOf(await r.owner.as.query(api.onboarding.progress, { venueId: r.cocody })).team).toBe("done");
+    expect(stateOf(await r.owner.as.query(api.onboarding.progress, { venueId: r.plateau })).team).toBe("todo");
+    await r.owner.as.action(api.team.invite, {
+      organizationId: r.organizationId,
+      roleId: r.roleId("waiter"),
+      venueIds: [r.plateau],
+      email: "plateau@maquis.ci",
+    });
+    expect(stateOf(await r.owner.as.query(api.onboarding.progress, { venueId: r.plateau })).team).toBe("done");
+  });
+
+  test("une invitation échue ne compte plus, même restée « en attente »", async () => {
+    const t = setup();
+    const org = await openOrganization(t, "awa@maquis.ci", "Maquis Awa", "Cocody");
+    await org.owner.as.action(api.team.invite, { organizationId: org.organizationId, roleId: org.roleId("waiter"), venueIds: [org.venueId], email: "k@maquis.ci" });
+    expect(stateOf(await org.owner.as.query(api.onboarding.progress, { venueId: org.venueId })).team).toBe("done");
+    await t.run(async (ctx) => {
+      for await (const i of ctx.db.query("organizationInvitations")) await ctx.db.patch(i._id, { expiresAt: Date.now() - 1 });
+    });
+    expect(stateOf(await org.owner.as.query(api.onboarding.progress, { venueId: org.venueId })).team).toBe("todo");
+  });
+});
+
 describe("ce qui ne se dérive pas", () => {
   test("les modes de service se confirment, une étape se saute puis se reprend, tout est audité", async () => {
     const r = await restaurantWithMenu();
@@ -102,6 +128,22 @@ describe("permissions", () => {
     const r = await restaurantWithMenu();
     expect(await r.waiter.as.query(api.onboarding.progress, { venueId: r.cocody })).toBeNull();
   });
+
+  test("un rôle personnalisé sans venue.read reçoit null, pas une erreur : l'accueil s'y abonne", async () => {
+    const r = await restaurantWithMenu();
+    const roleId = await r.owner.as.mutation(api.roles.create, { organizationId: r.organizationId, label: "Plonge", permissions: ["kitchen.read"] });
+    const plonge = await inviteAndJoin(r.t, r.owner, { organizationId: r.organizationId, roleId, venueIds: [r.cocody] }, { email: "plonge@maquis.ci" });
+    expect(await plonge.as.query(api.onboarding.progress, { venueId: r.cocody })).toBeNull();
+  });
+
+  test("sous une étape grisée, le nom seulement : jamais l'e-mail d'un responsable", async () => {
+    const r = await restaurantWithMenu();
+    await r.t.run((ctx) => ctx.db.patch(r.owner.userId, { name: undefined }));
+    const p = await r.editor.as.query(api.onboarding.progress, { venueId: r.cocody });
+    const service = p?.steps.find((s) => s.key === "service");
+    expect(service?.whoCan).toEqual(["Un membre"]);
+    expect(JSON.stringify(p)).not.toContain("awa@maquis.ci");
+  });
 });
 
 describe("entonnoir (D-177)", () => {
@@ -109,7 +151,8 @@ describe("entonnoir (D-177)", () => {
     const r = await restaurantWithMenu();
     await r.owner.as.mutation(api.publications.publish, { venueId: r.cocody, menuId: r.menuId });
     await r.owner.as.mutation(api.onboarding.requestHelp, { venueId: r.cocody });
-    const rows = await r.t.query(internal.onboarding.funnel, {});
+    const { rows, isDone } = await r.t.query(internal.onboarding.funnel, {});
+    expect(isDone).toBe(true);
     const cocody = rows.find((row) => row.venue === "Cocody");
     expect(cocody).toMatchObject({ organization: "Maquis Awa", firstPaymentAt: null, helpRequestsBeforePayment: 1, unassistedInData: false });
     expect(cocody?.firstProductAt).not.toBeNull();

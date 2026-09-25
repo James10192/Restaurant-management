@@ -1,10 +1,18 @@
 import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
-import { CircleCheck, CircleDashed, CircleSlash, LifeBuoy } from "lucide-react";
+import { CircleCheck, CircleDashed, CircleSlash, LifeBuoy, Plus } from "lucide-react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
-import { GROUP_LABELS, STEP_META, type OnboardingStep } from "../../../convex/lib/onboarding";
+import {
+  CONFIRMABLE_STEPS,
+  GROUP_LABELS,
+  ONBOARDING_STEPS,
+  SKIPPABLE_STEPS,
+  STEP_META,
+  type OnboardingStep,
+} from "../../../convex/lib/onboarding";
+import type { Permission } from "../../../convex/lib/permissions";
 import { EmptyState, LoadingState } from "~/components/app/states";
 import { PendingButton } from "~/components/app/pending-button";
 import { Alert, AlertDescription } from "~/components/ui/alert";
@@ -19,16 +27,21 @@ import { describeError } from "~/lib/errors";
  * écran de réglage : pas de formulaire jetable, qui divergerait du premier.
  */
 
-/** L'écran qu'ouvre chaque étape. */
-export const STEP_ROUTE = {
-  identity: "/app/settings/venue",
-  service: "/app/settings/devices",
-  menu: "/app/menu/products",
-  publish: "/app/menu",
-  tables: "/app/floor",
-  qr: "/app/floor/print",
-  team: "/app/team",
-} as const satisfies Record<OnboardingStep, string>;
+/** L'écran qu'ouvre chaque étape — et, pour le mode de commande, la section où il se règle. */
+const STEP_LINK = {
+  identity: { to: "/app/settings/venue" },
+  service: { to: "/app/settings/devices", hash: "mode-de-commande" },
+  menu: { to: "/app/menu/products" },
+  publish: { to: "/app/menu" },
+  tables: { to: "/app/floor" },
+  qr: { to: "/app/floor/print" },
+  team: { to: "/app/team" },
+} as const satisfies Record<OnboardingStep, { to: string; hash?: string }>;
+
+/** Peut-il faire au moins une étape ? Sinon, ni tableau ni abonnement (même règle que le serveur). */
+export function canSetUp(can: (p: Permission) => boolean): boolean {
+  return ONBOARDING_STEPS.some((s) => can(STEP_META[s].permission));
+}
 
 /** Le canal d'aide réel (§5.1 : WhatsApp). Sans numéro configuré, pas de bouton qui ne mène nulle part. */
 const SUPPORT_WHATSAPP = (import.meta.env.VITE_SUPPORT_WHATSAPP as string | undefined)?.replace(/\D/g, "") || null;
@@ -58,6 +71,7 @@ export function ProgressBoard({ venueId }: { venueId: Id<"venues"> }) {
             <Link to="/app">Retour à l'accueil</Link>
           </Button>
         }
+        secondaryAction={<OpenAnotherLink />}
       />
     );
   }
@@ -79,7 +93,22 @@ export function ProgressBoard({ venueId }: { venueId: Id<"venues"> }) {
           </ItemGroup>
         </section>
       ))}
+      <div>
+        <OpenAnotherLink />
+      </div>
     </div>
+  );
+}
+
+/** Ouvrir SON restaurant quand on est déjà membre de celui d'un autre : le formulaire reste accessible. */
+function OpenAnotherLink() {
+  return (
+    <Button asChild variant="ghost">
+      <Link to="/app/onboarding" search={{ nouveau: true }}>
+        <Plus data-icon="inline-start" />
+        Ouvrir un autre restaurant
+      </Link>
+    </Button>
   );
 }
 
@@ -100,7 +129,7 @@ function BoardHeader({ progress, venueId }: { progress: BoardData; venueId: Id<"
       <div className="flex flex-wrap gap-2">
         {progress.next ? (
           <Button asChild size="lg">
-            <Link to={STEP_ROUTE[progress.next]}>Continuer : {STEP_META[progress.next].label.toLowerCase()}</Link>
+            <Link {...STEP_LINK[progress.next]}>Continuer : {STEP_META[progress.next].label.toLowerCase()}</Link>
           </Button>
         ) : progress.complete ? (
           <Alert>
@@ -128,17 +157,18 @@ function StepRow({ step, venueId }: { step: Step; venueId: Id<"venues"> }) {
   const meta = STEP_META[step.key];
   const Icon = STATE_ICON[step.state];
   return (
-    <Item variant="outline" role="listitem" data-onboarding-step={step.key} data-state={step.state} className={step.allowed ? undefined : "opacity-60"}>
+    <Item variant="outline" role="listitem" data-onboarding-step={step.key} data-state={step.state}>
       <ItemMedia variant="icon">
         <Icon aria-hidden="true" className={step.state === "done" ? "text-primary" : "text-muted-foreground"} />
       </ItemMedia>
       <ItemContent className="min-w-48">
         <div className="flex flex-wrap items-center gap-2">
-          <ItemTitle className="line-clamp-none">{meta.label}</ItemTitle>
+          {/* Grisée : le titre seulement. « À faire par … » garde tout son contraste, c'est l'information. */}
+          <ItemTitle className={step.allowed ? "line-clamp-none" : "line-clamp-none text-muted-foreground"}>{meta.label}</ItemTitle>
           <Badge variant={step.state === "done" ? "default" : "secondary"}>{STATE_LABEL[step.state]}</Badge>
         </div>
         <ItemDescription>
-          {!step.allowed ? whoCanText(step) : step.state === "done" ? meta.why : `${meta.why} Environ ${meta.minutes} min.`}
+          {step.state === "done" ? meta.why : !step.allowed ? whoCanText(step) : `${meta.why} Environ ${meta.minutes} min.`}
         </ItemDescription>
       </ItemContent>
       {step.allowed && step.state !== "done" ? <StepActions step={step} venueId={venueId} /> : null}
@@ -158,6 +188,11 @@ function StepActions({ step, venueId }: { step: Step; venueId: Id<"venues"> }) {
   const [busy, setBusy] = useState<"confirm" | "skip" | null>(null);
   const [error, setError] = useState<string | null>(null);
   async function run(kind: "confirm" | "skip", action: () => Promise<unknown>) {
+    // Hors ligne, la mutation attendrait le réseau sans rien dire (§5.1 : refus clair).
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      setError("Pas de connexion. Réessayez une fois le réseau revenu.");
+      return;
+    }
     setBusy(kind);
     setError(null);
     try {
@@ -171,16 +206,16 @@ function StepActions({ step, venueId }: { step: Step; venueId: Id<"venues"> }) {
   const skipped = step.state === "skipped";
   return (
     <ItemActions className="w-full flex-wrap sm:w-auto">
-      <Button asChild variant="outline" size="sm">
-        <Link to={STEP_ROUTE[step.key]}>{step.key === "service" ? "Vérifier" : "Ouvrir"}</Link>
+      <Button asChild variant="outline">
+        <Link {...STEP_LINK[step.key]}>{CONFIRMABLE_STEPS.includes(step.key) ? "Vérifier" : "Ouvrir"}</Link>
       </Button>
-      {step.key === "service" && !skipped ? (
-        <PendingButton size="sm" variant="outline" pending={busy === "confirm"} pendingText="…" onClick={() => void run("confirm", () => confirm({ venueId, step: step.key }))}>
+      {CONFIRMABLE_STEPS.includes(step.key) && !skipped ? (
+        <PendingButton variant="outline" pending={busy === "confirm"} pendingText="…" onClick={() => void run("confirm", () => confirm({ venueId, step: step.key }))}>
           C'est bon
         </PendingButton>
       ) : null}
-      {step.key !== "identity" ? (
-        <PendingButton size="sm" variant="ghost" pending={busy === "skip"} pendingText="…" onClick={() => void run("skip", () => skip({ venueId, step: step.key, skipped: !skipped }))}>
+      {SKIPPABLE_STEPS.includes(step.key) ? (
+        <PendingButton variant="ghost" pending={busy === "skip"} pendingText="…" onClick={() => void run("skip", () => skip({ venueId, step: step.key, skipped: !skipped }))}>
           {skipped ? "Reprendre" : "Plus tard"}
         </PendingButton>
       ) : null}

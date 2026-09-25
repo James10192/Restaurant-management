@@ -6,7 +6,7 @@ import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { useNavItems } from "~/components/app/app-sidebar";
 import { useWorkspace } from "~/components/app/workspace";
-import { stepsCount, useOnboardingProgress } from "~/components/onboarding/progress-board";
+import { canSetUp, stepsCount, useOnboardingProgress } from "~/components/onboarding/progress-board";
 import { Progress } from "~/components/ui/progress";
 import { PendingButton } from "~/components/app/pending-button";
 import { EmptyState } from "~/components/app/states";
@@ -30,7 +30,8 @@ function AppHome() {
   const w = useWorkspace();
   const nav = useNavItems();
   const invitations = useQuery(api.team.myInvitations, {});
-  const setup = useOnboardingProgress(w.venue?._id);
+  // Ni abonnement ni carte pour qui ne peut faire aucune étape (un serveur, la cuisine).
+  const setup = useOnboardingProgress(w.venue && canSetUp(w.canInVenue) ? w.venue._id : undefined);
 
   if (w.status === "no-organization") {
     return (
@@ -69,7 +70,8 @@ function AppHome() {
         <h1 className="text-2xl font-semibold tracking-tight">{w.venue.name}</h1>
         {w.venue.status === "setup" ? <Badge variant="secondary">En préparation</Badge> : null}
       </div>
-      {setup && !setup.complete ? <SetupCard doneCount={setup.doneCount} total={setup.total} /> : null}
+      {/* Tant qu'il reste une étape que LUI peut faire : sinon, le lien mènerait à un tableau sans action. */}
+      {setup?.next ? <SetupCard doneCount={setup.doneCount} total={setup.total} /> : null}
       {sections.length > 0 ? (
         <ItemGroup className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {sections.map((s) => (

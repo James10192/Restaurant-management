@@ -15,7 +15,14 @@ import { internalQuery, mutation, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { writeAudit } from "./lib/audit";
 import { invalid } from "./lib/errors";
-import { memberCoversVenue, requirePermission, resolvePermissionSets, type ReadCtx } from "./lib/guards";
+import {
+  memberCoversVenue,
+  requirePermission,
+  requireVenueAccess,
+  resolvePermissions,
+  resolvePermissionSets,
+  type ReadCtx,
+} from "./lib/guards";
 import {
   CONFIRMABLE_STEPS,
   ONBOARDING_STEPS,
@@ -25,6 +32,9 @@ import {
   type OnboardingStep,
 } from "./lib/onboarding";
 import type { Permission } from "./lib/permissions";
+
+/** Sans premier paiement, l'entonnoir ne lit les actes du support que sur cette fenêtre. */
+const SUPPORT_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 
 /** Le nombre de noms montrés sous une étape grisée : au-delà, « … et 2 autres ». */
 const MAX_HOLDERS = 3;
@@ -63,24 +73,35 @@ async function derivedDone(ctx: ReadCtx, venue: Doc<"venues">): Promise<Record<O
     publish: publication !== null,
     tables: table,
     qr: scanned,
-    team: await hasColleague(ctx, venue.organizationId),
+    team: await hasColleague(ctx, venue),
   };
 }
 
-/** Une invitation envoyée ou acceptée, ou déjà deux membres actifs. */
-async function hasColleague(ctx: ReadCtx, organizationId: Id<"organizations">): Promise<boolean> {
-  for (const status of ["pending", "accepted"] as const) {
-    const invitation = await ctx.db
-      .query("organizationInvitations")
-      .withIndex("by_org_status", (q) => q.eq("organizationId", organizationId).eq("status", status))
-      .first();
-    if (invitation) return true;
+/**
+ * Un collègue DANS CET ÉTABLISSEMENT : une invitation en cours qui le couvre (liste vide = toute
+ * l'organisation), ou deux membres actifs qui y travaillent. Un collègue parti rouvre l'étape —
+ * c'est pourquoi une invitation acceptée ne compte pas : le membre qu'elle a créé compte à sa place.
+ * Une invitation dont l'échéance est passée ne compte plus, même si rien ne l'a marquée `expired`.
+ */
+async function hasColleague(ctx: ReadCtx, venue: Doc<"venues">): Promise<boolean> {
+  const organizationId = venue.organizationId;
+  const now = Date.now();
+  for await (const invitation of ctx.db
+    .query("organizationInvitations")
+    .withIndex("by_org_status", (q) => q.eq("organizationId", organizationId).eq("status", "pending"))) {
+    const covers = invitation.venueIds.length === 0 || invitation.venueIds.includes(venue._id);
+    if (covers && invitation.expiresAt > now) return true;
   }
-  const members = await ctx.db
+  const organization = await ctx.db.get(organizationId);
+  let working = 0;
+  for await (const member of ctx.db
     .query("organizationMembers")
-    .withIndex("by_org_status", (q) => q.eq("organizationId", organizationId).eq("status", "active"))
-    .take(2);
-  return members.length >= 2;
+    .withIndex("by_org_status", (q) => q.eq("organizationId", organizationId).eq("status", "active"))) {
+    const isOwner = member.userId !== undefined && organization?.ownerUserId === member.userId;
+    if (await memberCoversVenue(ctx, member, venue, isOwner)) working++;
+    if (working >= 2) return true;
+  }
+  return false;
 }
 
 /**
@@ -101,10 +122,12 @@ async function holdersOf(
     // Un employé sous PIN seul n'a pas de compte : il ne configure rien (D-060).
     if (member.userId === undefined) continue;
     const isOwner = organization.ownerUserId === member.userId;
-    if (!(await memberCoversVenue(ctx, member, venue, isOwner))) continue;
+    // Sans affectation qui couvre l'établissement, les droits résolus sont vides : pas de filtre à part.
     const { effective } = await resolvePermissionSets(ctx, { organization, member, isOwner }, venue);
+    if (!permissions.some((p) => effective.has(p))) continue;
     const user = await ctx.db.get(member.userId);
-    const name = user?.name ?? user?.email ?? "Un membre";
+    // Le nom seul : l'e-mail d'un responsable ne se montre pas à qui n'a pas `team.read`.
+    const name = user?.name ?? "Un membre";
     for (const p of permissions) if (effective.has(p)) holders.get(p)!.push(name);
   }
   return holders;
@@ -115,10 +138,12 @@ export type StepState = "done" | "skipped" | "todo";
 export const progress = query({
   args: { venueId: v.id("venues") },
   handler: async (ctx, args) => {
-    const actor = await requirePermission(ctx, "venue.read", { venueId: args.venueId });
+    // Pas `venue.read` : l'accueil de tout membre s'y abonne, et un rôle personnalisé peut ne pas
+    // l'avoir. Qui ne peut faire aucune étape reçoit `null`, jamais une erreur.
+    const actor = await requireVenueAccess(ctx, args.venueId);
     const { venue } = actor;
-    const allowed = (s: OnboardingStep) => actor.permissions.has(STEP_META[s].permission);
-    // Le tableau n'a de sens que pour qui peut faire au moins une étape.
+    const permissions = await resolvePermissions(ctx, actor, venue);
+    const allowed = (s: OnboardingStep) => permissions.has(STEP_META[s].permission);
     if (!ONBOARDING_STEPS.some(allowed)) return null;
 
     const done = await derivedDone(ctx, venue);
@@ -224,10 +249,12 @@ async function auditStep(
  * pas un écran.
  */
 export const funnel = internalQuery({
-  args: {},
-  handler: async (ctx) => {
+  args: { cursor: v.optional(v.union(v.string(), v.null())) },
+  handler: async (ctx, args) => {
+    // Par pages de dix organisations : `npx convex run onboarding:funnel '{"cursor":"…"}'` pour la suite.
+    const page = await ctx.db.query("organizations").paginate({ numItems: 10, cursor: args.cursor ?? null });
     const rows = [];
-    for await (const organization of ctx.db.query("organizations")) {
+    for (const organization of page.page) {
       const venues = await ctx.db
         .query("venues")
         .withIndex("by_org", (q) => q.eq("organizationId", organization._id))
@@ -237,16 +264,21 @@ export const funnel = internalQuery({
         rows.push(await funnelRow(ctx, organization, venue));
       }
     }
-    return rows;
+    return { rows, continueCursor: page.continueCursor, isDone: page.isDone };
   },
 });
 
 async function funnelRow(ctx: ReadCtx, organization: Doc<"organizations">, venue: Doc<"venues">) {
   const venueId = venue._id;
-  const firstProduct = await ctx.db
-    .query("products")
-    .withIndex("by_venue_active", (q) => q.eq("venueId", venueId).eq("isActive", true))
-    .first();
+  // Premier produit créé, actif ou non : mesuré comme les tables.
+  const firstProducts = await Promise.all(
+    [true, false].map((isActive) =>
+      ctx.db
+        .query("products")
+        .withIndex("by_venue_active", (q) => q.eq("venueId", venueId).eq("isActive", isActive))
+        .first(),
+    ),
+  );
   const publications = await ctx.db
     .query("menuPublications")
     .withIndex("by_venue_current", (q) => q.eq("venueId", venueId))
@@ -265,7 +297,9 @@ async function funnelRow(ctx: ReadCtx, organization: Doc<"organizations">, venue
     .withIndex("by_venue_createdAt", (q) => q.eq("venueId", venueId))
     .filter((q) => q.and(q.eq(q.field("status"), "succeeded"), q.neq(q.field("isSimulation"), true)))
     .first();
-  const until = firstPayment?.createdAt ?? Date.now();
+  // Avant le premier paiement ; sans paiement, sur les trente premiers jours seulement : un
+  // restaurant qui n'encaisse pas dans Joliba ne fait pas relire tout son journal.
+  const until = firstPayment?.createdAt ?? venue._creationTime + SUPPORT_WINDOW_MS;
   const help = await ctx.db
     .query("auditLogs")
     .withIndex("by_resource", (q) => q.eq("resourceType", "venueOnboarding").eq("resourceId", venueId))
@@ -281,7 +315,7 @@ async function funnelRow(ctx: ReadCtx, organization: Doc<"organizations">, venue
     organization: organization.name,
     venue: venue.name,
     createdAt: venue._creationTime,
-    firstProductAt: firstProduct?._creationTime ?? null,
+    firstProductAt: firstOf(firstProducts.flatMap((p) => (p ? [p._creationTime] : []))),
     firstPublishedAt: firstOf(publications.map((p) => p.publishedAt)),
     firstTableAt: firstOf(tables.map((t) => t._creationTime)),
     firstSessionAt: firstSession?.openedAt ?? null,
@@ -289,6 +323,6 @@ async function funnelRow(ctx: ReadCtx, organization: Doc<"organizations">, venue
     helpRequestsBeforePayment: help.length,
     supportActionsBeforePayment: support.length,
     // « Sans assistance » selon la base seule : à croiser avec la liste des aides WhatsApp.
-    unassistedInData: firstPayment !== undefined && firstPayment !== null && help.length === 0 && support.length === 0,
+    unassistedInData: firstPayment !== null && help.length === 0 && support.length === 0,
   };
 }

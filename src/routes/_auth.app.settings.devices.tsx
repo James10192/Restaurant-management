@@ -83,12 +83,15 @@ function DevicesPage() {
 function OrderingModeSection({ venueId, canReadVenue }: { venueId: Id<"venues">; canReadVenue: boolean }) {
   const venue = useQuery(api.venues.get, canReadVenue ? { venueId } : "skip");
   if (canReadVenue && venue === undefined) return <LoadingState />;
+  // Ancre de la mise en service (« Comment vous travaillez ») : la section, pas le haut de la page.
   return (
-    <OrderingModeCard
-      venueId={venueId}
-      current={venue ? readOrderingMode(venue) : null}
-      maxQuantity={venue && "guestMaxQuantityPerLine" in venue ? venue.guestMaxQuantityPerLine : null}
-    />
+    <div id="mode-de-commande" className="scroll-mt-20">
+      <OrderingModeCard
+        venueId={venueId}
+        current={venue ? readOrderingMode(venue) : null}
+        maxQuantity={venue && "guestMaxQuantityPerLine" in venue ? venue.guestMaxQuantityPerLine : null}
+      />
+    </div>
   );
 }
 

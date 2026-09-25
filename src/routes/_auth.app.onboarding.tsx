@@ -23,8 +23,12 @@ import { describeError } from "~/lib/errors";
 export const Route = createFileRoute("/_auth/app/onboarding")({
   // L'étape vit dans l'adresse : choisir la nouvelle organisation remonte la page, un état local
   // serait perdu (et un rechargement ramènerait au formulaire déjà envoyé).
-  validateSearch: (search: Record<string, unknown>): { etape?: "marque" } => (search.etape === "marque" ? { etape: "marque" } : {}),
-  head: () => ({ meta: [{ title: "Ouvrir mon établissement — Joliba" }] }),
+  // `nouveau` : ouvrir son restaurant quand on est déjà membre de celui d'un autre.
+  validateSearch: (search: Record<string, unknown>): { etape?: "marque"; nouveau?: true } => ({
+    ...(search.etape === "marque" ? { etape: "marque" as const } : {}),
+    ...(search.nouveau === true || search.nouveau === "true" || search.nouveau === 1 ? { nouveau: true as const } : {}),
+  }),
+  head: () => ({ meta: [{ title: "Mise en service — Joliba" }] }),
   component: OnboardingPage,
 });
 
@@ -37,11 +41,11 @@ type Errors = Partial<Record<"person" | "organization" | "venue", string>>;
  */
 function OnboardingPage() {
   const w = useWorkspace();
-  const { etape } = Route.useSearch();
+  const { etape, nouveau } = Route.useSearch();
   const [creating, setCreating] = useState(false);
   // Sans organisation (adresse gardée en favori, retour arrière), l'étape n'a pas de sens : le formulaire.
   if (etape === "marque" && w.status !== "no-organization") return <BrandStep />;
-  if (!creating && w.status === "ready" && w.venue) return <ProgressBoard venueId={w.venue._id} />;
+  if (!creating && !nouveau && w.status === "ready" && w.venue) return <ProgressBoard venueId={w.venue._id} />;
   if (!creating && w.status === "loading") return <LoadingState />;
   return <Onboarding onCreating={setCreating} />;
 }

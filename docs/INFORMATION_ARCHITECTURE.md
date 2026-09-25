@@ -1885,6 +1885,13 @@ bonne nouvelle, formulée comme telle.
 
 ### 5.1 Mise en service — `/app/onboarding`
 
+> **Ce que T7.b livre (D-176, D-180)** — et qui fait foi sur le texte ci-dessous tant que T7.e n'est
+> pas faite : une **liste unique** des sept étapes, sur mobile comme sur ordinateur (ni une étape par
+> écran, ni deux volets) ; pas de bouton « Ignorer pour l'instant » en tête, chaque étape a son
+> « Plus tard » ; au chargement, un indicateur, pas des étapes pré-cochées ; hors ligne, « C'est bon »
+> et « Plus tard » refusent avec un message. `/app/onboarding?nouveau=true` rouvre le formulaire de
+> création pour qui est déjà membre du restaurant d'un autre.
+
 **Persona** : Awa, seule, le soir, sur son téléphone ou un ordinateur portable.
 **Objectif** : « qu'est-ce qu'il me reste à faire pour que ça marche demain ? »
 **Appareil** : desktop et mobile, à égalité — la mise en service se fait en plusieurs fois, entre

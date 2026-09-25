@@ -31,7 +31,7 @@ type StepMeta = {
 
 export const STEP_META: Record<OnboardingStep, StepMeta> = {
   identity: { group: "venue", label: "Identité de l'établissement", why: "Nom, type, fuseau et devise.", permission: "venue.manage", minutes: 2 },
-  service: { group: "venue", label: "Comment vous travaillez", why: "Qui commande, et quand on paie.", permission: "venue.settings.service", minutes: 3 },
+  service: { group: "venue", label: "Comment vous travaillez", why: "Qui saisit la commande : votre équipe, ou le client.", permission: "venue.settings.service", minutes: 3 },
   menu: { group: "menu", label: "Créer la carte", why: "Vos plats, vos prix.", permission: "menu.edit", minutes: 20 },
   publish: { group: "menu", label: "Publier la carte", why: "Le QR devient utile.", permission: "menu.publish", minutes: 1 },
   tables: { group: "floor", label: "Créer les tables", why: "Chaque table reçoit son QR.", permission: "table.manage", minutes: 5 },
