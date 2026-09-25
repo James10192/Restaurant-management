@@ -114,14 +114,19 @@ pnpm check:permissions   # catalogue ↔ PERMISSIONS.md
 pnpm check:schema        # invariants du schéma
 pnpm check:guards        # toute fonction publique commence par une garde
 pnpm check:money         # le franc CFA n'a pas de sous-unité
+pnpm check:sizes         # contre origin/main : aucun fichier > 1000 lignes, aucune fonction allongée > 80
 pnpm test                # isolation multi-tenant, verrous, portée (convex-test)
 pnpm check               # tout ce qui précède
 
-pnpm test:e2e            # parcours T0 et T1 dans un navigateur — voir e2e/README.md
+pnpm test:e2e            # parcours T0 à T7 dans un navigateur — voir e2e/README.md
 
 node scripts/seed-demo.mjs                        # restaurant de démonstration (backend local seulement)
 node scripts/measure-guest.mjs <adresse de scan>  # carte client en 4G bridée émulée, 75e centile
 ```
+
+Avant toute fusion ou tout déploiement : `pnpm check`, les parcours touchés, et la **revue
+thermo-nucléaire** (`/thermo-review`, `.claude/skills/thermo-review/SKILL.md`) doit rendre `PASS` —
+voir `.claude/rules/avant-fusion.md`.
 
 Variables du déploiement Convex : `SITE_URL`, `BETTER_AUTH_SECRET`, `RESEND_API_KEY`, `EMAIL_FROM`
 (sans elles, aucun code de connexion ne part), `GUEST_PASS_SECRET` (sans elle, aucun QR ne s'ouvre),

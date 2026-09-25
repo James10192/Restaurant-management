@@ -285,12 +285,7 @@ export function MenuView(props: MenuViewProps) {
                 ))
               )}
 
-              {/* Une note, pas une alerte : en gris, sous la carte, elle informe sans inquiéter (D-166). */}
-              <p role="note" className="mt-10 flex gap-2 text-sm text-muted-foreground">
-                <InfoIcon aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
-                {t.noAllergenInfo}
-              </p>
-              {props.footer ? <div className="mt-6">{props.footer}</div> : null}
+              <MenuNotes t={t} footer={props.footer} />
             </div>
           </div>
         )}
@@ -316,6 +311,19 @@ export function MenuView(props: MenuViewProps) {
         {props.ordering ? props.ordering.render({ locale, live, now, online }) : null}
       </div>
     </GuestContext.Provider>
+  );
+}
+
+/** Sous la carte : la note d'allergènes, puis le pied de page. Une note, pas une alerte : en gris, elle informe sans inquiéter (D-166). */
+function MenuNotes({ t, footer }: { t: GuestText; footer?: ReactNode }) {
+  return (
+    <>
+      <p role="note" className="mt-10 flex gap-2 text-sm text-muted-foreground">
+        <InfoIcon aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+        {t.noAllergenInfo}
+      </p>
+      {footer ? <div className="mt-6">{footer}</div> : null}
+    </>
   );
 }
 

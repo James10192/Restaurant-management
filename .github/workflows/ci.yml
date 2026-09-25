@@ -16,6 +16,9 @@ jobs:
       CONVEX_AGENT_MODE: anonymous
     steps:
       - uses: actions/checkout@v4
+        with:
+          # La branche de base doit être présente : le contrôle des tailles compare à elle.
+          fetch-depth: 0
 
       - uses: pnpm/action-setup@v4
 
@@ -74,6 +77,13 @@ jobs:
       # PAYMENTS.md §2 : le franc CFA n'a pas de sous-unité.
       - name: Money invariants
         run: pnpm check:money
+
+      # Axe 6 de la revue thermo-nucléaire (.claude/skills/thermo-review), rendu mécanique :
+      # aucun fichier ne franchit 1000 lignes, aucune fonction créée ou allongée ne dépasse 80.
+      # Seulement sur une pull request : sur main, il n'y a pas de base à laquelle comparer.
+      - name: Sizes against the base branch
+        if: github.event_name == 'pull_request'
+        run: node scripts/check-sizes.mjs "origin/${{ github.base_ref }}"
 
       # Isolation multi-tenant (porte de sortie de T0), verrous, portée, plan tarifaire.
       - name: Unit and isolation tests

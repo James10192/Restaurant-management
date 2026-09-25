@@ -139,13 +139,7 @@ function Onboarding() {
               <FormField label="Ville" optional>
                 <Input value={city} onChange={(e) => setCity(e.target.value)} autoComplete="address-level2" maxLength={80} />
               </FormField>
-              <Alert>
-                <Coins />
-                <AlertTitle>Devise : {country.currency === "XOF" ? "franc CFA (XOF)" : "franc CFA (XAF)"}</AlertTitle>
-                <AlertDescription>
-                  Elle découle du pays et se fige dès le premier encaissement, pour que vos comptes restent justes.
-                </AlertDescription>
-              </Alert>
+              <CurrencyNotice currency={country.currency} />
               {formError ? (
                 <Alert variant="destructive">
                   <CircleAlert />
@@ -185,5 +179,16 @@ function BrandStep() {
       </div>
       <AppearanceEditor venueId={w.venue._id} />
     </div>
+  );
+}
+
+/** La devise découle du pays et se fige au premier encaissement : on le dit avant de créer. */
+function CurrencyNotice({ currency }: { currency: string }) {
+  return (
+    <Alert>
+      <Coins />
+      <AlertTitle>Devise : {currency === "XOF" ? "franc CFA (XOF)" : "franc CFA (XAF)"}</AlertTitle>
+      <AlertDescription>Elle découle du pays et se fige dès le premier encaissement, pour que vos comptes restent justes.</AlertDescription>
+    </Alert>
   );
 }

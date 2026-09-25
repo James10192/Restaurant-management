@@ -85,6 +85,8 @@ if [[ "${restes:-0}" -gt 0 || "${gabarit:-0}" -gt 0 || "$preuves_maigres" -eq 1 
     echo "  - un agent adverse (critique-transversale), pour un second angle"
     echo "  - la documentation officielle du fournisseur avant toute montee de version"
     echo "  - une preuve executee : typecheck, test, commande, capture reelle"
+    echo "  - /thermo-review en sous-agent avant toute fusion ou tout deploiement"
+    echo "    (.claude/rules/avant-fusion.md) ; pnpm check:sizes pour l'axe 6"
   } >&2
   exit 2
 fi
