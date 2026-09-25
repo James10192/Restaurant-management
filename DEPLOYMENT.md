@@ -44,12 +44,13 @@ sera lu trop tard.
 |---|---|---|
 | `PAYMENT_SECRETS_KEY` | déploiement **Convex** | Clé maîtresse qui chiffre les clés Wave des restaurants (AES-256-GCM, D-117) : 32 octets aléatoires en base64 (`openssl rand -base64 32`), **différente par environnement**. Absente : l'écran de réglage le dit, et aucune clé Wave ne s'enregistre. **La perdre, c'est perdre toutes les clés enregistrées** : chaque restaurant devra recoller les siennes. |
 | `PAYMENT_SECRETS_KEY_VERSION` | déploiement Convex | Numéro de la clé maîtresse en cours (1 par défaut). |
-| `PAYMENT_SECRETS_KEY_PREVIOUS` | déploiement Convex | Pendant une rotation seulement : l'ancienne clé, qui ouvre encore ce qu'elle a chiffré. Rotation : poser l'ancienne ici, la nouvelle dans `PAYMENT_SECRETS_KEY`, incrémenter la version ; tout nouvel enregistrement chiffre sous la nouvelle. L'ancienne ne se retire qu'une fois chaque restaurant ayant réenregistré ses clés. |
+| `PAYMENT_SECRETS_KEY_PREVIOUS` | déploiement Convex | Pendant une rotation seulement : l'ancienne clé, qui ouvre encore ce qu'elle a chiffré. Rotation : poser l'ancienne ici, la nouvelle dans `PAYMENT_SECRETS_KEY`, incrémenter la version ; puis lancer `npx convex run paymentAccounts:resealAll`, qui ré-encode toutes les clés sous la nouvelle (la même tâche tourne chaque nuit). L'ancienne se retire quand il répond `unreadable: 0`. |
 | `SITE_URL` | déploiement **Convex** aussi | L'adresse où Wave renvoie le client après paiement (`/r/<établissement>/table?paiement=retour`). Même valeur que côté application web. |
 | `JOLIBA_FAKE_PAYMENTS`, `WAVE_API_URL` | déploiement Convex | **Jamais en production.** Font parler l'adaptateur Wave au faux Wave de `e2e/wave-sink.mjs`. Ignorées hors d'un backend local (`CONVEX_CLOUD_URL` sur localhost) : même posées par erreur en production, Joliba parle au vrai Wave. |
 
-Deux tâches planifiées tournent d'elles-mêmes (`convex/crons.ts`) : le rattrapage des paiements en
-attente toutes les 2 minutes, et le rapprochement avec le relevé Wave chaque jour à 06:00 UTC.
+Trois tâches planifiées tournent d'elles-mêmes (`convex/crons.ts`) : le rattrapage des paiements en
+attente toutes les 2 minutes, le rapprochement avec le relevé Wave chaque jour à 06:00 UTC, et le
+ré-encodage des clés après une rotation de la clé maîtresse, chaque nuit (sans effet sinon).
 
 **À dire à chaque restaurant qui branche Wave** : dans le portail Wave Business, **ne pas activer la
 liste blanche d'adresses IP** sur la clé d'API. Elle ne se désactive plus ensuite, et Convex n'a pas
