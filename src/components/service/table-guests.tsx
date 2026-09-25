@@ -71,7 +71,8 @@ export function TableGuests({ detail }: { detail: Detail }) {
   const [admitting, setAdmitting] = useState<Guest | null>(null);
   const [removing, setRemoving] = useState<Guest | null>(null);
   const [rotating, setRotating] = useState(false);
-  if (detail.orderingMode !== "guest_direct") return null;
+  const direct = detail.orderingMode === "guest_direct";
+  if (!direct && !detail.onlinePayment) return null;
   const manage = detail.can.manageGuests;
   const recentAlert = detail.codeAlertAt !== null && Date.now() - detail.codeAlertAt < CODE_ALERT_MS;
 
@@ -91,7 +92,11 @@ export function TableGuests({ detail }: { detail: Detail }) {
           <KeyRound className="size-4" />
           Code de la table
         </CardTitle>
-        <CardDescription>Donnez-le aux clients à leur arrivée : sans lui, leur téléphone ne peut pas envoyer en cuisine. Il change à chaque tablée.</CardDescription>
+        <CardDescription>
+          {direct
+            ? "Donnez-le aux clients à leur arrivée : sans lui, leur téléphone ne peut pas envoyer en cuisine. Il change à chaque tablée."
+            : "Donnez-le aux clients qui veulent régler depuis leur téléphone : sans lui, ils ne voient pas l'addition. Il change à chaque tablée."}
+        </CardDescription>
         {manage ? (
           <CardAction>
             <Button variant="outline" size="sm" disabled={!online} title={online ? undefined : "Pas sans réseau."} onClick={() => setRotating(true)}>

@@ -37,7 +37,7 @@ import { isOpenSession } from "./lib/service";
 import { generateToken } from "./lib/tokens";
 import { writeAudit } from "./lib/audit";
 import { activeAccountOf, providerFor } from "./paymentAccounts";
-import { ensureRemainder, nextCheckReference } from "./checks";
+import { ensureRemainder, methodLabel, nextCheckReference } from "./checks";
 import { insertPayment } from "./payments";
 import { issueCreditNote } from "./bills";
 import { memberOf } from "./cash";
@@ -1090,6 +1090,12 @@ export const alerts = query({
     for (const a of rows) {
       const session = a.tableSessionId ? await ctx.db.get(a.tableSessionId) : null;
       const table = session ? await ctx.db.get(session.tableId) : null;
+      const payment = a.paymentId ? await ctx.db.get(a.paymentId) : null;
+      const refunded = payment
+        ? (await ctx.db.query("refunds").withIndex("by_payment", (q) => q.eq("paymentId", payment._id)).collect())
+            .filter((r) => r.status === "succeeded" || r.status === "pending")
+            .reduce((s, r) => s + r.amount, 0)
+        : 0;
       out.push({
         _id: a._id,
         kind: a.kind,
@@ -1098,9 +1104,13 @@ export const alerts = query({
         amount: a.amount ?? null,
         currency: a.currency ?? actor.venue.currency,
         createdAt: a.createdAt,
-        paymentId: a.paymentId ?? null,
         sessionId: a.tableSessionId ?? null,
         tableNumber: table?.number ?? null,
+        /** Le paiement à rendre, pour le rembourser d'ici — même sur une table close. */
+        payment:
+          payment && payment.status !== "voided" && payment.amount - refunded > 0
+            ? { _id: payment._id, label: methodLabel(payment), amount: payment.amount, refundable: payment.amount - refunded, method: payment.method, online: payment.paymentIntentId !== undefined }
+            : null,
       });
     }
     return { alerts: out, canResolve: actor.permissions.has("payment.refund") };

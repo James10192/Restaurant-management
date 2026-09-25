@@ -90,10 +90,11 @@ jobs:
       - name: Install Playwright browser
         run: pnpm exec playwright install --with-deps chromium
 
-      - name: End-to-end (T0 à T4)
+      - name: End-to-end (T0 à T5)
         run: |
           # Le backend local et son environnement sont ceux de l'étape de génération.
           node e2e/mail-sink.mjs "$RUNNER_TEMP/mails.jsonl" &
+          node e2e/wave-sink.mjs &
           # Contre le BUILD de production, pas le serveur de développement : ce dernier
           # recharge la page quand il optimise ses dépendances, ce qui rend le test aléatoire.
           # `.env.local`, écrit par `convex dev`, fournit les URL du backend local au build.

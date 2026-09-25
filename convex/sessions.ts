@@ -18,6 +18,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { writeAudit } from "./lib/audit";
 import { closingState, formatAmount, loadSessionBilling } from "./lib/billing";
 import { assertNoOpenIntent } from "./lib/intents";
+import { activeAccountOf } from "./paymentAccounts";
 import { getInVenue } from "./lib/catalogAccess";
 import { conflict, invalid, notFound } from "./lib/errors";
 import { memberCoversVenue, type MutationCtx, type ReadCtx } from "./lib/guards";
@@ -443,6 +444,8 @@ export const detail = query({
     return {
       /** Conduite de commande de l'établissement : le code ne sert qu'en `guest_direct`. */
       orderingMode: settings.service.orderingMode,
+      /** Le paiement en ligne est actif : le code sert aussi à régler depuis le téléphone (D-112). */
+      onlinePayment: (await activeAccountOf(ctx, actor.venue._id)) !== null,
       _id: session._id,
       /** Le code de la tablée, que le serveur donne à voix haute (D-095) — pas à la cuisine. */
       code: actor.permissions.has("table.session.open") ? (session.activationCode ?? null) : null,

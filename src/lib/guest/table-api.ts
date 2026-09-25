@@ -16,6 +16,9 @@ export type RequestServiceResult = FunctionReturnType<typeof api.guestService.re
 export type EnterCodeResult = FunctionReturnType<typeof api.guestService.enterCode>;
 export type SubmitLinesResult = FunctionReturnType<typeof api.guestService.submitLines>;
 export type SubmitFeedbackResult = FunctionReturnType<typeof api.guestService.submitFeedback>;
+export type StartPaymentResult = FunctionReturnType<typeof api.onlinePayments.guestStart>;
+export type CheckPaymentResult = FunctionReturnType<typeof api.onlinePayments.guestCheck>;
+export type PaymentTarget = "remainder" | "my_items";
 
 export type WireLine = { productId: string; variantId?: string; optionIds: string[]; quantity: number; instructions?: string };
 
@@ -26,7 +29,10 @@ export type TableAction =
   | { action: "requestService"; guestKey: string; type: string }
   | { action: "enterCode"; guestKey: string; code: string }
   | { action: "submitLines"; guestKey: string; idempotencyKey: string; lines: WireLine[]; shown?: boolean }
-  | { action: "submitFeedback"; guestKey: string; rating: number; comment?: string; topics: string[] };
+  | { action: "submitFeedback"; guestKey: string; rating: number; comment?: string; topics: string[] }
+  /** Aucun montant : c'est le serveur qui le calcule (R14, D-113). */
+  | { action: "startPayment"; guestKey: string; target: PaymentTarget; idempotencyKey: string }
+  | { action: "checkPayment"; guestKey: string };
 
 type Results = {
   presence: Presence;
@@ -36,6 +42,8 @@ type Results = {
   enterCode: EnterCodeResult;
   submitLines: SubmitLinesResult;
   submitFeedback: SubmitFeedbackResult;
+  startPayment: StartPaymentResult;
+  checkPayment: CheckPaymentResult;
 };
 
 type ResultOf<A extends TableAction["action"]> = Results[A];

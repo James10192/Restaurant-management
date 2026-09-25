@@ -21,8 +21,8 @@
  * de quelques centaines d'octets suffit, et le laissez-passer ne quitte pas son cookie).
  */
 
-import { BellRingIcon, CheckIcon, ClockIcon, LockIcon, MessageSquareIcon, MinusIcon, PlusIcon, ReceiptTextIcon, ShoppingBagIcon, Trash2Icon, WifiOffIcon } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { BellRingIcon, CheckIcon, ClockIcon, LockIcon, MessageSquareIcon, MinusIcon, PlusIcon, ReceiptTextIcon, ShoppingBagIcon, Trash2Icon, WalletIcon, WifiOffIcon } from "lucide-react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { GuestMenu, LiveAvailability, PublicVenue } from "../../../convex/lib/guestMenu";
 import { formatMoney, type CurrencyCode } from "../../../convex/lib/money";
 import { indexPublishedProducts, priceLine, type LineProblemCode } from "../../../convex/lib/ordering";
@@ -44,6 +44,9 @@ import { callTable, type Presence, type TableCallError } from "~/lib/guest/table
 
 export const GUEST_ADDED_EVENT = "joliba:ajout";
 
+/** Le tiroir « Régler » : téléchargé seulement quand on l'ouvre (D-058). */
+const GuestPayment = lazy(() => import("~/components/guest/guest-payment"));
+
 export type TableOrderingProps = {
   venueSlug: string;
   venue: PublicVenue;
@@ -55,7 +58,21 @@ export type TableOrderingProps = {
 };
 
 type Notice = { tone: "info" | "error"; text: string } | null;
-type Panel = "cart" | "call" | "orders" | "feedback" | null;
+type Panel = "cart" | "call" | "orders" | "feedback" | "pay" | null;
+
+/**
+ * Le retour de Wave (`?paiement=retour|erreur`), lu une fois puis effacé de l'adresse : un
+ * rechargement ne relance pas la vérification, et l'adresse partagée ne dit rien du paiement.
+ */
+function readPaymentReturn(): "retour" | "erreur" | null {
+  if (typeof window === "undefined") return null;
+  const value = new URLSearchParams(window.location.search).get("paiement");
+  if (value !== "retour" && value !== "erreur") return null;
+  const url = new URL(window.location.href);
+  url.searchParams.delete("paiement");
+  window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
+  return value;
+}
 
 const POLL_IDLE_MS = 15_000;
 /** Plus serré quand quelque chose attend un geste du personnel. */
@@ -144,10 +161,22 @@ export default function TableOrdering(props: TableOrderingProps) {
   /** Dernière lecture réussie de la table : l'écran dit « mis à jour il y a N s » (D-103). */
   const [updatedAt, setUpdatedAt] = useState<number | null>(null);
   const [feedbackSent, setFeedbackSent] = useState(false);
+  /**
+   * `?paiement=retour|erreur` : lu APRÈS le montage, pas dans l'initialisation de l'état. Un
+   * rendu abandonné (hydratation reprise) lirait l'adresse, l'effacerait, et le rendu suivant
+   * ne trouverait plus rien : le tiroir ne s'ouvrirait pas au retour de Wave.
+   */
+  const [paymentReturn, setPaymentReturn] = useState<"retour" | "erreur" | null>(null);
+  useEffect(() => {
+    const value = readPaymentReturn();
+    if (value) setPaymentReturn(value);
+  }, []);
+  const [paymentLoaded, setPaymentLoaded] = useState(false);
 
   /* ── Relire l'état de la table ─────────────────────────────────────────── */
 
   const hydrated = useRef(false);
+  const paymentOpened = useRef(false);
   /** Un envoi est en vol : la relecture ne tranche pas son issue à sa place. */
   const sending = useRef(false);
 
@@ -220,11 +249,21 @@ export default function TableOrdering(props: TableOrderingProps) {
     }
   }, [guestKey, o, setFlash]);
 
+  // De retour de Wave : le tiroir s'ouvre de lui-même, et vérifie auprès du serveur.
+  useEffect(() => {
+    if (!paymentReturn || !presence?.payment || paymentOpened.current) return;
+    paymentOpened.current = true;
+    setPaymentLoaded(true);
+    setPanel("pay");
+  }, [paymentReturn, presence]);
+
   // Relecture serrée tant qu'un geste du personnel est attendu, ou qu'un de mes plats n'est ni
   // servi ni annulé (D-103) ; sinon au repos.
+  const paymentPending = presence?.payment?.current?.status === "initializing" || presence?.payment?.current?.status === "processing";
   const waiting =
     state.shownSignature !== null ||
     state.pendingSubmitKey !== null ||
+    paymentPending ||
     (presence?.orders.some(
       (x) => x.status === "pending_acceptance" || (x.status !== "rejected" && x.status !== "cancelled" && x.items.some((i) => i.status !== "served" && i.status !== "cancelled")),
     ) ??
@@ -591,6 +630,21 @@ export default function TableOrdering(props: TableOrderingProps) {
                 {o.feedbackCta}
               </Button>
             ) : null}
+            {presence?.paymentOffered && (!presence.payment || paymentPending || presence.payment.remainderDue !== null || presence.payment.myItemsDue !== null) ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="lg"
+                className="h-12"
+                onClick={() => {
+                  setPaymentLoaded(true);
+                  openPanel("pay");
+                }}
+              >
+                <WalletIcon data-icon="inline-start" />
+                {paymentPending ? o.payPending : o.pay}
+              </Button>
+            ) : null}
             {orders.length > 0 || (presence?.table.length ?? 0) > 0 ? (
               <Button type="button" variant="outline" size="lg" className="h-12" onClick={() => openPanel("orders")} aria-label={`${o.myOrders} (${orders.length})`}>
                 <ReceiptTextIcon data-icon="inline-start" />
@@ -879,6 +933,32 @@ export default function TableOrdering(props: TableOrderingProps) {
           </DrawerFooter>
         </DrawerContent>
       </Drawer>
+
+      {paymentLoaded ? (
+        <Suspense fallback={null}>
+          <GuestPayment
+            open={panel === "pay"}
+            onOpenChange={(open) => !open && setPanel(null)}
+            guestKey={guestKey}
+            payment={presence?.payment ?? null}
+            online={online}
+            locale={locale}
+            returnState={paymentReturn}
+            onChanged={() => void refresh()}
+            codeEntry={
+              presence && presence.paymentOffered && !presence.payment && presence.tableOpen ? (
+                <TableCodeEntry
+                  guestNumber={presence.guest?.number ?? null}
+                  guestKey={guestKey}
+                  online={online}
+                  o={o}
+                  onAdmitted={() => void refresh()}
+                />
+              ) : null
+            }
+          />
+        </Suspense>
+      ) : null}
 
       {presence && presence.feedback ? (
         <GuestFeedback

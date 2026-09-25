@@ -341,3 +341,25 @@ export const joinDemo = internalMutation({
     return { organizationId: organization._id, venueId: venue._id, venueSlug: venue.slug };
   },
 });
+
+/**
+ * Sort le dernier restaurant de démonstration du mode simulation. Le paiement en ligne n'est
+ * jamais proposé sur une tablée de simulation (aucun vrai argent sur un essai) : l'essai de bout en bout de T5 en a besoin
+ * pour aller jusqu'au faux Wave. Les tables ouvertes AVANT l'appel restent des simulations.
+ * Réservé au backend local, comme le reste de ce fichier.
+ */
+export const leaveSimulation = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    assertEnabled();
+    const organizations = (await ctx.db.query("organizations").collect()).filter((o) => o.slug.startsWith("demo-"));
+    const organization = organizations.sort((a, b) => b._creationTime - a._creationTime)[0];
+    if (!organization) throw invalid("Aucun restaurant de démonstration : lancez scripts/seed-demo.mjs.");
+    const venues = await ctx.db
+      .query("venues")
+      .withIndex("by_org", (q) => q.eq("organizationId", organization._id))
+      .collect();
+    for (const venue of venues) await ctx.db.patch(venue._id, { isSimulation: false });
+    return venues.length;
+  },
+});

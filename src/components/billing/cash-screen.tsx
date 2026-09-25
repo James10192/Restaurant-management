@@ -39,6 +39,7 @@ import { describeError } from "~/lib/errors";
 import { amountToText, parseAmount } from "./amount";
 import { PaymentDialog } from "./payment-dialog";
 import { ReasonDialog } from "./reason-dialog";
+import { RefundDialog, type RefundTarget } from "./bill-panel";
 
 type Overview = FunctionReturnType<typeof api.cash.overview>;
 type CashSession = Overview["sessions"][number];
@@ -106,6 +107,8 @@ export function CashScreen() {
             ))
           : null}
       </div>
+
+      {scope.can("payment.read") ? <OnlineAlertsCard /> : null}
 
       {overview.sessions.length === 0 ? (
         <EmptyState title="Aucune caisse ouverte" description="Ouvrez une caisse avec son fonds de départ avant d'encaisser des espèces." />
@@ -534,5 +537,74 @@ function OpenDialog({ target, onClose }: { target: OpenTarget | null; onClose: (
         </form>
       </ResponsiveDialogContent>
     </ResponsiveDialog>
+  );
+}
+
+type OnlineAlert = FunctionReturnType<typeof api.onlinePayments.alerts>["alerts"][number];
+
+/**
+ * Ce que le paiement en ligne demande à un humain (D-115, D-121) : un trop-perçu à rendre — même
+ * sur une table déjà close —, un montant ou une devise inattendus, un écart au relevé Wave. Les
+ * alertes avant les chiffres : elles s'affichent en haut, et restent jusqu'à ce qu'on les traite.
+ */
+function OnlineAlertsCard() {
+  const scope = useServiceScope();
+  const money = useMoney();
+  const data = useQuery(api.onlinePayments.alerts, { venueId: scope.venueId });
+  const resolve = useMutation(api.onlinePayments.resolveAlert);
+  const [resolving, setResolving] = useState<OnlineAlert | null>(null);
+  const [refunding, setRefunding] = useState<RefundTarget | null>(null);
+  if (!data || data.alerts.length === 0) return null;
+  return (
+    <Card size="sm" data-online-alerts>
+      <CardHeader>
+        <CardTitle>Paiements en ligne à regarder</CardTitle>
+        <CardDescription>Trop-perçus à rendre, écarts avec le relevé Wave. Une alerte reste jusqu'à ce qu'on la traite.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <ItemGroup className="gap-2">
+          {data.alerts.map((a) => (
+            <Item key={a._id} variant="outline" size="sm">
+              <ItemContent className="min-w-0">
+                <ItemTitle className="flex flex-wrap items-center gap-2">
+                  {a.severity === "critical" ? <Badge variant="destructive">Urgent</Badge> : <Badge variant="outline">À vérifier</Badge>}
+                  {a.tableNumber ? `Table ${a.tableNumber}` : "Wave"}
+                  {a.amount !== null ? <span className="tabular-nums">· {money(a.amount)}</span> : null}
+                </ItemTitle>
+                <ItemDescription className="line-clamp-none">
+                  {time.format(a.createdAt)} · {a.message}
+                </ItemDescription>
+              </ItemContent>
+              <ItemActions className="flex-wrap">
+                {a.payment && data.canResolve ? (
+                  <Button size="sm" variant="outline" onClick={() => setRefunding(a.payment)}>
+                    Rembourser
+                  </Button>
+                ) : null}
+                {data.canResolve ? (
+                  <Button size="sm" variant="ghost" onClick={() => setResolving(a)}>
+                    Traité
+                  </Button>
+                ) : null}
+              </ItemActions>
+            </Item>
+          ))}
+        </ItemGroup>
+      </CardContent>
+      <ReasonDialog
+        open={resolving !== null}
+        onOpenChange={(o) => !o && setResolving(null)}
+        title="Marquer comme traité"
+        description="Dites ce qui a été fait : ce mot reste au journal, avec votre nom."
+        confirmLabel="Traité"
+        onConfirm={async ({ reason }) => {
+          if (!resolving) return;
+          await resolve({ venueId: scope.venueId, alertId: resolving._id, resolution: reason });
+          toast.success("Alerte traitée.");
+          setResolving(null);
+        }}
+      />
+      <RefundDialog payment={refunding} currency={scope.currency} onClose={() => setRefunding(null)} />
+    </Card>
   );
 }

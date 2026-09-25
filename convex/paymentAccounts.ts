@@ -60,6 +60,8 @@ export const forVenue = query({
       providerLabel: PROVIDER_LABEL.wave_ci,
       available: WAVE_COUNTRIES.includes(country) && actor.venue.currency === "XOF",
       encryptionReady: secretBoxConfigured(),
+      /** Un établissement de démonstration ne propose jamais le paiement en ligne à ses tablées. */
+      simulation: actor.venue.isSimulation,
       account: account
         ? {
             status: account.status,

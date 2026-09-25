@@ -23,5 +23,10 @@ has OPERATOR_JWT_PRIVATE_KEY || node scripts/operator-keys.mjs --apply
 pnpm exec convex env set RESEND_API_KEY "test-local"
 pnpm exec convex env set EMAIL_FROM "Joliba <noreply@joliba.test>"
 pnpm exec convex env set RESEND_API_URL "http://127.0.0.1:4010/emails"
+# Paiement en ligne (T5) : la clé maîtresse des secrets, posée une fois ; et le faux Wave
+# (e2e/wave-sink.mjs), honoré seulement sur un backend local (D-125).
+has PAYMENT_SECRETS_KEY || pnpm exec convex env set PAYMENT_SECRETS_KEY "$(random)"
+pnpm exec convex env set JOLIBA_FAKE_PAYMENTS "1"
+pnpm exec convex env set WAVE_API_URL "http://127.0.0.1:4020"
 # Autorise `scripts/seed-demo.mjs` (restaurant de démonstration, convex/devSeed.ts).
 pnpm exec convex env set JOLIBA_DEMO_SEED "1"

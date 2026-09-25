@@ -7,6 +7,7 @@ import {
   Percent,
   Printer,
   ReceiptText,
+  Smartphone,
   Split,
   Undo2,
 } from "lucide-react";
@@ -41,6 +42,7 @@ import {
   ItemGroup,
   ItemTitle,
 } from "~/components/ui/item";
+import { Alert, AlertAction, AlertDescription, AlertTitle } from "~/components/ui/alert";
 import { Checkbox } from "~/components/ui/checkbox";
 import { Field, FieldLabel } from "~/components/ui/field";
 import { Separator } from "~/components/ui/separator";
@@ -405,6 +407,9 @@ function CheckCard({
         )}
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
+        {check.onlineIntents.map((i) => (
+          <OnlineIntentAlert key={i._id} intent={i} canCancel={bill.can.cancelOnline} />
+        ))}
         <ItemGroup className="gap-1">
           {check.lines.map((l) => (
             <Item key={l.orderItemId} size="sm" className="py-1">
@@ -483,9 +488,16 @@ function CheckCard({
                       {p.status === "partially_refunded" ? (
                         <Badge variant="outline">En partie remboursé</Badge>
                       ) : null}
+                      {p.refundPending ? (
+                        <Badge variant="outline">Remboursement Wave en cours</Badge>
+                      ) : null}
+                      {p.refundFailed ? (
+                        <Badge variant="destructive">Remboursement refusé par Wave</Badge>
+                      ) : null}
+                      {p.settlement ? <SettlementBadge settlement={p.settlement} /> : null}
                     </ItemTitle>
                     <ItemDescription>
-                      {time.format(p.createdAt)} · {p.collectedBy ?? "?"}
+                      {time.format(p.createdAt)} · {p.online ? "payé depuis la table" : (p.collectedBy ?? "?")}
                       {p.changeAmount
                         ? ` · monnaie ${money(p.changeAmount)}`
                         : ""}
@@ -504,7 +516,7 @@ function CheckCard({
                       {money(p.amount)}
                     </span>
                     {p.status !== "voided" &&
-                    ((bill.can.void && !p.mine) ||
+                    ((bill.can.void && !p.mine && !p.online) ||
                       (bill.can.refund && p.refundable > 0)) ? (
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
@@ -519,6 +531,7 @@ function CheckCard({
                         <DropdownMenuContent align="end">
                           {bill.can.void &&
                           !p.mine &&
+                          !p.online &&
                           p.status === "succeeded" &&
                           p.cashSessionOpen !== false &&
                           !sale ? (
@@ -678,13 +691,15 @@ function BillPrinter({
   return <PrintJob doc={doc} money={money} onDone={onDone} />;
 }
 
+export type RefundTarget = Pick<Payment, "_id" | "label" | "amount" | "refundable" | "method" | "online">;
+
 /** Rembourser : en espèces depuis une caisse choisie, ou par le même moyen. Compte seulement. */
-function RefundDialog({
+export function RefundDialog({
   payment,
   currency,
   onClose,
 }: {
-  payment: Payment | null;
+  payment: RefundTarget | null;
   currency: string;
   onClose: () => void;
 }) {
@@ -704,16 +719,18 @@ function RefundDialog({
   useEffect(() => {
     if (payment) {
       setKey(uuidv7());
-      setMethod(payment.method === "cash" ? "cash" : "original");
+      // Un paiement Wave en ligne déjà en partie rendu ne se rembourse plus par Wave (total seulement).
+      setMethod(payment.method === "cash" || (payment.online && payment.refundable < payment.amount) ? "cash" : "original");
       setRegisterSessionId(null);
     }
   }, [payment]);
+  const waveTotalOnly = payment?.online === true;
   return (
     <ReasonDialog
       open={payment !== null}
       onOpenChange={(o) => !o && onClose()}
       title="Rembourser"
-      description={`${payment?.label ?? ""} ${money(payment?.amount ?? 0)}${payment && payment.refundable < payment.amount ? `, dont ${money(payment.refundable)} encore remboursable` : ""}. Jamais au-delà de l'encaissé ; si un ticket a été remis, un avoir le corrige.`}
+      description={`${payment?.label ?? ""} ${money(payment?.amount ?? 0)}${payment && payment.refundable < payment.amount ? `, dont ${money(payment.refundable)} encore remboursable` : ""}. Jamais au-delà de l'encaissé ; si un ticket a été remis, un avoir le corrige.${waveTotalOnly ? " Wave ne rembourse que la totalité : une partie se rend en espèces." : ""}`}
       confirmLabel="Rembourser"
       destructive
       amount={{
@@ -737,7 +754,11 @@ function RefundDialog({
             ? { registerSessionId }
             : {}),
         });
-        toast.success(`Remboursé : ${money(amount)}.`);
+        toast.success(
+          payment.online && method === "original"
+            ? `Remboursement de ${money(amount)} demandé à Wave : il apparaîtra une fois confirmé.`
+            : `Remboursé : ${money(amount)}.`,
+        );
         onClose();
       }}
     >
@@ -751,8 +772,11 @@ function RefundDialog({
             value={method}
             onValueChange={(v) => v && setMethod(v as "cash" | "original")}
           >
-            <ToggleGroupItem value="original">
-              Par le même moyen
+            <ToggleGroupItem
+              value="original"
+              disabled={waveTotalOnly && payment !== null && payment.refundable < payment.amount}
+            >
+              {waveTotalOnly ? "Par Wave (la totalité)" : "Par le même moyen"}
             </ToggleGroupItem>
             <ToggleGroupItem value="cash">En espèces</ToggleGroupItem>
           </ToggleGroup>
@@ -787,5 +811,58 @@ function RefundDialog({
         )
       ) : null}
     </ReasonDialog>
+  );
+}
+
+/** Versé · en attente · en retard (D-122) : ce que dit le relevé Wave de ce paiement. */
+function SettlementBadge({ settlement }: { settlement: "settled" | "pending" | "late" }) {
+  if (settlement === "settled") return <Badge variant="secondary">Vu au relevé Wave</Badge>;
+  if (settlement === "late") return <Badge variant="destructive">Absent du relevé Wave</Badge>;
+  return <Badge variant="outline">Relevé à venir</Badge>;
+}
+
+type OnlineIntent = BillCheck["onlineIntents"][number];
+
+/**
+ * Un client paie cette addition en ligne en ce moment (D-114) : tant que c'est le cas, offrir,
+ * remiser, partager ou clôturer est refusé. Le serveur peut annuler — l'annulation est demandée à
+ * Wave, et si le client a payé entre-temps, l'argent sera enregistré, pas perdu.
+ */
+function OnlineIntentAlert({ intent, canCancel }: { intent: OnlineIntent; canCancel: boolean }) {
+  const scope = useServiceScope();
+  const money = useMoney();
+  const cancel = useMutation(api.onlinePayments.cancel);
+  const online = useOptionalOutbox()?.online ?? true;
+  return (
+    <Alert data-online-intent>
+      <Smartphone />
+      <AlertTitle>
+        Paiement Wave en cours · {money(intent.amount)}
+      </AlertTitle>
+      <AlertDescription>
+        {intent.cancelRequested
+          ? "Annulation demandée à Wave…"
+          : `${intent.guestNumber !== null ? `Convive ${intent.guestNumber}` : "Un client"} paie ${intent.target === "my_items" ? "ses articles" : "le reste de la table"} depuis son téléphone. Offrir, remiser ou clôturer attend la fin de ce paiement.`}
+      </AlertDescription>
+      {canCancel && !intent.cancelRequested ? (
+        <AlertAction>
+          <ActionButton
+            size="sm"
+            variant="outline"
+            disabled={!online}
+            onAction={async () => {
+              try {
+                await cancel({ ...scope.acting, intentId: intent._id });
+                toast.success("Annulation demandée à Wave.");
+              } catch (error) {
+                toast.error(describeError(error).message);
+              }
+            }}
+          >
+            Annuler le paiement en ligne
+          </ActionButton>
+        </AlertAction>
+      ) : null}
+    </Alert>
   );
 }

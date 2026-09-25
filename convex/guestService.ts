@@ -25,6 +25,7 @@ import { rateLimiter } from "./lib/rateLimits";
 import { settingsOf, touchSession, writeOrderEvent } from "./lib/service";
 import { createOrder, priceRequest } from "./orders";
 import { guestPaymentView } from "./lib/guestPayment";
+import { activeAccountOf } from "./paymentAccounts";
 
 export const CART_MAX_LINES = 30;
 /** Motif posé sur une commande que personne n'a validée à temps : le client la lit « expirée ». */
@@ -325,6 +326,11 @@ export const presence = query({
       topics: FEEDBACK_TOPICS,
       /** Payer depuis la table (T5) : seulement un convive admis, sur un établissement qui l'a activé. */
       payment: guest && !removed ? await guestPaymentView(ctx, resolved.venue, session, guest) : null,
+      /**
+       * Le paiement en ligne est proposé à cette tablée : un téléphone pas encore admis voit
+       * « Régler », qui lui demande d'abord le code de la table (D-112) — dans tous les modes.
+       */
+      paymentOffered: session !== null && !session.isSimulation && !removed && (await activeAccountOf(ctx, resolved.venue._id)) !== null,
     };
   },
 });

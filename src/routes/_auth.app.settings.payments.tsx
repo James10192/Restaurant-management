@@ -10,6 +10,7 @@ import { PendingButton } from "~/components/app/pending-button";
 import { LoadingState, PermissionDeniedState } from "~/components/app/states";
 import { useWorkspace } from "~/components/app/workspace";
 import { RadioChoice } from "~/components/settings/radio-choice";
+import { WaveSettings } from "~/components/settings/wave-settings";
 import { Alert, AlertDescription } from "~/components/ui/alert";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
@@ -45,10 +46,10 @@ function PaymentSettingsPage() {
   if (!venueId || !w.canInVenue("venue.settings.service")) {
     return <PermissionDeniedState venue={w.venue?.name} permission="régler l'encaissement" />;
   }
-  return <PaymentSettings key={venueId} venueId={venueId} />;
+  return <PaymentSettings key={venueId} venueId={venueId} canManageOnline={w.canInVenue("payment.provider.manage")} />;
 }
 
-function PaymentSettings({ venueId }: { venueId: Id<"venues"> }) {
+function PaymentSettings({ venueId, canManageOnline }: { venueId: Id<"venues">; canManageOnline: boolean }) {
   const current = useQuery(api.cash.paymentSettings, { venueId });
   const overview = useQuery(api.cash.overview, { venueId });
   const save = useMutation(api.cash.setPaymentSettings);
@@ -187,6 +188,8 @@ function PaymentSettings({ venueId }: { venueId: Id<"venues"> }) {
           </PendingButton>
         </CardFooter>
       </Card>
+
+      {canManageOnline ? <WaveSettings venueId={venueId} /> : null}
 
       {current.cashMode === "central" ? (
         <Card>

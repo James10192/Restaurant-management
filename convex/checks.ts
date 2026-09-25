@@ -17,7 +17,8 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { writeAudit } from "./lib/audit";
-import { assertNoOpenIntent } from "./lib/intents";
+import { assertNoOpenIntent, openIntentsOfCheck } from "./lib/intents";
+import { settlementOf } from "./onlinePayments";
 import { loadSessionBilling, takeShare, lineGross, type BillingCheck, type SessionBilling } from "./lib/billing";
 import { getInVenue } from "./lib/catalogAccess";
 import { conflict, invalid, notFound } from "./lib/errors";
@@ -85,7 +86,9 @@ const METHOD_LABEL: Record<Doc<"payments">["method"], string> = {
   other: "Autre",
 };
 
-export function methodLabel(p: Pick<Doc<"payments">, "method" | "wallet">): string {
+/** Un paiement en ligne se lit « En ligne — Wave » : distinct du Wave reçu sur le téléphone de la maison (D-124). */
+export function methodLabel(p: Pick<Doc<"payments">, "method" | "wallet"> & { provider?: string; paymentIntentId?: Id<"paymentIntents"> }): string {
+  if (p.paymentIntentId && p.provider) return `En ligne — ${p.provider === "wave_ci" ? "Wave" : p.provider}`;
   return p.method === "mobile_money" && p.wallet ? p.wallet : METHOD_LABEL[p.method];
 }
 
@@ -93,12 +96,17 @@ export function methodLabel(p: Pick<Doc<"payments">, "method" | "wallet">): stri
  * L'addition d'une table, pour l'écran du serveur ou de la caisse : chaque addition, ses lignes,
  * ses ajustements, ses paiements, son solde — et ce que la personne peut y faire.
  */
-async function refundedOf(ctx: ReadCtx, paymentId: Id<"payments">): Promise<number> {
+/** Ce qui est remboursé ou en cours de remboursement (un remboursement Wave en attente compte, D-123). */
+async function refundsOf(ctx: ReadCtx, paymentId: Id<"payments">): Promise<{ committed: number; pending: boolean; failed: boolean }> {
   const rows = await ctx.db
     .query("refunds")
     .withIndex("by_payment", (q) => q.eq("paymentId", paymentId))
     .collect();
-  return rows.filter((r) => r.status === "succeeded").reduce((s, r) => s + r.amount, 0);
+  return {
+    committed: rows.filter((r) => r.status === "succeeded" || r.status === "pending").reduce((s, r) => s + r.amount, 0),
+    pending: rows.some((r) => r.status === "pending"),
+    failed: rows.some((r) => r.status === "failed"),
+  };
 }
 
 export const forSession = query({
@@ -127,6 +135,7 @@ export const forSession = query({
     for (const c of billing.checks) {
       const payments = [];
       for (const p of c.payments.sort((a, b) => a.createdAt - b.createdAt)) {
+        const refunds = await refundsOf(ctx, p._id);
         payments.push({
           _id: p._id,
           method: p.method,
@@ -143,7 +152,13 @@ export const forSession = query({
           /** L'auteur n'annule pas son propre encaissement : le bouton ne s'offre pas. */
           mine: actor.member !== null && p.collectedByMemberId === actor.member._id,
           /** Ce qui reste remboursable : le montant proposé, et « rembourser » disparaît à zéro. */
-          refundable: p.status === "voided" ? 0 : p.amount - (await refundedOf(ctx, p._id)),
+          refundable: p.status === "voided" ? 0 : p.amount - refunds.committed,
+          /** Payé depuis le téléphone du client (T5) : ne s'annule pas, se rembourse (D-123). */
+          online: p.paymentIntentId !== undefined,
+          /** Versé · en attente · en retard, au relevé du fournisseur (D-122). */
+          settlement: await settlementOf(ctx, p),
+          refundPending: refunds.pending,
+          refundFailed: refunds.failed,
         });
       }
       const adjustments = [];
@@ -151,6 +166,11 @@ export const forSession = query({
         adjustments.push({ _id: a._id, type: a.type, label: a.label, amount: a.amount, reason: a.reason ?? null, by: await memberName(ctx, a.appliedByMemberId) });
       }
       const bills = c.check ? await billsOf(ctx, c.check._id) : [];
+      const intents = [];
+      for (const i of c.check ? await openIntentsOfCheck(ctx, c.check._id) : []) {
+        const guest = i.guestSessionId ? await ctx.db.get(i.guestSessionId) : null;
+        intents.push({ _id: i._id, amount: i.amount, status: i.status, target: i.target, guestNumber: guest?.guestNumber ?? null, cancelRequested: i.cancelRequestedAt !== undefined, createdAt: i.createdAt });
+      }
       checks.push({
         _id: c.check?._id ?? null,
         reference: c.check?.reference ?? null,
@@ -162,6 +182,8 @@ export const forSession = query({
         payments,
         balance: c.balance,
         bills: bills.map((b) => ({ _id: b._id, reference: b.reference, kind: b.kind, issuedAt: b.issuedAt })),
+        /** Un client paie cette addition en ligne en ce moment (D-114). */
+        onlineIntents: intents,
       });
     }
     const unserved = billing.items.filter((i) => i.status !== "served").length;
@@ -196,6 +218,7 @@ export const forSession = query({
         refund: actor.permissions.has("payment.refund"),
         closeWithDebt: actor.permissions.has("table.session.close_with_debt") && isOpenSession(session),
         issueBill: actor.permissions.has("check.manage"),
+        cancelOnline: actor.permissions.has("payment.collect"),
       },
     };
   },

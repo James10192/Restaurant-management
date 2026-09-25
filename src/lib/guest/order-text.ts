@@ -8,6 +8,9 @@
 import type { GuestLocale } from "./i18n";
 
 const fr = {
+  // Paiement en ligne (T5) : le reste des textes vient avec le tiroir
+  pay: "Régler",
+  payPending: "Paiement en cours",
   // Fiche plat
   quantity: "Quantité",
   less: "Un de moins",
@@ -138,6 +141,8 @@ const fr = {
 type OrderText = typeof fr;
 
 const en: OrderText = {
+  pay: "Pay",
+  payPending: "Payment in progress",
   quantity: "Quantity",
   less: "One less",
   more: "One more",

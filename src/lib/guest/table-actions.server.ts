@@ -102,6 +102,12 @@ function parseAction(body: unknown): TableAction | null {
         topics: b.topics as string[],
       };
     }
+    case "startPayment":
+      // Un montant éventuellement joint est ignoré : on ne relit que la cible et la clé (R14).
+      if (b.target !== "remainder" && b.target !== "my_items") return null;
+      return typeof b.idempotencyKey === "string" && KEY.test(b.idempotencyKey) ? { action: "startPayment", guestKey, target: b.target, idempotencyKey: b.idempotencyKey } : null;
+    case "checkPayment":
+      return { action: "checkPayment", guestKey };
     default:
       return null;
   }
@@ -158,6 +164,10 @@ export async function handleTableAction(request: Request, venueSlug: string): Pr
             ...(action.shown ? { shown: true } : {}),
           }),
         });
+      case "startPayment":
+        return json({ result: await client.action(api.onlinePayments.guestStart, { ...base, target: action.target, idempotencyKey: action.idempotencyKey }) });
+      case "checkPayment":
+        return json({ result: await client.action(api.onlinePayments.guestCheck, base) });
       case "submitFeedback":
         return json({
           result: await client.mutation(api.guestService.submitFeedback, {
