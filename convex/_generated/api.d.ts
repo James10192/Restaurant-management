@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as analytics from "../analytics.js";
 import type * as auth from "../auth.js";
 import type * as availability from "../availability.js";
 import type * as bills from "../bills.js";
@@ -25,6 +26,7 @@ import type * as health from "../health.js";
 import type * as http from "../http.js";
 import type * as kitchen from "../kitchen.js";
 import type * as lib_allergens from "../lib/allergens.js";
+import type * as lib_analytics from "../lib/analytics.js";
 import type * as lib_audit from "../lib/audit.js";
 import type * as lib_authority from "../lib/authority.js";
 import type * as lib_availability from "../lib/availability.js";
@@ -33,6 +35,7 @@ import type * as lib_billing from "../lib/billing.js";
 import type * as lib_catalog from "../lib/catalog.js";
 import type * as lib_catalogAccess from "../lib/catalogAccess.js";
 import type * as lib_countries from "../lib/countries.js";
+import type * as lib_dayMetrics from "../lib/dayMetrics.js";
 import type * as lib_devices from "../lib/devices.js";
 import type * as lib_email from "../lib/email.js";
 import type * as lib_entitlements from "../lib/entitlements.js";
@@ -60,6 +63,7 @@ import type * as lib_scope from "../lib/scope.js";
 import type * as lib_secretBox from "../lib/secretBox.js";
 import type * as lib_service from "../lib/service.js";
 import type * as lib_serviceActor from "../lib/serviceActor.js";
+import type * as lib_serviceDay from "../lib/serviceDay.js";
 import type * as lib_slug from "../lib/slug.js";
 import type * as lib_tokens from "../lib/tokens.js";
 import type * as lib_validators from "../lib/validators.js";
@@ -85,6 +89,7 @@ import type * as sessions from "../sessions.js";
 import type * as staff from "../staff.js";
 import type * as stations from "../stations.js";
 import type * as team from "../team.js";
+import type * as tower from "../tower.js";
 import type * as users from "../users.js";
 import type * as venues from "../venues.js";
 
@@ -95,6 +100,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  analytics: typeof analytics;
   auth: typeof auth;
   availability: typeof availability;
   bills: typeof bills;
@@ -112,6 +118,7 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   kitchen: typeof kitchen;
   "lib/allergens": typeof lib_allergens;
+  "lib/analytics": typeof lib_analytics;
   "lib/audit": typeof lib_audit;
   "lib/authority": typeof lib_authority;
   "lib/availability": typeof lib_availability;
@@ -120,6 +127,7 @@ declare const fullApi: ApiFromModules<{
   "lib/catalog": typeof lib_catalog;
   "lib/catalogAccess": typeof lib_catalogAccess;
   "lib/countries": typeof lib_countries;
+  "lib/dayMetrics": typeof lib_dayMetrics;
   "lib/devices": typeof lib_devices;
   "lib/email": typeof lib_email;
   "lib/entitlements": typeof lib_entitlements;
@@ -147,6 +155,7 @@ declare const fullApi: ApiFromModules<{
   "lib/secretBox": typeof lib_secretBox;
   "lib/service": typeof lib_service;
   "lib/serviceActor": typeof lib_serviceActor;
+  "lib/serviceDay": typeof lib_serviceDay;
   "lib/slug": typeof lib_slug;
   "lib/tokens": typeof lib_tokens;
   "lib/validators": typeof lib_validators;
@@ -172,6 +181,7 @@ declare const fullApi: ApiFromModules<{
   staff: typeof staff;
   stations: typeof stations;
   team: typeof team;
+  tower: typeof tower;
   users: typeof users;
   venues: typeof venues;
 }>;
