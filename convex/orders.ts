@@ -528,7 +528,7 @@ export const cancelItem = mutation({
       .withIndex("by_order_item", (q) => q.eq("orderItemId", item._id))
       .unique();
     const ticket = ticketItem ? await ctx.db.get(ticketItem.kitchenTicketId) : null;
-    const inProduction = ticket !== null && ["started", "recalled", "ready"].includes(ticket.status);
+    const inProduction = inKitchen(ticket);
     const permission = inProduction ? "order.modify.after_fire" : "order.modify";
     if (!actor.permissions.has(permission)) {
       throw forbidden(inProduction ? "Ce plat est déjà en préparation : l'annuler demande un droit que vous n'avez pas." : undefined);
@@ -557,6 +557,16 @@ async function assertNotPaid(ctx: MutationCtx, sessionId: Id<"tableSessions">, i
   await assertIntentsStillCovered(ctx, session._id, after);
 }
 
+/** Un bon démarré, rappelé ou prêt a coûté des denrées : l'annuler est une perte. */
+function inKitchen(ticket: Doc<"kitchenTickets"> | null): boolean {
+  return ticket !== null && ["started", "recalled", "ready"].includes(ticket.status);
+}
+
+/**
+ * `afterFire` dit si la ligne était déjà en cuisine (le rapport en fait une perte) ; `auditLine`
+ * si elle mérite sa propre entrée au journal — l'annulation d'une commande entière en écrit une
+ * seule, pour toute la commande.
+ */
 async function cancelLine(
   ctx: MutationCtx,
   actor: ServiceActor,
@@ -564,7 +574,8 @@ async function cancelLine(
   ticketItem: Doc<"kitchenTicketItems"> | null,
   ticket: Doc<"kitchenTickets"> | null,
   reason: string | undefined,
-  audited: boolean,
+  afterFire: boolean,
+  auditLine: boolean = afterFire,
 ) {
   await ctx.db.patch(item._id, {
     status: "cancelled",
@@ -591,10 +602,10 @@ async function cancelLine(
     quantity: item.quantity,
     amount: lineGross(item),
     /** Déjà en cuisine : des denrées perdues, que le rapport de fin de service montre. */
-    afterFire: audited,
+    afterFire,
     ...(reason ? { reason } : {}),
   });
-  if (audited) {
+  if (auditLine) {
     await writeAudit(ctx, {
       organizationId: actor.organization._id,
       venueId: actor.venue._id,
@@ -632,8 +643,10 @@ export const cancelOrder = mutation({
         .query("kitchenTicketItems")
         .withIndex("by_order_item", (q) => q.eq("orderItemId", item._id))
         .unique();
+      // Relu à chaque ligne : annuler la précédente a pu clore le bon qu'elles partagent.
       const ticket = ticketItem ? await ctx.db.get(ticketItem.kitchenTicketId) : null;
-      await cancelLine(ctx, actor, item, ticketItem, ticket ? ((await ctx.db.get(ticket._id)) ?? ticket) : null, reason, false);
+      // Chaque ligne déjà en cuisine est une perte, comme si on l'avait annulée seule (D-145).
+      await cancelLine(ctx, actor, item, ticketItem, ticket, reason, inKitchen(ticket), false);
     }
     // Une commande en attente de validation n'a pas de lignes à dériver : on la clôt directement.
     if (order.status === "pending_acceptance") await ctx.db.patch(order._id, { status: "cancelled" });

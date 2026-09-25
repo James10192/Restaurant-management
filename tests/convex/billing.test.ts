@@ -422,6 +422,33 @@ describe("la porte de sortie de T3 : l'écart provoqué remonte avec son auteur 
   });
 });
 
+describe("les pertes du rapport (D-145)", () => {
+  test("annuler toute une commande compte en pertes les plats déjà en cuisine, et eux seuls", async () => {
+    const v = await venue();
+    // Table 2 : le bon est commencé, tout ce qui est annulé est perdu.
+    const started = await tableWithOrder(v, v.table2);
+    const [ticket] = await v.t.run((ctx) => ctx.db.query("kitchenTickets").withIndex("by_order", (q) => q.eq("orderId", started.orderId)).collect());
+    await v.owner.as.mutation(api.kitchen.advance, { venueId: v.cocody, ticketId: ticket!._id, action: "start" });
+    await v.owner.as.mutation(api.orders.cancelOrder, { venueId: v.cocody, orderId: started.orderId, reason: "Table partie avant d'être servie" });
+    // Table 1 : rien n'est commencé, l'annulation corrige une saisie.
+    const queued = await tableWithOrder(v);
+    await v.owner.as.mutation(api.orders.cancelOrder, { venueId: v.cocody, orderId: queued.orderId, reason: "Erreur de table" });
+
+    const report = await v.owner.as.query(api.reports.serviceDay, { venueId: v.cocody });
+    expect(report.cancellations.map((c) => [c.table, c.item, c.amount]).sort()).toEqual(
+      [
+        ["2", "Bissap", 1500],
+        ["2", "Poisson braisé", 5000],
+        ["2", "Poulet braisé", 7000],
+      ].sort(),
+    );
+    // Une entrée au journal par commande, pas une par plat.
+    const audit = await v.t.run((ctx) => ctx.db.query("auditLogs").collect());
+    expect(audit.filter((x) => x.action === "order.cancel")).toHaveLength(2);
+    expect(audit.filter((x) => x.action === "order.item.cancel_after_fire")).toHaveLength(0);
+  });
+});
+
 describe("revue adverse de T3", () => {
   test("une commande pas encore acceptée n'entre pas dans l'addition ; son refus ne creuse aucun dû", async () => {
     const v = await venue();
