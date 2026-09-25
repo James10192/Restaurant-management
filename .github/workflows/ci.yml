@@ -32,7 +32,8 @@ jobs:
       # D-017 : le composant Convex exige better-auth < 1.7. Le tilde de package.json
       # l'impose ; ce contrôle vérifie que la résolution l'a respecté.
       - name: better-auth stays below 1.7
-        run: node -e "const v=require('better-auth/package.json').version; if(!/^1\.6\./.test(v)){console.error('better-auth '+v+' hors de ~1.6'); process.exit(1)}"
+        # Lu sur disque : le champ `exports` de better-auth n'expose pas `./package.json`.
+        run: node -e "const v=JSON.parse(require('fs').readFileSync('node_modules/better-auth/package.json','utf8')).version; if(!/^1\.6\./.test(v)){console.error('better-auth '+v+' hors de ~1.6'); process.exit(1)}"
 
       # Déploie le schéma et les fonctions sur un backend local, ce qui régénère
       # `convex/_generated`. S'il diffère de ce qui est commité, quelqu'un a modifié le
