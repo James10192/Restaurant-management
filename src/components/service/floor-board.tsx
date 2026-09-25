@@ -94,33 +94,44 @@ export function FloorBoard() {
       <ServiceStatus />
       <ServiceAlerts />
       <Tabs value={tab} onValueChange={setTab}>
-        <TabsList className="w-full justify-start overflow-x-auto [scrollbar-width:none] sm:w-fit">
-          <TabsTrigger value="tables">
+        {/* Sur un téléphone, les cinq files tiennent sur une ligne : icône au-dessus d'un libellé court,
+            compte en coin. Aucune file ne sort de l'écran — un onglet qu'on ne voit pas, on l'oublie. */}
+        <TabsList className="grid h-auto w-full grid-flow-col auto-cols-fr sm:flex sm:h-9 sm:w-fit">
+          <TabsTrigger value="tables" className={TAB}>
             <LayoutGrid />
             Tables
           </TabsTrigger>
-          <TabsTrigger value="ready">
+          <TabsTrigger value="ready" className={TAB}>
             <ChefHat />
             À servir
             {readyCount > 0 ? <QueueBadge count={readyCount} age={oldest(ready?.tickets.map((t) => t.readyAt) ?? [])} /> : null}
           </TabsTrigger>
-          <TabsTrigger value="requests">
+          <TabsTrigger value="requests" className={TAB}>
             <Bell />
             Demandes
             {openRequests.length > 0 ? <QueueBadge count={openRequests.length} age={oldest(openRequests.map((r) => r.createdAt))} /> : null}
           </TabsTrigger>
           {scope.can("order.accept") ? (
-            <TabsTrigger value="pending">
+            <TabsTrigger value="pending" className={TAB}>
               <Hand />
               À valider
               {pendingCount > 0 ? <QueueBadge count={pendingCount} age={oldest(pending?.map((o) => o.submittedAt) ?? [])} urgent /> : null}
             </TabsTrigger>
           ) : null}
           {scope.can("kitchen.read") ? (
-            <TabsTrigger value="kitchen">
+            <TabsTrigger value="kitchen" className={TAB}>
               <Flame />
               En cuisine
-              {lateCount > 0 ? <Badge variant="destructive">{lateCount} en retard</Badge> : kitchen && kitchen.length > 0 ? <Badge variant="secondary">{kitchen.length}</Badge> : null}
+              {lateCount > 0 ? (
+                <Badge variant="destructive" className={COUNT}>
+                  {lateCount}
+                  <span className="sr-only sm:not-sr-only">en retard</span>
+                </Badge>
+              ) : kitchen && kitchen.length > 0 ? (
+                <Badge variant="secondary" className={COUNT}>
+                  {kitchen.length}
+                </Badge>
+              ) : null}
             </TabsTrigger>
           ) : null}
         </TabsList>
@@ -148,12 +159,20 @@ export function FloorBoard() {
   );
 }
 
-/** Le compte d'une file, et depuis combien de temps attend le plus ancien. */
+/** Un onglet de file : empilé sur un téléphone, en ligne à partir d'une tablette. */
+const TAB = "relative h-auto flex-col gap-0.5 px-1 py-1.5 text-[0.7rem] leading-tight sm:h-full sm:flex-row sm:gap-1.5 sm:px-2 sm:py-1 sm:text-sm";
+/** Le compte, en coin de l'onglet sur un téléphone, à côté du libellé ailleurs. */
+const COUNT = "absolute -top-1 right-0.5 h-4 min-w-4 px-1 text-[0.65rem] tabular-nums sm:static sm:h-5 sm:text-xs";
+
+/**
+ * Le compte d'une file, et depuis combien de temps attend le plus ancien. Sur un téléphone, seul
+ * le compte tient dans l'onglet : l'âge du plus ancien s'y lit dans la liste elle-même.
+ */
 function QueueBadge({ count, age, urgent = false }: { count: number; age: string | null; urgent?: boolean }) {
   return (
-    <Badge variant={urgent ? "destructive" : "default"} className="tabular-nums">
+    <Badge variant={urgent ? "destructive" : "default"} className={COUNT}>
       {count}
-      {age ? <span className="font-normal opacity-80">· {age}</span> : null}
+      {age ? <span className="hidden font-normal opacity-80 sm:inline">· {age}</span> : null}
     </Badge>
   );
 }
