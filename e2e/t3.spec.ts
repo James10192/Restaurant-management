@@ -129,6 +129,11 @@ test("encaisser en deux fois, ticket, clôture de caisse juste ; puis un écart 
   await shot(page, "t3-05-soldee");
 
   // Le ticket : numéroté, « Document interne ». On le regarde tel qu'il part au papier.
+  // Sans écran, `window.print()` rend la main aussitôt et déclenche `afterprint`, qui retire la
+  // pièce avant qu'on la regarde : on simule une boîte d'impression restée ouverte.
+  await page.evaluate(() => {
+    window.print = () => undefined;
+  });
   await page.getByRole("button", { name: "Ticket" }).click();
   await expect(page.getByText(/ticket T-\d{4}-000001/)).toBeVisible();
   await page.emulateMedia({ media: "print" });

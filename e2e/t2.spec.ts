@@ -115,6 +115,9 @@ test("le service : saisir, préparer, porter, envoyer la suite, et sans réseau"
   // Sans réseau : ouvrir la table 2 et y commander ; tout part au retour de la connexion.
   await page.getByRole("button", { name: "Retour aux tables" }).click();
   await ctx.setOffline(true);
+  // L'application doit avoir CONSTATÉ la coupure avant le geste : sinon l'ouverture part par la
+  // liaison encore ouverte, et le test mesure une course au lieu de la file hors ligne.
+  await expect(page.getByText("Hors ligne")).toBeVisible();
   await page.getByRole("button", { name: /^Table 2,/ }).click();
   await page.getByRole("textbox", { name: /Couverts/ }).press("Enter");
   await expect(page.getByText("Ouverture en attente du réseau")).toBeVisible();
