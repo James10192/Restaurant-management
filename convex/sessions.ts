@@ -342,9 +342,13 @@ export const floor = query({
                 readyCount: readyTickets.filter((t) => t.tableSessionId === session._id).length,
                 requestCount: openRequests.filter((r) => r.tableId === table._id).length,
                 pendingCount: pendingOrders.filter((o) => o.tableSessionId === session._id).length,
-                guestOrderCount: recentGuestOrders.filter((o) => o.tableSessionId === session._id).length,
-                /** Trop de codes faux : le code s'est renouvelé seul (D-096). */
-                codeAlert: session.codeAlertAt !== undefined && now - session.codeAlertAt < CODE_ALERT_MS,
+                /**
+                 * Dernière commande envoyée par un client en direct. L'écran juge lui-même si elle
+                 * est récente : une requête Convex en cache ne se réévalue pas avec l'heure (D-057).
+                 */
+                lastGuestOrderAt: recentGuestOrders.filter((o) => o.tableSessionId === session._id).reduce<number | null>((m, o) => Math.max(m ?? 0, o.submittedAt), null),
+                /** Trop de codes faux : le code s'est renouvelé seul (D-096). Même remarque. */
+                codeAlertAt: session.codeAlertAt ?? null,
               }
             : null,
         });
@@ -435,8 +439,8 @@ export const detail = query({
       /** Conduite de commande de l'établissement : le code ne sert qu'en `guest_direct`. */
       orderingMode: settings.service.orderingMode,
       _id: session._id,
-      /** Le code de la tablée, que le serveur donne à voix haute (D-095). */
-      code: session.activationCode ?? null,
+      /** Le code de la tablée, que le serveur donne à voix haute (D-095) — pas à la cuisine. */
+      code: actor.permissions.has("table.session.open") ? (session.activationCode ?? null) : null,
       codeAlertAt: session.codeAlertAt ?? null,
       guests: guestRows
         .sort((a, b) => a.joinedAt - b.joinedAt)
@@ -514,7 +518,6 @@ export const debts = query({
 
 const DEBT_WINDOW_MS = 180 * 24 * 3_600_000;
 const GUEST_ORDER_BADGE_MS = 5 * 60_000;
-const CODE_ALERT_MS = 30 * 60_000;
 
 async function openSessionForGuests(ctx: MutationCtx, venueId: Id<"venues">, sessionId: Id<"tableSessions">) {
   const session = await getInVenue(ctx, sessionId, venueId, "Cette table");
@@ -532,7 +535,7 @@ export const rotateCode = mutation({
     const actor = await requireServiceMutation(ctx, "table.session.open", { venueId: args.venueId, actingMemberId: args.actingMemberId });
     const session = await openSessionForGuests(ctx, actor.venue._id, args.sessionId);
     const code = drawTableCode();
-    await ctx.db.patch(session._id, { activationCode: code, codeFailures: 0 });
+    await ctx.db.patch(session._id, { activationCode: code, codeFailures: 0, codeAlertAt: undefined });
     await writeAudit(ctx, {
       organizationId: actor.organization._id,
       venueId: actor.venue._id,
@@ -576,7 +579,11 @@ export const admitGuest = mutation({
   },
 });
 
-/** Retirer un téléphone (le code a fuité) : il ne peut plus envoyer, ni montrer de panier. */
+/**
+ * Retirer un téléphone : il ne peut plus envoyer, ni montrer de panier. Le code est renouvelé DANS
+ * LE MÊME GESTE : sans cela, le même téléphone revient en quelques secondes avec une clé neuve
+ * (navigation privée) et le code qu'il connaît. Les convives déjà admis le restent.
+ */
 export const removeGuest = mutation({
   args: { venueId: v.id("venues"), actingMemberId: v.optional(v.id("organizationMembers")), sessionId: v.id("tableSessions"), guestSessionId: v.id("guestSessions") },
   handler: async (ctx, args) => {
@@ -585,6 +592,7 @@ export const removeGuest = mutation({
     const guest = await guestAtTable(ctx, session, args.guestSessionId);
     if (guest.removedAt !== undefined) return;
     await ctx.db.patch(guest._id, { removedAt: Date.now(), status: "left" });
+    await ctx.db.patch(session._id, { activationCode: drawTableCode(), codeFailures: 0, codeAlertAt: undefined });
     await writeAudit(ctx, {
       organizationId: actor.organization._id,
       venueId: actor.venue._id,
@@ -593,5 +601,39 @@ export const removeGuest = mutation({
       resourceType: "guestSession",
       resourceId: guest._id,
     });
+  },
+});
+
+/**
+ * Retirer d'un geste tous les téléphones qui n'ont pas le code (D-096) : quelqu'un a rempli la table
+ * de faux convives avec la photo du QR. Les convives admis restent ; le code est renouvelé.
+ */
+export const removeUnadmitted = mutation({
+  args: { venueId: v.id("venues"), actingMemberId: v.optional(v.id("organizationMembers")), sessionId: v.id("tableSessions") },
+  handler: async (ctx, args) => {
+    const actor = await requireServiceMutation(ctx, "table.session.open", { venueId: args.venueId, actingMemberId: args.actingMemberId });
+    const session = await openSessionForGuests(ctx, actor.venue._id, args.sessionId);
+    const guests = await ctx.db
+      .query("guestSessions")
+      .withIndex("by_session", (q) => q.eq("tableSessionId", session._id))
+      .collect();
+    const now = Date.now();
+    let removed = 0;
+    for (const g of guests) {
+      if (g.removedAt !== undefined || g.admittedAt !== undefined) continue;
+      await ctx.db.patch(g._id, { removedAt: now, status: "left" });
+      removed++;
+    }
+    await ctx.db.patch(session._id, { activationCode: drawTableCode(), codeFailures: 0, codeAlertAt: undefined });
+    await writeAudit(ctx, {
+      organizationId: actor.organization._id,
+      venueId: actor.venue._id,
+      ...actor.audit,
+      action: "table.guest.remove_unadmitted",
+      resourceType: "tableSession",
+      resourceId: session._id,
+      after: { removed },
+    });
+    return removed;
   },
 });

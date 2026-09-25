@@ -83,7 +83,13 @@ function DevicesPage() {
 function OrderingModeSection({ venueId, canReadVenue }: { venueId: Id<"venues">; canReadVenue: boolean }) {
   const venue = useQuery(api.venues.get, canReadVenue ? { venueId } : "skip");
   if (canReadVenue && venue === undefined) return <LoadingState />;
-  return <OrderingModeCard venueId={venueId} current={venue ? readOrderingMode(venue) : null} />;
+  return (
+    <OrderingModeCard
+      venueId={venueId}
+      current={venue ? readOrderingMode(venue) : null}
+      maxQuantity={venue && "guestMaxQuantityPerLine" in venue ? venue.guestMaxQuantityPerLine : null}
+    />
+  );
 }
 
 function DevicesCard({ venueId, canReadStations, canReadTeam }: { venueId: Id<"venues">; canReadStations: boolean; canReadTeam: boolean }) {

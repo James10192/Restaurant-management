@@ -107,10 +107,12 @@ test("quatre téléphones, une table : rien de perdu, rien en double", async ({ 
   fourth.on("pageerror", (e) => errors.push(String(e)));
   await expect(fourth.getByText("Entrez le code de la table")).toBeVisible();
   await fourth.getByRole("dialog").getByRole("button", { name: "Montrer au serveur" }).click();
-  await expect(staff.getByText("Convive 4")).toBeVisible({ timeout: 20_000 });
+  // Le téléphone dit « Vous êtes le convive 4 » ; la carte du panier montré le dit aussi : le
+  // serveur admet le bon téléphone, depuis son panier.
+  await expect(fourth.getByText(/Vous êtes le convive 4/)).toBeVisible({ timeout: 20_000 });
+  await expect(staff.getByRole("button", { name: "Admettre (convive 4)" })).toBeVisible({ timeout: 20_000 });
   await shot(staff, "t4-03-telephones");
-  await staff.locator("[data-guest='4']").getByRole("button", { name: "Admettre" }).click();
-  await staff.getByRole("alertdialog").getByRole("button", { name: "Admettre" }).click();
+  await staff.getByRole("button", { name: "Admettre (convive 4)" }).click();
   await expect(staff.locator("[data-guest='4']").getByText("Admis par le personnel")).toBeVisible();
   await expect(fourth.getByRole("dialog").getByRole("button", { name: SEND })).toBeVisible({ timeout: 20_000 });
   guests.push(fourth);
@@ -155,9 +157,11 @@ test("quatre téléphones, une table : rien de perdu, rien en double", async ({ 
   // Côté serveur : cinq commandes, pas une de plus, chacune au nom de son convive.
   await staff.reload();
   await expect(staff.getByText("Commande du client", { exact: false })).toHaveCount(5, { timeout: 20_000 });
+  // Chaque commande porte son convive sur SA ligne (pas seulement dans la liste des téléphones).
   for (const [i, dish] of dishes.entries()) {
-    await expect(staff.getByText(new RegExp(`1 × ${dish}`)).first()).toBeVisible();
-    await expect(staff.getByText(new RegExp(`Convive ${i + 1}`)).first()).toBeVisible();
+    const card = staff.locator("[data-slot='card']").filter({ hasText: new RegExp(`1 × ${dish}`) });
+    await expect(card).toHaveCount(1);
+    await expect(card.getByText(new RegExp(`Convive ${i + 1}\\b`))).toBeVisible();
   }
   await shot(staff, "t4-05-serveur-commandes");
 
@@ -196,6 +200,55 @@ test("quatre téléphones, une table : rien de perdu, rien en double", async ({ 
   await expect(intruder.getByText("Ce n'est pas le bon code")).toBeVisible({ timeout: 20_000 });
   await expect(intruder.getByRole("dialog").getByRole("button", { name: SEND })).toHaveCount(0);
   await shot(intruder, "t4-08-sans-code", false);
+
+  // Fin du repas : tout est préparé et servi, la table se clôt (ici avec un impayé, pour aller
+  // vite) ; un convive note.
+  await staff.goto("/app/cuisine");
+  await expect(staff.getByText(/\d+ bons? en cours/)).toBeVisible({ timeout: 20_000 });
+  for (const action of ["Commencer", "Prêt"]) {
+    for (let guard = 0; guard < 20; guard++) {
+      const buttons = staff.getByRole("button", { name: action, exact: true });
+      if ((await buttons.count()) === 0) break;
+      const before = await buttons.count();
+      await buttons.first().click();
+      await expect(buttons).toHaveCount(before - 1, { timeout: 20_000 });
+    }
+  }
+  await staff.goto("/app/service");
+  await staff.getByRole("tab", { name: /À servir/ }).click();
+  for (let guard = 0; guard < 20; guard++) {
+    const serve = staff.getByRole("button", { name: "Servi", exact: true });
+    if ((await serve.count()) === 0) break;
+    await serve.first().click();
+    await staff.waitForTimeout(500);
+  }
+  await expect(staff.getByText("Rien à porter")).toBeVisible({ timeout: 30_000 });
+  await staff.getByRole("tab", { name: /Tables/ }).click();
+  await staff.getByRole("button", { name: /^Table 12,/ }).click();
+  await staff.getByRole("button", { name: "Clôturer" }).click();
+  await staff.getByRole("alertdialog").getByRole("button", { name: "Clôturer avec un impayé" }).click();
+  await staff.getByLabel("Motif").fill("Essai de bout en bout, table libérée");
+  await staff.getByRole("button", { name: "Clôturer avec l'impayé" }).click();
+  await expect(staff.getByText("Table 12 clôturée avec un impayé.")).toBeVisible();
+  await first.keyboard.press("Escape");
+  await expect(first.getByRole("button", { name: "Donner mon avis" })).toBeVisible({ timeout: 40_000 });
+  await shot(first, "t4-09-barre-apres-cloture", false);
+  await first.getByRole("button", { name: "Donner mon avis" }).click();
+  const review = first.getByRole("dialog");
+  await review.getByRole("radio", { name: "2 sur 5" }).click();
+  await review.getByRole("button", { name: "Attente" }).click();
+  await review.getByLabel("Un mot (facultatif)").fill("Le gombo a tardé.");
+  await shot(first, "t4-10-avis", false);
+  await review.getByRole("button", { name: "Envoyer mon avis" }).click();
+  await expect(first.getByText("Merci pour votre avis.")).toBeVisible();
+  // Le téléphone sans code n'a rien à noter : il n'a pas prouvé sa présence.
+  await intruder.reload();
+  await intruder.getByRole("button", { name: "Appeler", exact: true }).waitFor();
+  await expect(intruder.getByRole("button", { name: "Donner mon avis" })).toHaveCount(0);
+  await staff.goto("/app/feedback");
+  await expect(staff.getByText("« Le gombo a tardé. »")).toBeVisible();
+  await expect(staff.getByText("Attente")).toBeVisible();
+  await shot(staff, "t4-11-avis-gerant");
 
   expect(errors).toEqual([]);
 });

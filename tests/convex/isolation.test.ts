@@ -1235,6 +1235,15 @@ const CASES: Record<string, (w: Awaited<ReturnType<typeof twoTenants>>) => Promi
     );
     expect((await w.t.run((ctx) => ctx.db.get(guest!._id)))!.removedAt).toBeUndefined();
   },
+  "sessions.removeUnadmitted": async (w) => {
+    const b = await guestAtB(w);
+    await bothRefused(
+      w.a.owner.as.mutation(api.sessions.removeUnadmitted, { venueId: w.b.venueId, sessionId: b.service.sessionId }),
+      w.a.owner.as.mutation(api.sessions.removeUnadmitted, { venueId: w.a.venueId, sessionId: b.service.sessionId }),
+    );
+    const guests = await w.t.run((ctx) => ctx.db.query("guestSessions").collect());
+    expect(guests.every((g) => g.removedAt === undefined)).toBe(true);
+  },
   "feedback.list": async (w) => {
     await expectCode(w.a.owner.as.query(api.feedback.list, { venueId: w.b.venueId }), "NOT_FOUND");
     expect((await w.a.owner.as.query(api.feedback.list, { venueId: w.a.venueId })).items).toEqual([]);
@@ -1306,6 +1315,11 @@ const CASES: Record<string, (w: Awaited<ReturnType<typeof twoTenants>>) => Promi
     await expectCode(a.owner.as.mutation(api.venues.setOrderingMode, { venueId: b.venueId, orderingMode: "guest_with_approval" }), "NOT_FOUND");
     const settings = await t.run(async (ctx) => (await ctx.db.query("venueSettings").withIndex("by_venue", (q) => q.eq("venueId", b.venueId)).unique())!);
     expect(settings.service.orderingMode).toBe("staff_only");
+  },
+  "venues.setGuestMaxQuantity": async ({ t, a, b }) => {
+    await expectCode(a.owner.as.mutation(api.venues.setGuestMaxQuantity, { venueId: b.venueId, max: 50 }), "NOT_FOUND");
+    const settings = await t.run(async (ctx) => (await ctx.db.query("venueSettings").withIndex("by_venue", (q) => q.eq("venueId", b.venueId)).unique())!);
+    expect(settings.service.guestMaxQuantityPerLine).toBeUndefined();
   },
   "orders.lookupSubmission": async (w) => {
     await withServiceB(w);

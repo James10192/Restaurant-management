@@ -60,6 +60,8 @@ type Panel = "cart" | "call" | "orders" | "feedback" | null;
 const POLL_IDLE_MS = 15_000;
 /** Plus serré quand quelque chose attend un geste du personnel. */
 const POLL_WAITING_MS = 5_000;
+/** Un envoi sans réponse dont aucune trace n'existe après une minute n'est pas arrivé (D-100). */
+const PENDING_LOST_MS = 60_000;
 
 function money(amount: number, currency: string) {
   return formatMoney({ amount, currency: currency as CurrencyCode });
@@ -146,10 +148,13 @@ export default function TableOrdering(props: TableOrderingProps) {
   /* ── Relire l'état de la table ─────────────────────────────────────────── */
 
   const hydrated = useRef(false);
+  /** Un envoi est en vol : la relecture ne tranche pas son issue à sa place. */
+  const sending = useRef(false);
 
   const refresh = useCallback(async () => {
     const startedAt = Date.now();
-    const res = await callTable({ action: "presence", guestKey });
+    const pendingKey = cartState().pendingSubmitKey;
+    const res = await callTable({ action: "presence", guestKey, ...(pendingKey ? { pendingKey } : {}) });
     if (!res.ok) {
       // Une coupure réseau n'efface pas ce qu'on savait ; un laissez-passer expiré, si.
       if (res.error === "no_pass") setPresence(null);
@@ -178,18 +183,39 @@ export default function TableOrdering(props: TableOrderingProps) {
         return;
       }
     }
-    // Le panier montré a disparu chez le serveur : pris, ignoré, ou envoyé (D-101). Le serveur dit
-    // lequel. Seule une lecture commencée APRÈS l'envoi fait foi : une réponse en vol dirait
-    // « pas de panier ». Un envoi en suspens garde la main sur le panier : on n'y touche pas.
-    const shownAt = local.shownAt;
-    if (shownAt !== null && startedAt > shownAt && p.tableOpen && p.cart === null && !isLocked(local)) {
-      const outcome = p.cartOutcome?.status ?? (p.orders.length > (local.shownOrderCount ?? 0) ? "taken" : "dismissed");
-      if (outcome === "dismissed") {
-        cart.forgetShown();
-        setFlash(o.dismissedByWaiter);
-      } else {
+    // Un envoi resté sans réponse (D-100) : le serveur dit s'il est arrivé. Arrivé, le panier se
+    // vide. Aucune trace une minute après : il n'est jamais parti, le panier se débloque — plutôt
+    // que de rester figé pour toujours, ou d'être rejoué des jours plus tard à une autre tablée.
+    if (pendingKey && local.pendingSubmitKey === pendingKey && !sending.current) {
+      if (p.pending) {
         cart.clear();
-        setFlash(o.importedByWaiter);
+        setLineProblems({});
+        setFlash(o.pendingArrived(p.pending.reference));
+        return;
+      }
+      if (local.pendingSince !== null && startedAt - local.pendingSince > PENDING_LOST_MS) {
+        cart.cancelSubmit();
+        setNotice({ tone: "error", text: o.pendingLost });
+      }
+    }
+    // Le panier montré a disparu chez le serveur : pris, ignoré, envoyé, ou périmé (D-101). Le
+    // serveur le dit, pour le DERNIER panier de ce téléphone. Seule une lecture commencée APRÈS
+    // l'envoi fait foi : une réponse en vol dirait « pas de panier ».
+    const shownAt = local.shownAt;
+    if (shownAt !== null && startedAt > shownAt && p.tableOpen && p.cart === null && !isLocked(cartState())) {
+      const outcome = p.cartOutcome?.status ?? "dismissed";
+      if (outcome === "taken" || outcome === "submitted") {
+        // Modifié depuis qu'il a été montré : on ne jette pas ce que le serveur n'a pas vu.
+        if (local.shownSignature === cartSignature(local.lines)) {
+          cart.clear();
+          setFlash(o.importedByWaiter);
+        } else {
+          cart.forgetShown();
+          setNotice({ tone: "error", text: o.takenChanged });
+        }
+      } else {
+        cart.forgetShown();
+        setFlash(outcome === "expired" ? o.shownExpired : o.dismissedByWaiter);
       }
     }
   }, [guestKey, o, setFlash]);
@@ -308,7 +334,9 @@ export default function TableOrdering(props: TableOrderingProps) {
               ? o.noPass
               : r.reason === "rate_limited"
                 ? o.rateLimited(Math.ceil(r.retryAfter / 1000))
-                : o.completeChoices;
+                : r.reason === "removed"
+                  ? o.removedText
+                  : o.completeChoices;
       setNotice({ tone: "error", text });
       return false;
     }
@@ -336,6 +364,7 @@ export default function TableOrdering(props: TableOrderingProps) {
         void refresh();
       }
     } finally {
+      sending.current = false;
       setBusy(null);
     }
   };
@@ -344,6 +373,7 @@ export default function TableOrdering(props: TableOrderingProps) {
     if (!online) return setNotice({ tone: "error", text: o.offlineSend });
     setBusy("send");
     setNotice(null);
+    sending.current = true;
     try {
       const resumed = cartState().pendingSubmitKey !== null;
       const idempotencyKey = cart.beginSubmit();
@@ -408,9 +438,11 @@ export default function TableOrdering(props: TableOrderingProps) {
     if (!online) return setNotice({ tone: "error", text: o.offlineSend });
     setBusy("send");
     setNotice(null);
+    sending.current = true;
     try {
       const idempotencyKey = cart.beginSubmit();
-      const res = await callTable({ action: "submitLines", guestKey, idempotencyKey, lines: wire(cartState().lines) });
+      const local = cartState();
+      const res = await callTable({ action: "submitLines", guestKey, idempotencyKey, lines: wire(local.lines), ...(local.shownSignature !== null ? { shown: true } : {}) });
       if (!res.ok) {
         // Le panier reste figé : l'encart du verrou dit pourquoi et comment reprendre.
         setNotice({ tone: "error", text: res.error === "no_pass" ? o.noPass : o.networkError });
@@ -448,12 +480,32 @@ export default function TableOrdering(props: TableOrderingProps) {
         case "code_required":
           void refresh();
           return setNotice({ tone: "error", text: o.codeRequired });
+        case "taken_by_waiter": {
+          // Le serveur a repris ce panier pendant l'envoi : il est déjà commandé (D-101).
+          const now = cartState();
+          if (now.shownSignature === cartSignature(now.lines)) {
+            cart.clear();
+            setFlash(o.importedByWaiter);
+            setPanel("orders");
+          } else {
+            cart.forgetShown();
+            setNotice({ tone: "error", text: o.takenChanged });
+          }
+          void refresh();
+          return;
+        }
+        case "invalid_key":
+          // La clé appartient à un autre envoi : on n'envoie rien de plus, on relit.
+          cart.clear();
+          void refresh();
+          return setNotice({ tone: "error", text: o.networkError });
         default:
           // `not_allowed` : l'établissement a changé de conduite entre-temps ; on relit.
           void refresh();
           return setNotice({ tone: "error", text: o.networkError });
       }
     } finally {
+      sending.current = false;
       setBusy(null);
     }
   };
@@ -528,7 +580,7 @@ export default function TableOrdering(props: TableOrderingProps) {
               <span className="min-w-0">{statusLine}</span>
             </p>
           ) : null}
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button type="button" variant="outline" size="lg" className="h-12" onClick={() => openPanel("call")}>
               <BellRingIcon data-icon="inline-start" />
               {o.call}
@@ -650,6 +702,7 @@ export default function TableOrdering(props: TableOrderingProps) {
                 </Alert>
               ) : direct && presence?.tableOpen && !canSendDirect && !noPass ? (
                 <TableCodeEntry
+                  guestNumber={presence?.guest?.number ?? null}
                   guestKey={guestKey}
                   online={online}
                   o={o}
@@ -710,7 +763,7 @@ export default function TableOrdering(props: TableOrderingProps) {
                   type="button"
                   size="lg"
                   className="h-12"
-                  disabled={!online || busy !== null || hasProblem || noPass || !presence.tableOpen}
+                  disabled={!online || busy !== null || hasProblem || noPass || locked || !presence.tableOpen}
                   onClick={() => void showWaiter()}
                 >
                   {busy === "show" ? <Spinner data-icon="inline-start" /> : null}

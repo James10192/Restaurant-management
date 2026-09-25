@@ -18,7 +18,20 @@ import { Spinner } from "~/components/ui/spinner";
 import type { OrderText } from "~/lib/guest/order-text";
 import { callTable } from "~/lib/guest/table-api";
 
-export function TableCodeEntry({ guestKey, online, o, onAdmitted }: { guestKey: string; online: boolean; o: OrderText; onAdmitted: () => void }) {
+export function TableCodeEntry({
+  guestKey,
+  guestNumber,
+  online,
+  o,
+  onAdmitted,
+}: {
+  guestKey: string;
+  /** Connu dès que le téléphone a rejoint (panier montré) : le serveur admet « le convive N ». */
+  guestNumber: number | null;
+  online: boolean;
+  o: OrderText;
+  onAdmitted: () => void;
+}) {
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -40,7 +53,7 @@ export function TableCodeEntry({ guestKey, online, o, onAdmitted }: { guestKey: 
         r.reason === "wrong_code"
           ? o.codeWrong
           : r.reason === "rate_limited"
-            ? o.rateLimited(Math.ceil(r.retryAfter / 1000))
+            ? o.codeRateLimited(Math.ceil(r.retryAfter / 1000))
             : r.reason === "removed"
               ? o.removedText
               : r.reason === "table_not_open"
@@ -94,7 +107,7 @@ export function TableCodeEntry({ guestKey, online, o, onAdmitted }: { guestKey: 
               {error}
             </p>
           ) : (
-            <FieldDescription>{o.codeOrShow}</FieldDescription>
+            <FieldDescription>{guestNumber !== null ? o.showToBeAdmitted(guestNumber) : o.codeOrShow}</FieldDescription>
           )}
         </Field>
       </AlertDescription>

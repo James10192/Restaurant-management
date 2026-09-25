@@ -19,9 +19,10 @@ export const list = query({
       .query("feedback")
       .withIndex("by_venue_createdAt", (q) => q.eq("venueId", actor.venue._id).gte("createdAt", since))
       .order("desc")
-      .take(200);
+      .collect();
     const result = [];
-    for (const f of rows) {
+    // Tous les avis des 90 jours pour la moyenne et le compte ; les 200 plus récents à l'écran.
+    for (const f of rows.slice(0, 200)) {
       const session = f.tableSessionId ? await ctx.db.get(f.tableSessionId) : null;
       const table = session ? await ctx.db.get(session.tableId) : null;
       result.push({

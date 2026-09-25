@@ -1028,7 +1028,8 @@ carte** *(PRODUCT.md §7.1.10)*.
 propreté, prix), un commentaire libre facultatif avec le rappel « n'y mettez pas vos coordonnées ».
 L'avis va **au restaurant seul, quelle que soit la note** : **aucun renvoi vers un avis public selon
 la note** *(D-105)* — trier les clients satisfaits vers Google est interdit par ses règles et trompe
-les autres clients. Proposé dans les 6 h qui suivent la clôture, une fois par convive.
+les autres clients. Proposé dans les 6 h qui suivent la clôture, une fois, au convive admis par le code ou qui a
+commandé de son téléphone *(D-108)*.
 **Action principale** : **Envoyer mon avis**.
 **Actions secondaires** : fermer. Aucune coordonnée n'est demandée en T4.
 **États** — *erreur* : l'avis est conservé localement et réessayé. *Hors ligne* : cercle 3, avec

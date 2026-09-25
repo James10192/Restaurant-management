@@ -118,7 +118,9 @@ donnés à voix haute par le serveur), ou par le personnel qui le voit à la tab
 côté Convex et n'est rendu qu'à un convive déjà admis ; 5 essais faux par QR et par 10 minutes, et
 10 échecs sur une tablée tirent un code neuf en le signalant sur le plan. Une nouvelle tablée est une
 nouvelle session : un téléphone admis la veille ne l'est plus. Le personnel retire d'un geste un
-téléphone étranger. Les envois sont limités par convive (4 par 10 minutes) avec un filet par QR, et
+téléphone étranger — ce qui renouvelle le code, sans quoi il reviendrait avec une clé neuve — ou tous
+les téléphones sans code. Un code faux ne crée aucun convive : la limite d'arrivées ne peut pas être
+épuisée pour fermer la table aux vrais clients, qui entrent avec le bon code *(D-108)*. Les envois sont limités par convive (4 par 10 minutes) avec un filet par QR, et
 plafonnés en quantité par plat. Le code n'est jamais journalisé.
 
 **Appareils enrôlés et PIN de service (T2, D-060).** Un appareil s'enrôle par un code à usage unique

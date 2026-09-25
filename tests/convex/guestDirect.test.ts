@@ -69,7 +69,7 @@ describe("la preuve de présence : le code de la tablée", () => {
     const session = await s.t.run((ctx) => ctx.db.get(s.sessionId));
     expect([session!.activationCode === s.code, session!.codeFailures, typeof session!.codeAlertAt]).toEqual([false, 0, "number"]);
     const floor = await s.waiter.as.query(api.sessions.floor, { venueId: s.cocody });
-    expect(floor.areas[0]!.tables[0]!.session!.codeAlert).toBe(true);
+    expect(floor.areas[0]!.tables[0]!.session!.codeAlertAt).toEqual(expect.any(Number));
     // L'ancien code ne vaut plus rien.
     expect(await s.t.mutation(api.guestService.enterCode, { ...s.as(PHONES[1]!), code: s.code })).toEqual({ ok: false, reason: "wrong_code" });
   });
@@ -212,5 +212,123 @@ describe("l'avis après le repas (D-105)", () => {
     // Six heures après, c'est trop tard.
     await s.t.run((ctx) => ctx.db.patch(s.sessionId, { closedAt: Date.now() - 7 * 3_600_000 }));
     expect((await s.t.query(api.guestService.presence, s.as(PHONES[0]!)))!.feedback).toBeNull();
+  });
+});
+
+describe("revue adverse de T4 : les chemins de secours ne perdent ni ne doublent rien", () => {
+  const phone = (i: number) => `telephone-intrus-${String(i).padStart(12, "0")}`;
+
+  test("B1 — panier repris par le serveur puis envoyé par le client : refusé, pas de doublon", async () => {
+    const s = await directTable();
+    await s.t.mutation(api.guestService.saveCart, { ...s.as(PHONES[3]!), lines: [line(s.products.alloco)] });
+    const [cart] = await s.waiter.as.query(api.carts.forSession, { venueId: s.cocody, sessionId: s.sessionId });
+    expect([cart!.guestNumber, cart!.guestAdmitted]).toEqual([1, false]);
+    await s.waiter.as.mutation(api.carts.takeCart, { venueId: s.cocody, cartId: cart!._id, seenUpdatedAt: cart!.updatedAt });
+    await s.waiter.as.mutation(api.sessions.admitGuest, { venueId: s.cocody, sessionId: s.sessionId, guestSessionId: cart!.guestSessionId! });
+    // Le client n'a pas encore relu la table : il envoie le panier qu'il avait montré.
+    const sent = await s.t.mutation(api.guestService.submitLines, { ...s.as(PHONES[3]!), idempotencyKey: key(), lines: [line(s.products.alloco)], shown: true });
+    expect(sent).toEqual({ ok: false, reason: "taken_by_waiter" });
+    expect(await s.t.run((ctx) => ctx.db.query("orders").collect())).toHaveLength(0);
+    // Un nouveau panier, composé après, part normalement.
+    expect((await s.t.mutation(api.guestService.submitLines, { ...s.as(PHONES[3]!), idempotencyKey: key(), lines: [line(s.products.bissap)] })).ok).toBe(true);
+  });
+
+  test("B2 — un ancien panier repris ne fait pas croire que le nouveau l'est : il a expiré", async () => {
+    const s = await directTable();
+    await s.t.mutation(api.guestService.saveCart, { ...s.as(PHONES[0]!), lines: [line(s.products.alloco)] });
+    const [first] = await s.waiter.as.query(api.carts.forSession, { venueId: s.cocody, sessionId: s.sessionId });
+    await s.waiter.as.mutation(api.carts.takeCart, { venueId: s.cocody, cartId: first!._id, seenUpdatedAt: first!.updatedAt });
+    await s.t.mutation(api.guestService.saveCart, { ...s.as(PHONES[0]!), lines: [line(s.products.bissap)] });
+    // Personne ne s'en occupe pendant 31 minutes.
+    await s.t.run(async (ctx) => {
+      // Le panier repris l'a été AVANT le nouveau : on recule les deux horloges d'autant.
+      for (const c of await ctx.db.query("carts").collect()) await ctx.db.patch(c._id, { updatedAt: c.updatedAt - (c.status === "active" ? 31 : 32) * 60_000 });
+    });
+    const p = await s.t.query(api.guestService.presence, s.as(PHONES[0]!));
+    expect([p!.cart, p!.cartOutcome?.status]).toEqual([null, "expired"]);
+  });
+
+  test("I1 — retirer un téléphone renouvelle le code : revenir avec une clé neuve ne suffit pas", async () => {
+    const s = await directTable();
+    await admitted(s, PHONES[0]!);
+    const intruder = (await s.waiter.as.query(api.sessions.detail, { venueId: s.cocody, sessionId: s.sessionId })).guests[0]!;
+    await s.waiter.as.mutation(api.sessions.removeGuest, { venueId: s.cocody, sessionId: s.sessionId, guestSessionId: intruder._id });
+    expect(await s.t.mutation(api.guestService.enterCode, { ...s.as(phone(1)), code: s.code })).toEqual({ ok: false, reason: "wrong_code" });
+  });
+
+  test("I2 — un code faux ne crée aucun convive ; le bon code passe même quand la table est « pleine »", async () => {
+    const s = await directTable();
+    const wrong = s.code === "0000" ? "1111" : "0000";
+    expect(await s.t.mutation(api.guestService.enterCode, { ...s.as(phone(1)), code: wrong })).toEqual({ ok: false, reason: "wrong_code" });
+    expect(await s.t.run((ctx) => ctx.db.query("guestSessions").collect())).toHaveLength(0);
+    // Quinze faux convives épuisent les arrivées : le suivant qui montre un panier est refusé…
+    for (let i = 10; i < 25; i++) await s.t.mutation(api.guestService.saveCart, { ...s.as(phone(i)), lines: [line(s.products.alloco)] });
+    expect(await s.t.mutation(api.guestService.saveCart, { ...s.as(PHONES[0]!), lines: [line(s.products.alloco)] })).toEqual({ ok: false, reason: "full" });
+    // … mais le vrai client qui a le code entre, et le serveur vide la table d'un geste.
+    await admitted(s, PHONES[0]!);
+    const removed = await s.waiter.as.mutation(api.sessions.removeUnadmitted, { venueId: s.cocody, sessionId: s.sessionId });
+    expect(removed).toBe(15);
+    const detail = await s.waiter.as.query(api.sessions.detail, { venueId: s.cocody, sessionId: s.sessionId });
+    expect([detail.guests.filter((g) => !g.removed).length, detail.code === s.code]).toEqual([1, false]);
+    expect((await s.t.query(api.guestService.presence, s.as(PHONES[0]!)))!.canSendDirect).toBe(true);
+  });
+
+  test("I4 — une commande passée se retrouve même après un changement de mode ; la relecture le dit", async () => {
+    const s = await directTable();
+    await admitted(s, PHONES[0]!);
+    const k = key();
+    const sent = await s.t.mutation(api.guestService.submitLines, { ...s.as(PHONES[0]!), idempotencyKey: k, lines: [line(s.products.alloco)] });
+    expect(sent.ok).toBe(true);
+    await s.owner.as.mutation(api.venues.setOrderingMode, { venueId: s.cocody, orderingMode: "staff_only" });
+    expect(await s.t.mutation(api.guestService.submitLines, { ...s.as(PHONES[0]!), idempotencyKey: k, lines: [line(s.products.alloco)] })).toMatchObject({ ok: true, replayed: true });
+    expect((await s.t.query(api.guestService.presence, { ...s.as(PHONES[0]!), pendingKey: k }))!.pending).toEqual({ reference: (sent as { reference: string }).reference });
+    // La clé d'un autre téléphone ne lui dit rien.
+    expect((await s.t.query(api.guestService.presence, { ...s.as(PHONES[1]!), pendingKey: k }))!.pending).toBeNull();
+    expect((await s.t.query(api.guestService.presence, { ...s.as(PHONES[0]!), pendingKey: key() }))!.pending).toBeNull();
+  });
+
+  test("I5 — l'avis demande une preuve de présence ; il reste proposé si la table est rouverte", async () => {
+    const s = await directTable();
+    await admitted(s, PHONES[0]!);
+    await s.t.mutation(api.guestService.submitLines, { ...s.as(PHONES[0]!), idempotencyKey: key(), lines: [line(s.products.bissap)] });
+    // Un téléphone qui a seulement rejoint (photo du QR) : pas d'avis.
+    await s.t.mutation(api.guestService.saveCart, { ...s.as(phone(3)), lines: [line(s.products.alloco)] });
+    await s.t.run((ctx) => ctx.db.patch(s.sessionId, { status: "closed", closedAt: Date.now() }));
+    expect(await s.t.mutation(api.guestService.submitFeedback, { ...s.as(phone(3)), rating: 1, topics: [] })).toEqual({ ok: false, reason: "not_eligible" });
+    // La table est rouverte pour d'autres clients : le convive de tout à l'heure peut encore noter.
+    await s.t.run((ctx) => ctx.db.patch(s.tableId, { activeSessionId: undefined, status: "available" }));
+    await s.waiter.as.mutation(api.sessions.open, { venueId: s.cocody, tableId: s.tableId });
+    expect((await s.t.query(api.guestService.presence, s.as(PHONES[0]!)))!.feedback).toEqual({ done: false });
+  });
+
+  test("une saisie qui reprend deux paniers : chacun ne voit que ses plats ; un service retenu n'est pas « en cuisine »", async () => {
+    const s = await directTable();
+    await s.t.mutation(api.guestService.saveCart, { ...s.as(PHONES[0]!), lines: [line(s.products.alloco)] });
+    await s.t.mutation(api.guestService.saveCart, { ...s.as(PHONES[1]!), lines: [line(s.products.bissap)] });
+    const carts = await s.waiter.as.query(api.carts.forSession, { venueId: s.cocody, sessionId: s.sessionId });
+    const taken = [];
+    for (const c of carts) taken.push(await s.waiter.as.mutation(api.carts.takeCart, { venueId: s.cocody, cartId: c._id, seenUpdatedAt: c.updatedAt }));
+    const sent = await s.waiter.as.mutation(api.orders.submit, {
+      venueId: s.cocody,
+      sessionId: s.sessionId,
+      lines: taken.flatMap((t, i) => t.lines.map((l) => ({ ...l, courseNumber: i === 0 ? 1 : 2, guestSessionId: t.guestSessionId! }))),
+      heldCourses: [2],
+      idempotencyKey: "0192f000-0000-7000-8000-00000000abce",
+      fromCartIds: taken.map((t) => t.cartId),
+    });
+    expect(sent.ok).toBe(true);
+    const aya = await s.t.query(api.guestService.presence, s.as(PHONES[0]!));
+    const koffi = await s.t.query(api.guestService.presence, s.as(PHONES[1]!));
+    expect(aya!.orders.map((o) => o.items.map((i) => [i.name, i.status]))).toEqual([[["Alloco", "ordered"]]]);
+    expect(koffi!.orders.map((o) => o.items.map((i) => [i.name, i.status]))).toEqual([[["Bissap", "held"]]]);
+  });
+
+  test("le plafond par plat se règle, et le code n'est pas montré à qui ne tient pas la salle", async () => {
+    const s = await directTable();
+    await s.owner.as.mutation(api.venues.setGuestMaxQuantity, { venueId: s.cocody, max: 3 });
+    await expectCode(s.owner.as.mutation(api.venues.setGuestMaxQuantity, { venueId: s.cocody, max: 0 }), "INVALID_ARGUMENT");
+    await admitted(s, PHONES[0]!);
+    expect(await s.t.mutation(api.guestService.submitLines, { ...s.as(PHONES[0]!), idempotencyKey: key(), lines: [line(s.products.alloco, 4)] })).toEqual({ ok: false, reason: "too_many", max: 3 });
+    expect(await s.t.mutation(api.guestService.submitLines, { ...s.as(PHONES[0]!), idempotencyKey: key(), lines: [line(s.products.alloco, 3)] })).toMatchObject({ ok: true });
   });
 });

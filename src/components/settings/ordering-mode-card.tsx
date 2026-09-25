@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { useMutation } from "convex/react";
 import { CircleAlert } from "lucide-react";
 import { toast } from "sonner";
@@ -6,6 +6,9 @@ import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { RadioChoice } from "~/components/settings/radio-choice";
 import { Alert, AlertDescription } from "~/components/ui/alert";
+import { Button } from "~/components/ui/button";
+import { Field, FieldDescription, FieldLabel } from "~/components/ui/field";
+import { Input } from "~/components/ui/input";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/ui/card";
 import { RadioGroup } from "~/components/ui/radio-group";
 import { Spinner } from "~/components/ui/spinner";
@@ -42,8 +45,13 @@ export function readOrderingMode(source: object): OrderingMode | null {
   return value === "staff_only" || value === "guest_with_approval" || value === "guest_direct" ? value : null;
 }
 
-export function OrderingModeCard({ venueId, current }: { venueId: Id<"venues">; current: OrderingMode | null }) {
+export function OrderingModeCard({ venueId, current, maxQuantity }: { venueId: Id<"venues">; current: OrderingMode | null; maxQuantity: number | null }) {
   const setOrderingMode = useMutation(api.venues.setOrderingMode);
+  const setGuestMaxQuantity = useMutation(api.venues.setGuestMaxQuantity);
+  const [max, setMax] = useState(maxQuantity === null ? "" : String(maxQuantity));
+  const [savingMax, setSavingMax] = useState(false);
+  // Les réglages arrivent après le premier rendu : le champ suit la valeur enregistrée.
+  useEffect(() => setMax(maxQuantity === null ? "" : String(maxQuantity)), [maxQuantity]);
   const [pending, setPending] = useState<OrderingMode | null>(null);
   const [error, setError] = useState<string | null>(null);
   const idPrefix = useId();
@@ -85,6 +93,34 @@ export function OrderingModeCard({ venueId, current }: { venueId: Id<"venues">; 
             <RadioChoice key={mode} id={`${idPrefix}-${mode}`} value={mode} title={m.title} description={m.description} />
           ))}
         </RadioGroup>
+        {value === "guest_direct" ? (
+          <Field>
+            <FieldLabel htmlFor={`${idPrefix}-max`}>Quantité au plus par plat, dans un envoi du client</FieldLabel>
+            <div className="flex flex-wrap gap-2">
+              <Input id={`${idPrefix}-max`} type="number" inputMode="numeric" min={1} max={50} className="w-24" value={max} onChange={(e) => setMax(e.target.value)} />
+              <Button
+                type="button"
+                variant="outline"
+                disabled={savingMax || max === String(maxQuantity ?? "")}
+                onClick={async () => {
+                  setSavingMax(true);
+                  setError(null);
+                  try {
+                    await setGuestMaxQuantity({ venueId, max: Number(max) });
+                    toast.success("Plafond enregistré.");
+                  } catch (e) {
+                    setError(describeError(e).message);
+                  } finally {
+                    setSavingMax(false);
+                  }
+                }}
+              >
+                Enregistrer
+              </Button>
+            </div>
+            <FieldDescription>De 1 à 50. Au-delà, le client demande à son serveur : « 30 brochettes » passe par lui.</FieldDescription>
+          </Field>
+        ) : null}
         <p className="text-sm text-muted-foreground">
           Quel que soit le mode, seul le personnel ouvre une table, et le client règle à la fin du repas.
         </p>

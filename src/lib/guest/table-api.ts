@@ -20,12 +20,12 @@ export type SubmitFeedbackResult = FunctionReturnType<typeof api.guestService.su
 export type WireLine = { productId: string; variantId?: string; optionIds: string[]; quantity: number; instructions?: string };
 
 export type TableAction =
-  | { action: "presence"; guestKey: string }
+  | { action: "presence"; guestKey: string; pendingKey?: string }
   | { action: "saveCart"; guestKey: string; lines: WireLine[] }
   | { action: "submitCart"; guestKey: string; idempotencyKey: string }
   | { action: "requestService"; guestKey: string; type: string }
   | { action: "enterCode"; guestKey: string; code: string }
-  | { action: "submitLines"; guestKey: string; idempotencyKey: string; lines: WireLine[] }
+  | { action: "submitLines"; guestKey: string; idempotencyKey: string; lines: WireLine[]; shown?: boolean }
   | { action: "submitFeedback"; guestKey: string; rating: number; comment?: string; topics: string[] };
 
 type Results = {

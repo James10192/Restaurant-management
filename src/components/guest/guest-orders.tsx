@@ -23,6 +23,8 @@ type BadgeVariant = "default" | "secondary" | "outline" | "destructive";
 
 export function lineStatus(status: LineStatus, o: OrderText): { label: string; variant: BadgeVariant } {
   switch (status) {
+    case "held":
+      return { label: o.lineHeld, variant: "outline" };
     case "ordered":
       return { label: o.lineOrdered, variant: "outline" };
     case "preparing":

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { Bell, Check, ChefHat, Clock, Hand, LayoutGrid, Lock, Users, Wallet, X } from "lucide-react";
@@ -176,8 +176,23 @@ function TablesTab({ floor }: { floor: Floor }) {
   );
 }
 
+/** Une pastille « Commande client » tient 5 minutes, « Code renouvelé » 30 (D-107). */
+const GUEST_ORDER_BADGE_MS = 5 * 60_000;
+const CODE_ALERT_MS = 30 * 60_000;
+
+/** L'heure, relue chaque minute : les pastilles s'éteignent d'elles-mêmes, sans attendre une écriture. */
+function useMinute(): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+  return now;
+}
+
 function TableCard({ table, openingOffline, onOpen }: { table: FloorTable; openingOffline: boolean; onOpen: () => void }) {
   const s = table.session;
+  const now = useMinute();
   const attention = (s?.readyCount ?? 0) + (s?.requestCount ?? 0) + (s?.pendingCount ?? 0) + table.waitingRequests;
   const state = table.outOfService ? "Hors service" : s ? (s.guestCount ? `${s.guestCount} couvert${s.guestCount > 1 ? "s" : ""}` : "Ouverte") : openingOffline ? "Ouverture en attente" : "Libre";
   return (
@@ -213,8 +228,8 @@ function TableCard({ table, openingOffline, onOpen }: { table: FloorTable; openi
         {s && s.readyCount > 0 ? <Badge variant="secondary">{s.readyCount} prêt{s.readyCount > 1 ? "s" : ""}</Badge> : null}
         {(s?.requestCount ?? table.waitingRequests) > 0 ? <Badge variant="secondary">Appel</Badge> : null}
         {s && s.pendingCount > 0 ? <Badge variant="secondary">À valider</Badge> : null}
-        {s && s.guestOrderCount > 0 ? <Badge variant="secondary">Commande client</Badge> : null}
-        {s?.codeAlert ? <Badge variant="destructive">Code renouvelé</Badge> : null}
+        {s?.lastGuestOrderAt && now - s.lastGuestOrderAt < GUEST_ORDER_BADGE_MS ? <Badge variant="secondary">Commande client</Badge> : null}
+        {s?.codeAlertAt && now - s.codeAlertAt < CODE_ALERT_MS ? <Badge variant="destructive">Code renouvelé</Badge> : null}
       </CardContent>
     </Card>
   );

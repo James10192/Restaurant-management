@@ -42,6 +42,10 @@ export const forSession = query({
       result.push({
         _id: cart._id,
         colorKey: guest?.colorKey ?? null,
+        /** « Convive N » : le même numéro que sur le téléphone, pour admettre le bon (D-096). */
+        guestSessionId: guest?._id ?? null,
+        guestNumber: guest?.guestNumber ?? null,
+        guestAdmitted: guest ? guest.admittedAt !== undefined && guest.removedAt === undefined : false,
         updatedAt: cart.updatedAt,
         items: items.map((i) => {
           const product = published.get(i.productId)?.product;
@@ -98,6 +102,8 @@ export const importCart = mutation({
       actor: actor.event,
       accepted: true,
       now,
+      // Les lignes du panier restent à son convive, comme dans une reprise (D-101).
+      lineGuests: priced.lines.map(() => cart.guestSessionId),
     });
     await ctx.db.patch(cart._id, { status: "submitted", orderId: created.orderId, takenAt: now, updatedAt: now });
     return { ok: true, ...created };

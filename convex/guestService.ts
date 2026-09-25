@@ -84,7 +84,8 @@ export const GUEST_MAX_QUANTITY_DEFAULT = 10;
 export const FEEDBACK_WINDOW_MS = 6 * 60 * 60 * 1000;
 export const FEEDBACK_TOPICS = ["accueil", "attente", "plats", "boissons", "proprete", "prix"] as const;
 
-type LineState = Doc<"orderItems">["status"];
+/** L'état d'une ligne vu du client : celui de la cuisine, plus « retenue » (un service qui attend l'appel). */
+type GuestLineState = Doc<"orderItems">["status"] | "held";
 
 /** Le convive d'une ligne, par son numéro : « Convive 2 ». `null` : saisie du personnel. */
 function guestNumberOf(item: Doc<"orderItems">, numbers: Map<string, number | null>): number | null {
@@ -98,6 +99,26 @@ async function tableGuests(ctx: ReadCtx, sessionId: Id<"tableSessions">) {
     .withIndex("by_session", (q) => q.eq("tableSessionId", sessionId))
     .collect();
 }
+
+/**
+ * La commande d'une clé d'envoi, si ELLE vient de ce téléphone (empreinte de sa clé d'invité).
+ * `foreign` : la clé existe mais appartient à un autre convive. Lue AVANT toute autre règle : une
+ * commande passée reste passée, même si le mode, la tablée ou l'admission ont changé depuis (D-100).
+ */
+async function ownedReplay(ctx: ReadCtx, venueId: Id<"venues">, idempotencyKey: string, guestKey: string) {
+  if (!/^[A-Za-z0-9_-]{16,64}$/.test(idempotencyKey) || !isGuestKey(guestKey)) return null;
+  const order = await ctx.db
+    .query("orders")
+    .withIndex("by_venue_idempotency", (q) => q.eq("venueId", venueId).eq("idempotencyKey", idempotencyKey))
+    .unique();
+  if (!order) return null;
+  const owner = order.placedByGuestSessionId ? await ctx.db.get(order.placedByGuestSessionId) : null;
+  if (!owner || owner.deviceFingerprintHash !== (await sha256Hex(guestKey))) return "foreign" as const;
+  return { reference: order.reference };
+}
+
+/** Une commande qui compte pour la tablée : ni en attente, ni refusée, ni annulée (D-088). */
+const COUNTED = (status: Doc<"orders">["status"]) => !["draft", "pending_payment", "pending_acceptance", "rejected", "cancelled"].includes(status);
 
 /**
  * La dernière tablée close de cette table, si c'est la sienne et depuis moins de six heures :
@@ -120,11 +141,26 @@ async function lastClosedVisit(ctx: ReadCtx, table: Doc<"restaurantTables">, gue
   const hash = await sha256Hex(guestKey);
   const guest = (await tableGuests(ctx, latest._id)).find((g) => g.deviceFingerprintHash === hash);
   if (!guest) return null;
-  const ordered = await ctx.db
-    .query("orders")
-    .withIndex("by_session", (q) => q.eq("tableSessionId", latest._id))
-    .first();
-  if (!ordered) return null;
+  // Avoir été admis par le code, ou avoir commandé de son téléphone : sans cette preuve de
+  // présence, une photo du QR suffirait à déposer des dizaines de mauvaises notes (D-105).
+  if (guest.removedAt !== undefined) return null;
+  const orders = (
+    await ctx.db
+      .query("orders")
+      .withIndex("by_session", (q) => q.eq("tableSessionId", latest._id))
+      .collect()
+  ).filter((o) => COUNTED(o.status));
+  if (orders.length === 0) return null;
+  let proven = guest.admittedAt !== undefined;
+  for (const order of orders) {
+    if (proven) break;
+    const lines = await ctx.db
+      .query("orderItems")
+      .withIndex("by_order", (q) => q.eq("orderId", order._id))
+      .collect();
+    proven = lines.some((l) => l.status !== "cancelled" && l.assignedGuestSessionIds.includes(guest._id));
+  }
+  if (!proven) return null;
   const given = await ctx.db
     .query("feedback")
     .withIndex("by_guest_session", (q) => q.eq("guestSessionId", guest._id))
@@ -135,9 +171,11 @@ async function lastClosedVisit(ctx: ReadCtx, table: Doc<"restaurantTables">, gue
 /**
  * Ce que voit le client à sa table : la table est-elle ouverte, son panier, ses commandes ligne
  * par ligne, ce que la tablée a commandé, et ce qu'il peut faire selon le mode de l'établissement.
+ * `pendingKey` : la clé d'un envoi resté sans réponse ; si la commande existe, on la rend, et le
+ * téléphone sait qu'il peut vider son panier (D-100).
  */
 export const presence = query({
-  args: guestArgs,
+  args: { ...guestArgs, pendingKey: v.optional(v.string()) },
   handler: async (ctx, args) => {
     // garde : laissez-passer revérifié contre le QR, la table et l'établissement
     const resolved = await resolveGuestTable(ctx, args.pass, args.venueSlug);
@@ -148,8 +186,9 @@ export const presence = query({
     const removed = guest?.removedAt !== undefined;
     const cart = guest && !removed ? await activeCartOf(ctx, guest) : null;
     const items = cart ? await cartItemsOf(ctx, cart._id) : [];
+    const pendingReplay = args.pendingKey ? await ownedReplay(ctx, resolved.venue._id, args.pendingKey, args.guestKey) : null;
 
-    type Line = { name: string; quantity: number; status: LineState; guestNumber: number | null; mine: boolean };
+    type Line = { name: string; quantity: number; status: GuestLineState; guestNumber: number | null; mine: boolean };
     const orders: {
       reference: string;
       status: string;
@@ -159,39 +198,56 @@ export const presence = query({
       /** Reprise par le serveur depuis le panier montré (D-101). */
       takenByWaiter: boolean;
       submittedAt: number;
-      items: { name: string; quantity: number; status: LineState }[];
+      items: { name: string; quantity: number; status: GuestLineState }[];
     }[] = [];
     const tableLines: (Line & { reference: string; submittedAt: number })[] = [];
-    let cartOutcome: { status: "taken" | "dismissed" | "submitted"; at: number } | null = null;
+    let cartOutcome: { status: "taken" | "dismissed" | "submitted" | "expired"; at: number } | null = null;
 
     if (guest && session) {
       const mine = await ctx.db
         .query("carts")
         .withIndex("by_guest", (q) => q.eq("guestSessionId", guest._id))
         .collect();
-      // Ce qu'il est advenu du dernier panier montré : repris, ignoré, envoyé.
-      const last = mine.filter((c) => c.status !== "active").sort((a, b) => b.updatedAt - a.updatedAt)[0];
-      if (last) {
+      // Ce qu'il est advenu du DERNIER panier de ce téléphone — celui qu'il a montré en dernier :
+      // repris, ignoré, envoyé, ou oublié sans réponse (actif mais périmé). Un ancien panier repris
+      // ne dit rien du panier montré ensuite.
+      const last = [...mine].sort((a, b) => b.updatedAt - a.updatedAt)[0];
+      if (last && last.status !== "active") {
         cartOutcome = {
-          status: last.status === "dismissed" ? "dismissed" : last.takenAt !== undefined ? "taken" : "submitted",
+          status: last.status === "dismissed" || last.status === "abandoned" ? "dismissed" : last.takenAt !== undefined ? "taken" : "submitted",
           at: last.updatedAt,
         };
+      } else if (last && cart === null) {
+        cartOutcome = { status: "expired", at: last.updatedAt };
       }
-      const fromCarts = new Set(mine.map((c) => c.orderId).filter((id): id is Id<"orders"> => id !== undefined));
       const numbers = new Map((await tableGuests(ctx, session._id)).map((g) => [g._id as string, g.guestNumber ?? null]));
       const all = await ctx.db
         .query("orders")
         .withIndex("by_session", (q) => q.eq("tableSessionId", session._id))
         .collect();
+      const tableRows: typeof tableLines = [];
       for (const order of all.sort((a, b) => a.submittedAt - b.submittedAt)) {
         const lines = await ctx.db
           .query("orderItems")
           .withIndex("by_order", (q) => q.eq("orderId", order._id))
           .collect();
-        const placedByMe = order.placedByGuestSessionId === guest._id || fromCarts.has(order._id);
+        const held = new Set(
+          (
+            await ctx.db
+              .query("kitchenTickets")
+              .withIndex("by_order", (q) => q.eq("orderId", order._id))
+              .collect()
+          )
+            .filter((t) => t.status === "held")
+            .map((t) => t.courseNumber),
+        );
+        // Une ligne d'un service retenu n'est pas « en cuisine » : elle attend l'appel du serveur.
+        const stateOf = (l: Doc<"orderItems">): GuestLineState => (l.status === "ordered" && held.has(l.courseNumber) ? "held" : l.status);
+        const placedByMe = order.placedByGuestSessionId === guest._id;
+        // Une saisie du serveur qui reprend plusieurs paniers : chacun n'y voit que SES plats.
         const myLines = lines.filter((l) => l.assignedGuestSessionIds.includes(guest._id));
-        if (placedByMe || myLines.length > 0) {
-          const shown = placedByMe ? lines : myLines;
+        const shown = placedByMe ? lines : myLines;
+        if (shown.length > 0 || placedByMe) {
           orders.push({
             reference: order.reference,
             status: order.status,
@@ -200,29 +256,34 @@ export const presence = query({
             expired: order.status === "rejected" && order.rejectedReason === EXPIRED_REASON,
             takenByWaiter: order.channel === "staff",
             submittedAt: order.submittedAt,
-            items: shown.map((l) => ({ name: l.nameSnapshot, quantity: l.quantity, status: l.status })),
+            items: shown.map((l) => ({ name: l.nameSnapshot, quantity: l.quantity, status: stateOf(l) })),
           });
         }
         // « Ce que la table a commandé » : les commandes PARTIES, sans montants, pour ne pas
         // recommander la bouteille partagée (D-099). Rien de ce qui attend encore un serveur.
-        if (order.status === "pending_acceptance" || order.status === "rejected") continue;
+        if (!COUNTED(order.status)) continue;
         for (const l of lines) {
           if (l.status === "cancelled") continue;
-          tableLines.push({
+          tableRows.push({
             reference: order.reference,
             submittedAt: order.submittedAt,
             name: l.nameSnapshot,
             quantity: l.quantity,
-            status: l.status,
+            status: stateOf(l),
             guestNumber: guestNumberOf(l, numbers),
             mine: l.assignedGuestSessionIds.includes(guest._id),
           });
         }
       }
+      // La tablée ne se montre qu'à un convive qui a prouvé sa présence : admis par le code, ou qui
+      // a commandé. Une photo du QR ne suffit pas à suivre la table en direct.
+      if (!removed && (guest.admittedAt !== undefined || orders.length > 0)) tableLines.push(...tableRows);
     }
 
     const admitted = guest !== null && !removed && guest.admittedAt !== undefined;
-    const visit = !session ? await lastClosedVisit(ctx, resolved.table, args.guestKey) : null;
+    // L'avis se propose à un téléphone qui n'est pas (encore) de la tablée en cours : la table peut
+    // avoir été rouverte pour d'autres clients cinq minutes après (D-105).
+    const visit = !guest ? await lastClosedVisit(ctx, resolved.table, args.guestKey) : null;
     return {
       tableOpen: session !== null,
       joined: guest !== null,
@@ -254,6 +315,8 @@ export const presence = query({
           }
         : null,
       cartOutcome,
+      /** L'envoi resté sans réponse est bien passé : sa référence. `null` : rien sous cette clé. */
+      pending: pendingReplay && pendingReplay !== "foreign" ? pendingReplay : null,
       orders,
       table: tableLines,
       /** Après la clôture : laisser un avis, une fois (D-105). */
@@ -350,6 +413,9 @@ export const submitCart = mutation({
     const joined = await joinSession(ctx, resolved, args.guestKey);
     if ("error" in joined) return { ok: false as const, reason: joined.error };
     if (joined.guest.removedAt !== undefined) return { ok: false as const, reason: "removed" as const };
+    // Par convive d'abord (D-098) : un seul téléphone n'épuise plus la limite de toute la tablée.
+    const perGuest = await rateLimiter.limit(ctx, "guestOrderPerGuest", { key: joined.guest._id });
+    if (!perGuest.ok) return { ok: false as const, reason: "rate_limited" as const, retryAfter: perGuest.retryAfter };
     const cart = await activeCartOf(ctx, joined.guest);
     if (!cart) return { ok: false as const, reason: "empty" as const };
     const items = await cartItemsOf(ctx, cart._id);
@@ -388,15 +454,19 @@ export const enterCode = mutation({
     if (!resolved) return { ok: false as const, reason: "invalid_pass" as const };
     const code = args.code.replace(/\s/g, "");
     if (!/^\d{4}$/.test(code)) return { ok: false as const, reason: "wrong_code" as const };
-    const joined = await joinSession(ctx, resolved, args.guestKey);
-    if ("error" in joined) return { ok: false as const, reason: joined.error };
-    if (joined.guest.removedAt !== undefined) return { ok: false as const, reason: "removed" as const };
-    if (joined.guest.admittedAt !== undefined) return { ok: true as const };
+    if (!isGuestKey(args.guestKey)) return { ok: false as const, reason: "bad_key" as const };
+    // Lecture seule d'abord : un code faux ne crée AUCUN convive. Sinon quinze essais à clé neuve
+    // rempliraient la tablée et fermeraient la porte aux vrais clients (D-096).
+    const { session, guest } = await guestPresence(ctx, resolved.table, args.guestKey);
+    if (!session) return { ok: false as const, reason: "table_not_open" as const };
+    if (guest?.removedAt !== undefined) return { ok: false as const, reason: "removed" as const };
+    if (guest?.admittedAt !== undefined) return { ok: true as const };
     // Épuisé : on ne compare même pas.
     const budget = await rateLimiter.check(ctx, "guestCode", { key: resolved.code._id });
     if (!budget.ok) return { ok: false as const, reason: "rate_limited" as const, retryAfter: budget.retryAfter };
-    const session = joined.session;
     if (session.activationCode !== undefined && session.activationCode === code) {
+      const joined = await joinSession(ctx, resolved, args.guestKey, { proven: true });
+      if ("error" in joined) return { ok: false as const, reason: joined.error };
       await ctx.db.patch(joined.guest._id, { admittedAt: Date.now(), admittedBy: "code" });
       return { ok: true as const };
     }
@@ -419,27 +489,39 @@ export const enterCode = mutation({
  * Convex rejoue la mutation perdante, et l'idempotence couvre un échec final.
  */
 export const submitLines = mutation({
-  args: { ...guestArgs, idempotencyKey: v.string(), lines: v.array(lineArg) },
+  args: {
+    ...guestArgs,
+    idempotencyKey: v.string(),
+    lines: v.array(lineArg),
+    /** Le panier envoyé est celui que le téléphone a montré au serveur (D-101). */
+    shown: v.optional(v.boolean()),
+  },
   handler: async (ctx, args) => {
     // garde : laissez-passer revérifié, mode et admission vérifiés côté serveur
     const resolved = await resolveGuestTable(ctx, args.pass, args.venueSlug);
     if (!resolved) return { ok: false as const, reason: "invalid_pass" as const };
     if (!/^[A-Za-z0-9_-]{16,64}$/.test(args.idempotencyKey)) return { ok: false as const, reason: "invalid_key" as const };
+    // Rejouée : la même commande, et seulement si elle vient de ce téléphone. AVANT le mode, la
+    // tablée et l'admission : une commande passée reste passée même si tout cela a changé depuis.
+    const replay = await ownedReplay(ctx, resolved.venue._id, args.idempotencyKey, args.guestKey);
+    if (replay === "foreign") return { ok: false as const, reason: "invalid_key" as const };
+    if (replay) return { ok: true as const, reference: replay.reference, replayed: true };
     const settings = await settingsOf(ctx, resolved.venue._id);
     if (settings.service.orderingMode !== "guest_direct") return { ok: false as const, reason: "not_allowed" as const };
     const joined = await joinSession(ctx, resolved, args.guestKey);
     if ("error" in joined) return { ok: false as const, reason: joined.error };
     const guest = joined.guest;
-    // Rejouée : la même commande, et seulement si elle vient de ce convive.
-    const replay = await ctx.db
-      .query("orders")
-      .withIndex("by_venue_idempotency", (q) => q.eq("venueId", resolved.venue._id).eq("idempotencyKey", args.idempotencyKey))
-      .unique();
-    if (replay) {
-      if (replay.placedByGuestSessionId !== guest._id) return { ok: false as const, reason: "invalid_key" as const };
-      return { ok: true as const, reference: replay.reference, replayed: true };
-    }
     if (guest.removedAt !== undefined) return { ok: false as const, reason: "removed" as const };
+    // Le panier montré a déjà été repris par le serveur : l'envoyer aussi le commanderait deux fois
+    // (le serveur reprend, admet, et le client envoie avant d'avoir relu la table).
+    if (args.shown) {
+      const carts = await ctx.db
+        .query("carts")
+        .withIndex("by_guest", (q) => q.eq("guestSessionId", guest._id))
+        .collect();
+      const last = carts.sort((a, b) => b.updatedAt - a.updatedAt)[0];
+      if (last && last.status !== "active" && last.takenAt !== undefined) return { ok: false as const, reason: "taken_by_waiter" as const };
+    }
     if (!isAdmitted(guest)) return { ok: false as const, reason: "code_required" as const };
     if (args.lines.length === 0) return { ok: false as const, reason: "empty" as const };
     if (args.lines.length > CART_MAX_LINES) return { ok: false as const, reason: "too_many_lines" as const };

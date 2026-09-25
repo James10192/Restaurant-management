@@ -70,6 +70,7 @@ export const get = query({
       openingHours: venue.openingHours ?? [],
       publicMenuEnabled: venue.publicMenuEnabled,
       orderingMode: settings?.service.orderingMode ?? "staff_only",
+      guestMaxQuantityPerLine: settings?.service.guestMaxQuantityPerLine ?? 10,
     };
   },
 });
@@ -259,6 +260,34 @@ export const setOrderingMode = mutation({
       resourceId: actor.venue._id,
       before: { orderingMode: settings.service.orderingMode },
       after: { orderingMode: args.orderingMode },
+    });
+  },
+});
+
+/** Quantité au plus par plat dans un envoi du client en direct (D-098) : de 1 à 50, 10 par défaut. */
+export const setGuestMaxQuantity = mutation({
+  args: { venueId: v.id("venues"), max: v.number() },
+  handler: async (ctx, args) => {
+    const actor = await requirePermission(ctx, "venue.settings.service", { venueId: args.venueId });
+    if (!Number.isInteger(args.max) || args.max < 1 || args.max > 50) throw invalid("Entre 1 et 50 par plat.");
+    const settings = await ctx.db
+      .query("venueSettings")
+      .withIndex("by_venue", (q) => q.eq("venueId", actor.venue._id))
+      .unique();
+    if (!settings) throw invalid("Réglages introuvables.");
+    const before = settings.service.guestMaxQuantityPerLine ?? null;
+    if (before === args.max) return;
+    await ctx.db.patch(settings._id, { service: { ...settings.service, guestMaxQuantityPerLine: args.max } });
+    await writeAudit(ctx, {
+      organizationId: actor.organization._id,
+      venueId: actor.venue._id,
+      actorUserId: actor.user._id,
+      actorMemberId: actor.member._id,
+      action: "venue.settings.guest_max_quantity",
+      resourceType: "venue",
+      resourceId: actor.venue._id,
+      before: { guestMaxQuantityPerLine: before },
+      after: { guestMaxQuantityPerLine: args.max },
     });
   },
 });

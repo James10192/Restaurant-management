@@ -59,6 +59,7 @@ import type * as lib_validators from "../lib/validators.js";
 import type * as lib_venueDefaults from "../lib/venueDefaults.js";
 import type * as menuImport from "../menuImport.js";
 import type * as menus from "../menus.js";
+import type * as migrations from "../migrations.js";
 import type * as modifiers from "../modifiers.js";
 import type * as operators from "../operators.js";
 import type * as orders from "../orders.js";
@@ -135,6 +136,7 @@ declare const fullApi: ApiFromModules<{
   "lib/venueDefaults": typeof lib_venueDefaults;
   menuImport: typeof menuImport;
   menus: typeof menus;
+  migrations: typeof migrations;
   modifiers: typeof modifiers;
   operators: typeof operators;
   orders: typeof orders;

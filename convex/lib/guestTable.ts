@@ -67,11 +67,16 @@ export async function guestPresence(
 export const MAX_GUESTS_PER_SESSION = 40;
 const COLORS = ["teal", "amber", "rose", "sky", "lime", "violet", "orange", "cyan"];
 
-/** Rejoint la session ouverte (ou retrouve sa place). `null` si la table n'est pas ouverte. */
+/**
+ * Rejoint la session ouverte (ou retrouve sa place). `proven` : le convive vient de donner le bon
+ * code de la table — il prouve sa présence, la limite d'arrivées ne le concerne pas (sans quoi
+ * quinze faux convives suffiraient à fermer la table aux vrais, D-096).
+ */
 export async function joinSession(
   ctx: MutationCtx,
   guestTable: GuestTable,
   guestKey: string,
+  options: { proven?: boolean } = {},
 ): Promise<{ session: Doc<"tableSessions">; guest: Doc<"guestSessions"> } | { error: "table_not_open" | "full" | "bad_key" }> {
   if (!isGuestKey(guestKey)) return { error: "bad_key" };
   const { session, guest } = await guestPresence(ctx, guestTable.table, guestKey);
@@ -81,15 +86,15 @@ export async function joinSession(
     if (now - guest.lastSeenAt > 60_000) await ctx.db.patch(guest._id, { lastSeenAt: now, status: "active" });
     return { session, guest };
   }
-  const count = (
-    await ctx.db
-      .query("guestSessions")
-      .withIndex("by_session", (q) => q.eq("tableSessionId", session._id))
-      .collect()
-  ).length;
-  if (count >= MAX_GUESTS_PER_SESSION) return { error: "full" };
+  const all = await ctx.db
+    .query("guestSessions")
+    .withIndex("by_session", (q) => q.eq("tableSessionId", session._id))
+    .collect();
+  // Les numéros restent uniques (le total) ; le plafond ne compte pas les téléphones retirés.
+  const count = all.length;
+  if (all.filter((g) => g.removedAt === undefined).length >= MAX_GUESTS_PER_SESSION) return { error: "full" };
   // Faux convives en série (photo du QR, script) : la table est « complète » pour eux.
-  if (!(await rateLimiter.limit(ctx, "guestJoin", { key: session._id })).ok) return { error: "full" };
+  if (!options.proven && !(await rateLimiter.limit(ctx, "guestJoin", { key: session._id })).ok) return { error: "full" };
   const id = await ctx.db.insert("guestSessions", {
     venueId: guestTable.venue._id,
     tableSessionId: session._id,

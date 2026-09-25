@@ -919,7 +919,8 @@ quand.
 `by_guest_session ["guestSessionId"]` (un avis par convive, D-105)
 **Règle** : l'avis va **au restaurant seul, quelle que soit la note** ; `isPublicRedirect` reste faux
 — aucun renvoi vers un avis public selon la note *(D-105)*. Laissé dans les 6 h suivant la clôture,
-par un convive de la tablée, une fois. Lu avec `feedback.read`.
+une fois, par un convive qui a prouvé sa présence : admis par le code, ou qui a commandé de son
+téléphone *(D-108)*. Lu avec `feedback.read`.
 
 ### `aiConversations` / `aiMessages`
 **Champs (conversation)** : `organizationId`, `venueId?`, `surface` (`guest`/`manager`/`import`),

@@ -199,6 +199,7 @@ export function TableView({ tableId }: { tableId: Id<"restaurantTables"> }) {
       {sessionId ? (
         <GuestCarts
           sessionId={sessionId}
+          direct={floor.orderingMode === "guest_direct"}
           onTake={(taken) => {
             // Le panier du client rejoint la saisie du serveur : il relit, retire, retient un service.
             // Chaque ligne garde son convive, et la commande pointera vers le panier (D-101).
@@ -557,12 +558,22 @@ function CancelItemDialog({ item, afterFire, onClose }: { item: Order["items"][n
  * « Panier préparé : 3 articles » — le client montre, le serveur le reprend dans SA saisie
  * (D-061) : il relit, retire, fait attendre le dessert, puis envoie comme d'habitude.
  */
-function GuestCarts({ sessionId, onTake }: { sessionId: Id<"tableSessions">; onTake: (taken: { cartId: string; guestSessionId: string | null; lines: LineRequest[] }) => void }) {
+function GuestCarts({
+  sessionId,
+  direct,
+  onTake,
+}: {
+  sessionId: Id<"tableSessions">;
+  /** En commande directe, un panier montré sans le code est aussi une demande d'admission (D-096). */
+  direct: boolean;
+  onTake: (taken: { cartId: string; guestSessionId: string | null; lines: LineRequest[] }) => void;
+}) {
   const scope = useServiceScope();
   const money = useMoney();
   const carts = useQuery(api.carts.forSession, scope.can("order.create") ? { venueId: scope.venueId, sessionId } : "skip");
   const take = useMutation(api.carts.takeCart);
   const dismiss = useMutation(api.carts.dismissCart);
+  const admit = useMutation(api.sessions.admitGuest);
   if (!carts || carts.length === 0) return null;
   return (
     <Card>
@@ -578,6 +589,7 @@ function GuestCarts({ sessionId, onTake }: { sessionId: Id<"tableSessions">; onT
           <Item key={cart._id} variant="outline">
             <ItemContent>
               <ItemTitle>
+                {cart.guestNumber !== null ? `Convive ${cart.guestNumber} · ` : ""}
                 {(() => {
                   const n = cart.items.reduce((s, i) => s + i.quantity, 0);
                   return `${n} article${n > 1 ? "s" : ""}`;
@@ -589,6 +601,22 @@ function GuestCarts({ sessionId, onTake }: { sessionId: Id<"tableSessions">; onT
               </ItemDescription>
             </ItemContent>
             <ItemActions className="flex-wrap">
+              {direct && cart.guestSessionId && !cart.guestAdmitted && scope.can("table.session.open") ? (
+                <ActionButton
+                  variant="outline"
+                  title="Seulement si vous voyez ce téléphone à la table"
+                  onAction={async () => {
+                    try {
+                      await admit({ ...scope.acting, sessionId, guestSessionId: cart.guestSessionId! });
+                      toast.success(`Convive ${cart.guestNumber ?? ""} admis : il peut envoyer lui-même.`);
+                    } catch (error) {
+                      toast.error(describeError(error).message);
+                    }
+                  }}
+                >
+                  Admettre{cart.guestNumber !== null ? ` (convive ${cart.guestNumber})` : ""}
+                </ActionButton>
+              ) : null}
               <ActionButton
                 variant="ghost"
                 onAction={async () => {

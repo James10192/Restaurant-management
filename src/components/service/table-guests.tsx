@@ -66,6 +66,8 @@ export function TableGuests({ detail }: { detail: Detail }) {
   const rotate = useMutation(api.sessions.rotateCode);
   const admit = useMutation(api.sessions.admitGuest);
   const remove = useMutation(api.sessions.removeGuest);
+  const removeUnadmitted = useMutation(api.sessions.removeUnadmitted);
+  const [purging, setPurging] = useState(false);
   const [admitting, setAdmitting] = useState<Guest | null>(null);
   const [removing, setRemoving] = useState<Guest | null>(null);
   const [rotating, setRotating] = useState(false);
@@ -100,14 +102,25 @@ export function TableGuests({ detail }: { detail: Detail }) {
         ) : null}
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        <p className="font-mono text-4xl font-semibold tracking-[0.35em] tabular-nums" data-table-code aria-label={`Code ${detail.code?.split("").join(" ") ?? "absent"}`}>
-          {detail.code ?? "····"}
-        </p>
+        {detail.code ? (
+          <p className="font-mono text-4xl font-semibold tracking-[0.35em] tabular-nums" data-table-code aria-label={`Code ${detail.code.split("").join(" ")}`}>
+            {detail.code}
+          </p>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            {manage ? "Pas de code pour cette table (ouverte avant la mise à jour) : touchez « Renouveler » pour en tirer un." : "Le code est visible par le personnel de salle."}
+          </p>
+        )}
         {recentAlert ? (
           <Alert variant="destructive">
             <AlertTitle>Trop de codes faux : le code a été renouvelé</AlertTitle>
             <AlertDescription>Donnez le nouveau code aux clients de la table. Si un téléphone vous semble étranger à la table, retirez-le.</AlertDescription>
           </Alert>
+        ) : null}
+        {manage && detail.guests.filter((g) => !g.admitted && !g.removed).length > 1 ? (
+          <Button variant="outline" size="sm" className="w-fit" disabled={!online} onClick={() => setPurging(true)}>
+            Retirer les téléphones sans code
+          </Button>
         ) : null}
         {detail.guests.length === 0 ? (
           <p className="text-sm text-muted-foreground">Aucun téléphone n'a encore rejoint la table.</p>
@@ -188,12 +201,35 @@ export function TableGuests({ detail }: { detail: Detail }) {
         </AlertDialogContent>
       </AlertDialog>
 
+      <AlertDialog open={purging} onOpenChange={setPurging}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Retirer tous les téléphones sans code ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Pour une table envahie de faux convives (une photo du QR qui circule). Les convives admis restent ; le code est renouvelé. Un vrai client retiré par erreur rescanne, et vous l'admettez depuis son panier.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <ActionButton
+              variant="destructive"
+              onAction={async () => {
+                await run(() => removeUnadmitted({ ...scope.acting, sessionId: detail._id }), "Téléphones sans code retirés, code renouvelé.");
+                setPurging(false);
+              }}
+            >
+              Retirer
+            </ActionButton>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <AlertDialog open={removing !== null} onOpenChange={(o) => !o && setRemoving(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Retirer le convive {removing?.number ?? ""} ?</AlertDialogTitle>
             <AlertDialogDescription>
-              Ce téléphone ne pourra plus envoyer de commande à cette tablée. Ce qu'il a déjà commandé reste sur l'addition. Pensez à renouveler le code s'il a fuité.
+              Ce téléphone ne pourra plus envoyer de commande à cette tablée, et le code est renouvelé en même temps : donnez le nouveau aux clients qui n'ont pas encore commandé. Ce qu'il a déjà commandé reste sur l'addition.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -203,7 +239,7 @@ export function TableGuests({ detail }: { detail: Detail }) {
               onAction={async () => {
                 const g = removing;
                 if (!g) return;
-                await run(() => remove({ ...scope.acting, sessionId: detail._id, guestSessionId: g._id as Id<"guestSessions"> }), `Convive ${g.number ?? ""} retiré.`);
+                await run(() => remove({ ...scope.acting, sessionId: detail._id, guestSessionId: g._id as Id<"guestSessions"> }), `Convive ${g.number ?? ""} retiré, code renouvelé.`);
                 setRemoving(null);
               }}
             >

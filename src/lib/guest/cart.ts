@@ -35,9 +35,11 @@ export type CartState = {
   shownOrderCount: number | null;
   /** Clé d'idempotence d'un envoi en cours : rejouée telle quelle tant que l'envoi n'a pas abouti. */
   pendingSubmitKey: string | null;
+  /** Depuis quand cet envoi attend son issue : au-delà d'une minute sans trace, il n'est pas arrivé. */
+  pendingSince: number | null;
 };
 
-const EMPTY: CartState = { lines: [], shownSignature: null, shownAt: null, shownOrderCount: null, pendingSubmitKey: null };
+const EMPTY: CartState = { lines: [], shownSignature: null, shownAt: null, shownOrderCount: null, pendingSubmitKey: null, pendingSince: null };
 const MAX_QUANTITY = 99;
 const MAX_LINES = 30;
 
@@ -83,6 +85,7 @@ function read(s: string): CartState {
       shownAt: typeof parsed.shownAt === "number" ? parsed.shownAt : null,
       shownOrderCount: typeof parsed.shownOrderCount === "number" ? parsed.shownOrderCount : null,
       pendingSubmitKey: typeof parsed.pendingSubmitKey === "string" ? parsed.pendingSubmitKey : null,
+      pendingSince: typeof parsed.pendingSince === "number" ? parsed.pendingSince : null,
     };
   } catch {
     return EMPTY;
@@ -212,7 +215,7 @@ export const cart = {
   },
   beginSubmit(): string {
     const key = state.pendingSubmitKey ?? randomKey();
-    if (key !== state.pendingSubmitKey) write({ ...state, pendingSubmitKey: key });
+    if (key !== state.pendingSubmitKey) write({ ...state, pendingSubmitKey: key, pendingSince: Date.now() });
     return key;
   },
   /** La commande est partie (ou prise par le serveur) : le panier du téléphone repart vide. */
@@ -220,7 +223,7 @@ export const cart = {
     write(EMPTY);
   },
   cancelSubmit() {
-    write({ ...state, pendingSubmitKey: null });
+    write({ ...state, pendingSubmitKey: null, pendingSince: null });
   },
 };
 

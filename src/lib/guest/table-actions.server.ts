@@ -72,7 +72,8 @@ function parseAction(body: unknown): TableAction | null {
   const guestKey = b.guestKey;
   switch (b.action) {
     case "presence":
-      return { action: "presence", guestKey };
+      if (b.pendingKey !== undefined && (typeof b.pendingKey !== "string" || !KEY.test(b.pendingKey))) return null;
+      return { action: "presence", guestKey, ...(typeof b.pendingKey === "string" ? { pendingKey: b.pendingKey } : {}) };
     case "requestService":
       return typeof b.type === "string" && ID.test(b.type) ? { action: "requestService", guestKey, type: b.type } : null;
     case "submitCart":
@@ -86,7 +87,8 @@ function parseAction(body: unknown): TableAction | null {
     case "submitLines": {
       if (typeof b.idempotencyKey !== "string" || !KEY.test(b.idempotencyKey)) return null;
       const lines = parseLines(b.lines);
-      return lines ? { action: "submitLines", guestKey, idempotencyKey: b.idempotencyKey, lines } : null;
+      if (b.shown !== undefined && typeof b.shown !== "boolean") return null;
+      return lines ? { action: "submitLines", guestKey, idempotencyKey: b.idempotencyKey, lines, ...(b.shown === true ? { shown: true } : {}) } : null;
     }
     case "submitFeedback": {
       if (typeof b.rating !== "number" || !Number.isInteger(b.rating) || b.rating < 1 || b.rating > 5) return null;
@@ -135,7 +137,7 @@ export async function handleTableAction(request: Request, venueSlug: string): Pr
   try {
     switch (action.action) {
       case "presence": {
-        const result = await client.query(api.guestService.presence, base);
+        const result = await client.query(api.guestService.presence, { ...base, ...(action.pendingKey ? { pendingKey: action.pendingKey } : {}) });
         return result ? json({ result }) : json({ error: "no_pass" }, 401);
       }
       case "saveCart":
@@ -148,7 +150,14 @@ export async function handleTableAction(request: Request, venueSlug: string): Pr
         // Le code n'est jamais journalisé, ni ici ni côté Convex.
         return json({ result: await client.mutation(api.guestService.enterCode, { ...base, code: action.code }) });
       case "submitLines":
-        return json({ result: await client.mutation(api.guestService.submitLines, { ...base, idempotencyKey: action.idempotencyKey, lines: action.lines }) });
+        return json({
+          result: await client.mutation(api.guestService.submitLines, {
+            ...base,
+            idempotencyKey: action.idempotencyKey,
+            lines: action.lines,
+            ...(action.shown ? { shown: true } : {}),
+          }),
+        });
       case "submitFeedback":
         return json({
           result: await client.mutation(api.guestService.submitFeedback, {
