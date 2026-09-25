@@ -11,6 +11,7 @@ import {
   House,
   LayoutGrid,
   LogOut,
+  MessageSquare,
   Settings,
   ShieldCheck,
   TabletSmartphone,
@@ -64,6 +65,7 @@ export function useNavItems(): NavItem[] {
       show: w.canInVenue("table.read") && (w.canInVenue("payment.collect") || w.canInVenue("cash_register.open") || w.canInVenue("cash_register.close")),
     },
     { to: "/app/rapport", label: "Fin de service", icon: ClipboardList, show: w.canInVenue("report.service_day.read") },
+    { to: "/app/feedback", label: "Avis des clients", icon: MessageSquare, show: w.canInVenue("feedback.read") },
     { to: "/app/team", label: "Équipe", icon: Users, show: w.canInVenue("team.read") || w.canInOrganization("team.read") },
     {
       to: "/app/menu",

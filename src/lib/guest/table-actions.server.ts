@@ -15,7 +15,7 @@ import { api } from "../../../convex/_generated/api";
 import { guestPassExpiry } from "../../../convex/lib/guestPass";
 import { logEvent } from "../../../convex/lib/log";
 import { convexServerUrl, TABLE_COOKIE } from "./env.server";
-import type { TableAction } from "./table-api";
+import type { TableAction, WireLine } from "./table-api";
 
 const HEADERS = {
   "Content-Type": "application/json; charset=utf-8",
@@ -41,6 +41,30 @@ function readCookie(request: Request, name: string): string | null {
 const KEY = /^[A-Za-z0-9_-]{16,64}$/;
 const ID = /^[A-Za-z0-9_-]{1,64}$/;
 
+const TOPIC = /^[a-z_]{1,20}$/;
+
+/** Les lignes d'un panier, relues une à une. `null` si l'une est mal formée. */
+function parseLines(raw: unknown): WireLine[] | null {
+  if (!Array.isArray(raw) || raw.length > 30) return null;
+  const lines: WireLine[] = [];
+  for (const item of raw as unknown[]) {
+    const l = item as Record<string, unknown> | null;
+    if (!l || typeof l.productId !== "string" || !ID.test(l.productId)) return null;
+    if (l.variantId !== undefined && (typeof l.variantId !== "string" || !ID.test(l.variantId))) return null;
+    if (!Array.isArray(l.optionIds) || l.optionIds.length > 40 || !l.optionIds.every((o) => typeof o === "string" && ID.test(o))) return null;
+    if (typeof l.quantity !== "number" || !Number.isInteger(l.quantity)) return null;
+    if (l.instructions !== undefined && (typeof l.instructions !== "string" || l.instructions.length > 500)) return null;
+    lines.push({
+      productId: l.productId,
+      ...(typeof l.variantId === "string" ? { variantId: l.variantId } : {}),
+      optionIds: l.optionIds as string[],
+      quantity: l.quantity,
+      ...(typeof l.instructions === "string" && l.instructions.trim() ? { instructions: l.instructions } : {}),
+    });
+  }
+  return lines;
+}
+
 /** Le corps du geste, relu champ par champ : rien n'est transmis tel quel. */
 function parseAction(body: unknown): TableAction | null {
   const b = body as Record<string, unknown> | null;
@@ -54,24 +78,27 @@ function parseAction(body: unknown): TableAction | null {
     case "submitCart":
       return typeof b.idempotencyKey === "string" && KEY.test(b.idempotencyKey) ? { action: "submitCart", guestKey, idempotencyKey: b.idempotencyKey } : null;
     case "saveCart": {
-      if (!Array.isArray(b.lines) || b.lines.length > 30) return null;
-      const lines = [];
-      for (const raw of b.lines as unknown[]) {
-        const l = raw as Record<string, unknown> | null;
-        if (!l || typeof l.productId !== "string" || !ID.test(l.productId)) return null;
-        if (l.variantId !== undefined && (typeof l.variantId !== "string" || !ID.test(l.variantId))) return null;
-        if (!Array.isArray(l.optionIds) || l.optionIds.length > 40 || !l.optionIds.every((o) => typeof o === "string" && ID.test(o))) return null;
-        if (typeof l.quantity !== "number" || !Number.isInteger(l.quantity)) return null;
-        if (l.instructions !== undefined && (typeof l.instructions !== "string" || l.instructions.length > 500)) return null;
-        lines.push({
-          productId: l.productId,
-          ...(typeof l.variantId === "string" ? { variantId: l.variantId } : {}),
-          optionIds: l.optionIds as string[],
-          quantity: l.quantity,
-          ...(typeof l.instructions === "string" && l.instructions.trim() ? { instructions: l.instructions } : {}),
-        });
-      }
-      return { action: "saveCart", guestKey, lines };
+      const lines = parseLines(b.lines);
+      return lines ? { action: "saveCart", guestKey, lines } : null;
+    }
+    case "enterCode":
+      return typeof b.code === "string" && /^\d{4}$/.test(b.code) ? { action: "enterCode", guestKey, code: b.code } : null;
+    case "submitLines": {
+      if (typeof b.idempotencyKey !== "string" || !KEY.test(b.idempotencyKey)) return null;
+      const lines = parseLines(b.lines);
+      return lines ? { action: "submitLines", guestKey, idempotencyKey: b.idempotencyKey, lines } : null;
+    }
+    case "submitFeedback": {
+      if (typeof b.rating !== "number" || !Number.isInteger(b.rating) || b.rating < 1 || b.rating > 5) return null;
+      if (b.comment !== undefined && (typeof b.comment !== "string" || b.comment.length > 500)) return null;
+      if (!Array.isArray(b.topics) || b.topics.length > 6 || !b.topics.every((t) => typeof t === "string" && TOPIC.test(t))) return null;
+      return {
+        action: "submitFeedback",
+        guestKey,
+        rating: b.rating,
+        ...(typeof b.comment === "string" && b.comment.trim() ? { comment: b.comment } : {}),
+        topics: b.topics as string[],
+      };
     }
     default:
       return null;
@@ -117,6 +144,20 @@ export async function handleTableAction(request: Request, venueSlug: string): Pr
         return json({ result: await client.mutation(api.guestService.submitCart, { ...base, idempotencyKey: action.idempotencyKey }) });
       case "requestService":
         return json({ result: await client.mutation(api.guestService.requestService, { ...base, type: action.type }) });
+      case "enterCode":
+        // Le code n'est jamais journalisé, ni ici ni côté Convex.
+        return json({ result: await client.mutation(api.guestService.enterCode, { ...base, code: action.code }) });
+      case "submitLines":
+        return json({ result: await client.mutation(api.guestService.submitLines, { ...base, idempotencyKey: action.idempotencyKey, lines: action.lines }) });
+      case "submitFeedback":
+        return json({
+          result: await client.mutation(api.guestService.submitFeedback, {
+            ...base,
+            rating: action.rating,
+            ...(action.comment ? { comment: action.comment } : {}),
+            topics: action.topics,
+          }),
+        });
     }
   } catch {
     // Ni le laissez-passer ni la clé d'invité ne sont journalisés.

@@ -12,11 +12,11 @@ import { Spinner } from "~/components/ui/spinner";
 import { describeError } from "~/lib/errors";
 
 /**
- * Seuls les deux modes que le serveur accepte (D-061, D-068) : `guest_direct` et `hybrid` y sont
- * refusés tant qu'une photo du QR suffirait à commander depuis la rue. Les proposer ici
- * n'aboutirait qu'à une erreur.
+ * Les trois modes que le serveur accepte (D-061, D-068, D-106). La commande directe n'est ouverte
+ * qu'avec le code de la table (D-095) : une photo du QR ne suffit plus pour commander depuis la
+ * rue. `hybrid` reste refusé (D-094) : le proposer n'aboutirait qu'à une erreur.
  */
-export type OrderingMode = "staff_only" | "guest_with_approval";
+export type OrderingMode = "staff_only" | "guest_with_approval" | "guest_direct";
 
 const MODES: Record<OrderingMode, { title: string; description: string }> = {
   staff_only: {
@@ -29,12 +29,17 @@ const MODES: Record<OrderingMode, { title: string; description: string }> = {
     description:
       "La commande attend l'accord d'un serveur avant d'aller en cuisine, et le client lit qu'elle n'y est pas encore. Sans réponse, la zone est alertée au bout de 90 secondes et la commande expire à 10 minutes.",
   },
+  guest_direct: {
+    title: "Le client envoie directement en cuisine, avec le code de la table",
+    description:
+      "À l'ouverture, la table reçoit un code de quatre chiffres, nouveau à chaque tablée, que le serveur donne aux clients. Avec lui, chacun envoie sa commande de son téléphone, sans attendre ; on règle à la fin. Un téléphone se retire depuis la fiche de la table. Tous les plats partent au premier service.",
+  },
 };
 
 /** Le mode en vigueur, tel que le renvoie `venues.get`. */
 export function readOrderingMode(source: object): OrderingMode | null {
   const value = "orderingMode" in source ? source.orderingMode : undefined;
-  return value === "staff_only" || value === "guest_with_approval" ? value : null;
+  return value === "staff_only" || value === "guest_with_approval" || value === "guest_direct" ? value : null;
 }
 
 export function OrderingModeCard({ venueId, current }: { venueId: Id<"venues">; current: OrderingMode | null }) {

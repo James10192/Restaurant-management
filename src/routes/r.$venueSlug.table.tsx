@@ -69,9 +69,9 @@ function TableMenu() {
     if (!menu) return undefined;
     return {
       onAdd: (choice, productName) => {
-        const ok = cart.add(choice);
-        if (ok) window.dispatchEvent(new CustomEvent(ADDED_EVENT, { detail: productName }));
-        return ok;
+        const result = cart.add(choice);
+        if (result === true) window.dispatchEvent(new CustomEvent(ADDED_EVENT, { detail: productName }));
+        return result;
       },
       render: (context) =>
         hydrated ? (

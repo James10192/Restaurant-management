@@ -4,7 +4,9 @@ import { useAction, useMutation, useQuery } from "convex/react";
 import {
   Archive,
   ArchiveRestore,
+  ArrowDown,
   ArrowLeft,
+  ArrowUp,
   ChevronDown,
   CircleAlert,
   CircleCheck,
@@ -33,7 +35,7 @@ import { Checkbox } from "~/components/ui/checkbox";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "~/components/ui/collapsible";
 import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
-import { Item, ItemActions, ItemContent, ItemGroup } from "~/components/ui/item";
+import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemTitle } from "~/components/ui/item";
 import { NativeSelect, NativeSelectOption } from "~/components/ui/native-select";
 import { Switch } from "~/components/ui/switch";
 import { Textarea } from "~/components/ui/textarea";
@@ -134,6 +136,7 @@ function ProductSheet({ venueId, product }: { venueId: Id<"venues">; product: Pr
       <Photos venueId={venueId} product={product} />
       <Variants venueId={venueId} product={product} />
       <OptionGroups venueId={venueId} product={product} />
+      <Suggestions venueId={venueId} product={product} />
 
       <ConfirmDialog
         open={archiveOpen}
@@ -814,6 +817,131 @@ function OptionGroups({ venueId, product }: { venueId: Id<"venues">; product: Pr
         ) : null}
         <SaveFeedback saved={saved} savedText="Options enregistrées." error={error} />
       </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * « Le restaurant suggère » (D-104) : le gérant choisit lui-même, dans l'ordre, les plats à
+ * proposer avec celui-ci. Le client n'en voit qu'un — le premier disponible — dans la fiche du
+ * plat. Rien n'est déduit des ventes : pas d'échantillon, pas de volumes dévoilés.
+ */
+const SUGGESTIONS_MAX = 6;
+
+function Suggestions({ venueId, product }: { venueId: Id<"venues">; product: Product }) {
+  const update = useMutation(api.products.update);
+  const all = useQuery(api.products.list, { venueId });
+  const [ids, setIds] = useState<string[]>(product.relatedProductIds);
+  const [adding, setAdding] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useSaved([ids]);
+  const selectId = useId();
+  const disabled = !product.canEdit;
+  const names = new Map((all ?? []).map((p) => [p._id as string, p]));
+  const candidates = (all ?? []).filter((p) => p._id !== product._id && !ids.includes(p._id));
+  const changed = ids.join() !== product.relatedProductIds.join();
+
+  const move = (index: number, delta: number) =>
+    setIds((list) => {
+      const next = [...list];
+      const target = index + delta;
+      if (target < 0 || target >= next.length) return list;
+      [next[index], next[target]] = [next[target]!, next[index]!];
+      return next;
+    });
+
+  async function save() {
+    setBusy(true);
+    setError(null);
+    try {
+      await update({ venueId, productId: product._id, relatedProductIds: ids as Id<"products">[] });
+      setSaved(true);
+    } catch (e) {
+      setError(describeError(e).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Le restaurant suggère</CardTitle>
+        <CardDescription>
+          Les plats à proposer avec celui-ci, dans l'ordre. Le client en voit un seul, le premier disponible, dans la fiche du plat. {SUGGESTIONS_MAX} au plus.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        {ids.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Aucune suggestion : la fiche du plat n'en montre pas.</p>
+        ) : (
+          <ItemGroup className="gap-2">
+            {ids.map((id, index) => {
+              const p = names.get(id);
+              return (
+                <Item key={id} variant="outline" size="sm">
+                  <ItemContent className="min-w-0">
+                    <ItemTitle className="max-w-full truncate">
+                      {index + 1}. {p?.name ?? "Produit retiré"}
+                    </ItemTitle>
+                    {p ? <ItemDescription>{[p.sectionName, !p.isAvailable ? "indisponible" : null].filter(Boolean).join(" · ")}</ItemDescription> : null}
+                  </ItemContent>
+                  {!disabled ? (
+                    <ItemActions>
+                      <Button type="button" size="icon-sm" variant="ghost" aria-label={`Monter ${p?.name ?? ""}`} disabled={index === 0} onClick={() => move(index, -1)}>
+                        <ArrowUp />
+                      </Button>
+                      <Button type="button" size="icon-sm" variant="ghost" aria-label={`Descendre ${p?.name ?? ""}`} disabled={index === ids.length - 1} onClick={() => move(index, 1)}>
+                        <ArrowDown />
+                      </Button>
+                      <Button type="button" size="icon-sm" variant="ghost" aria-label={`Retirer ${p?.name ?? ""}`} onClick={() => setIds((list) => list.filter((x) => x !== id))}>
+                        <Trash2 />
+                      </Button>
+                    </ItemActions>
+                  ) : null}
+                </Item>
+              );
+            })}
+          </ItemGroup>
+        )}
+        {!disabled && ids.length < SUGGESTIONS_MAX ? (
+          <Field>
+            <FieldLabel htmlFor={selectId}>Ajouter un plat</FieldLabel>
+            <div className="flex flex-wrap gap-2">
+              <NativeSelect id={selectId} className="min-w-0 flex-1" value={adding} onChange={(e) => setAdding(e.target.value)}>
+                <NativeSelectOption value="">Choisir…</NativeSelectOption>
+                {candidates.map((p) => (
+                  <NativeSelectOption key={p._id} value={p._id}>
+                    {p.name}
+                    {p.sectionName ? ` — ${p.sectionName}` : ""}
+                  </NativeSelectOption>
+                ))}
+              </NativeSelect>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={!adding}
+                onClick={() => {
+                  setIds((list) => [...list, adding]);
+                  setAdding("");
+                }}
+              >
+                <Plus data-icon="inline-start" />
+                Ajouter
+              </Button>
+            </div>
+          </Field>
+        ) : null}
+      </CardContent>
+      {!disabled ? (
+        <CardFooter className="flex-wrap gap-3">
+          <PendingButton type="button" pending={busy} disabled={!changed} onClick={() => void save()}>
+            Enregistrer les suggestions
+          </PendingButton>
+          <SaveFeedback saved={saved} savedText="Enregistré. Visible au client à la prochaine publication." error={error} />
+        </CardFooter>
+      ) : null}
     </Card>
   );
 }

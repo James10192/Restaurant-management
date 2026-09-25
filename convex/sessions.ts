@@ -354,6 +354,8 @@ export const floor = query({
     return {
       areas: result,
       me: actor.member?._id ?? null,
+      /** En `guest_direct`, l'écran de table montre le code (D-107). */
+      orderingMode: (await settingsOf(ctx, venueId)).service.orderingMode,
       can: {
         open: actor.permissions.has("table.session.open"),
         close: actor.permissions.has("table.session.close"),
@@ -373,6 +375,11 @@ export const detail = query({
     const session = await getInVenue(ctx, args.sessionId, actor.venue._id, "Cette table");
     const table = await ctx.db.get(session.tableId);
     const orders = (await ordersOf(ctx, session._id)).sort((a, b) => a.submittedAt - b.submittedAt);
+    const guestRows = await ctx.db
+      .query("guestSessions")
+      .withIndex("by_session", (q) => q.eq("tableSessionId", session._id))
+      .collect();
+    const guestNumbers = new Map(guestRows.map((g) => [g._id as string, g.guestNumber ?? null]));
     const result = [];
     for (const order of orders) {
       const items = await ctx.db
@@ -409,6 +416,8 @@ export const detail = query({
           courseNumber: i.courseNumber,
           status: i.status,
           cancelledReason: i.cancelledReason ?? null,
+          /** Le convive de la ligne, s'il est seul (D-102) : « Convive 2 ». */
+          guestNumber: i.assignedGuestSessionIds.length === 1 ? (guestNumbers.get(i.assignedGuestSessionIds[0]!) ?? null) : null,
         })),
         tickets: tickets.map((t) => ({
           _id: t._id,
@@ -421,11 +430,10 @@ export const detail = query({
       });
     }
     const live = result.flatMap((o) => o.items).filter((i) => i.status !== "cancelled");
-    const guestRows = await ctx.db
-      .query("guestSessions")
-      .withIndex("by_session", (q) => q.eq("tableSessionId", session._id))
-      .collect();
+    const settings = await settingsOf(ctx, actor.venue._id);
     return {
+      /** Conduite de commande de l'établissement : le code ne sert qu'en `guest_direct`. */
+      orderingMode: settings.service.orderingMode,
       _id: session._id,
       /** Le code de la tablée, que le serveur donne à voix haute (D-095). */
       code: session.activationCode ?? null,

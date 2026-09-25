@@ -22,7 +22,7 @@ import { Field, FieldContent, FieldDescription, FieldLabel, FieldLegend, FieldSe
 import { RadioGroup, RadioGroupItem } from "~/components/ui/radio-group";
 import { Textarea } from "~/components/ui/textarea";
 import { availabilityIndex } from "~/lib/guest/availability";
-import type { DishChoice } from "~/lib/guest/cart";
+import type { AddResult, DishChoice } from "~/lib/guest/cart";
 import { localized, type GuestLocale, type GuestText } from "~/lib/guest/i18n";
 import { ORDER_TEXT } from "~/lib/guest/order-text";
 
@@ -39,7 +39,7 @@ export type DishOrderFormProps = {
   /** Le haut de la fiche (photo, nom, description) et son bas (allergènes), déjà rendus. */
   top: ReactNode;
   bottom: ReactNode;
-  onAdd: (choice: DishChoice, productName: string) => boolean;
+  onAdd: (choice: DishChoice, productName: string) => AddResult;
   onDone: () => void;
 };
 
@@ -61,7 +61,7 @@ export default function DishOrderForm(props: DishOrderFormProps) {
   const [chosen, setChosen] = useState<Record<string, string[]>>({});
   const [quantity, setQuantity] = useState(1);
   const [instructions, setInstructions] = useState("");
-  const [full, setFull] = useState(false);
+  const [full, setFull] = useState<"full" | "locked" | null>(null);
 
   const optionIds = useMemo(() => product.modifierGroups.flatMap((g) => chosen[g.id] ?? []), [product, chosen]);
 
@@ -95,7 +95,7 @@ export default function DishOrderForm(props: DishOrderFormProps) {
 
   const add = () => {
     if ("problem" in priced) return;
-    const ok = props.onAdd(
+    const result = props.onAdd(
       {
         productId: product.id,
         ...(variantId ? { variantId } : {}),
@@ -105,8 +105,8 @@ export default function DishOrderForm(props: DishOrderFormProps) {
       },
       localized(product, locale).name,
     );
-    if (ok) props.onDone();
-    else setFull(true);
+    if (result === true) props.onDone();
+    else setFull(result);
   };
 
   return (
@@ -224,7 +224,7 @@ export default function DishOrderForm(props: DishOrderFormProps) {
       <DrawerFooter className="gap-2 border-t pt-3">
         {problem || full ? (
           <p role="status" className="text-sm text-muted-foreground">
-            {full ? o.cartFull : problem}
+            {full === "locked" ? o.cartLocked : full ? o.cartFull : problem}
           </p>
         ) : null}
         <div className="flex items-center gap-2">
@@ -247,7 +247,7 @@ export default function DishOrderForm(props: DishOrderFormProps) {
               <PlusIcon />
             </Button>
           </ButtonGroup>
-          <Button type="button" size="lg" className="h-12 min-w-0 flex-1" disabled={"problem" in priced || full} onClick={add}>
+          <Button type="button" size="lg" className="h-12 min-w-0 flex-1" disabled={"problem" in priced || full !== null} onClick={add}>
             <span className="truncate">{"line" in priced ? o.addToCart(money(priced.line.lineTotal, currency)) : t.add}</span>
           </Button>
         </div>

@@ -27,7 +27,7 @@ import { InputGroup, InputGroupAddon, InputGroupInput } from "~/components/ui/in
 import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "~/components/ui/item";
 import { Toggle } from "~/components/ui/toggle";
 import { availabilityIndex, formatMinute, type AvailabilityIndex } from "~/lib/guest/availability";
-import type { DishChoice } from "~/lib/guest/cart";
+import type { AddResult, DishChoice } from "~/lib/guest/cart";
 import { GUEST_TEXT, localized, type GuestLocale, type GuestText } from "~/lib/guest/i18n";
 import { cn } from "~/lib/utils";
 
@@ -58,7 +58,7 @@ export type MenuOrderingContext = { locale: GuestLocale; live: LiveAvailability;
 
 export type MenuOrdering = {
   /** Ajoute un plat composé dans sa fiche ; `false` si le panier ne peut plus rien recevoir. */
-  onAdd: (choice: DishChoice, productName: string) => boolean;
+  onAdd: (choice: DishChoice, productName: string) => AddResult;
   /** La barre du panier et ses tiroirs, rendus dans le contexte de la carte. */
   render: (context: MenuOrderingContext) => ReactNode;
 };
@@ -339,6 +339,8 @@ export function MenuView(props: MenuViewProps) {
           <Suspense fallback={null}>
             <DishSheet
               selection={selected}
+              menus={menus}
+              onSelect={props.onSelectProduct}
               index={index}
               locale={locale}
               t={t}
@@ -642,6 +644,9 @@ function DishCard(props: {
 
 type DishSheetProps = {
   selection: DishSelection | null;
+  /** Toutes les cartes publiées : la suggestion du restaurant peut venir d'une autre section. */
+  menus: GuestMenu[];
+  onSelect: (productId: string) => void;
   index: AvailabilityIndex;
   locale: GuestLocale;
   t: GuestText;
@@ -710,6 +715,36 @@ const DishSheet = lazy(async () => {
         </>
       ) : null;
 
+    // « Le restaurant suggère » (D-104) : un seul plat, le premier DISPONIBLE dans l'ordre choisi
+    // par le gérant. Rien si la liste est vide ou tout est indisponible.
+    let suggestion: { product: GuestProduct; price: string } | null = null;
+    for (const id of product?.relatedProductIds ?? []) {
+      for (const menu of props.menus) {
+        for (const section of menu.sections) {
+          const candidate = section.products.find((p) => p.id === id);
+          if (candidate && !props.index.product(menu, section.id, candidate.id)) {
+            suggestion = { product: candidate, price: priceLabel(candidate, props.currency, t, props.now).main };
+          }
+          if (suggestion) break;
+        }
+        if (suggestion) break;
+      }
+      if (suggestion) break;
+    }
+    const suggested = suggestion ? (
+      <section className="mt-6" aria-label={t.suggests}>
+        <h3 className="text-sm font-medium text-muted-foreground">{t.suggests}</h3>
+        <Item asChild variant="outline" size="sm" className="mt-2">
+          <button type="button" className="w-full text-left" onClick={() => props.onSelect(suggestion.product.id)}>
+            <ItemContent className="min-w-0">
+              <ItemTitle className="max-w-full truncate">{localized(suggestion.product, props.locale).name}</ItemTitle>
+            </ItemContent>
+            <ItemActions className="tabular-nums text-muted-foreground">{suggestion.price}</ItemActions>
+          </button>
+        </Item>
+      </section>
+    ) : null;
+
     const allergens = product ? (
       <section className="mt-6 pb-2">
         <h3 className="text-sm font-medium text-muted-foreground">{t.allergens}</h3>
@@ -759,7 +794,12 @@ const DishSheet = lazy(async () => {
             locale={props.locale}
             t={t}
             top={top}
-            bottom={allergens}
+            bottom={
+              <>
+                {suggested}
+                {allergens}
+              </>
+            }
             onAdd={props.ordering.onAdd}
             onDone={props.onClose}
           />
@@ -837,6 +877,7 @@ const DishSheet = lazy(async () => {
                     );
                   })}
 
+                  {suggested}
                   {allergens}
                 </div>
                 {closeFooter}

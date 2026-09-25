@@ -213,6 +213,8 @@ function TableCard({ table, openingOffline, onOpen }: { table: FloorTable; openi
         {s && s.readyCount > 0 ? <Badge variant="secondary">{s.readyCount} prêt{s.readyCount > 1 ? "s" : ""}</Badge> : null}
         {(s?.requestCount ?? table.waitingRequests) > 0 ? <Badge variant="secondary">Appel</Badge> : null}
         {s && s.pendingCount > 0 ? <Badge variant="secondary">À valider</Badge> : null}
+        {s && s.guestOrderCount > 0 ? <Badge variant="secondary">Commande client</Badge> : null}
+        {s?.codeAlert ? <Badge variant="destructive">Code renouvelé</Badge> : null}
       </CardContent>
     </Card>
   );

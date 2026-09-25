@@ -161,9 +161,18 @@ export function getCart(): CartState {
   return state;
 }
 
+/** `true` : ajouté. `full` : trente lignes. `locked` : un envoi attend sa réponse (D-100). */
+export type AddResult = true | "full" | "locked";
+
+/** Un envoi dont on ne connaît pas encore l'issue fige le panier : le rejouer doit envoyer la même chose. */
+export function isLocked(s: CartState = state): boolean {
+  return s.pendingSubmitKey !== null;
+}
+
 export const cart = {
-  /** Ajoute un plat ; `false` si le panier est plein. */
-  add(choice: DishChoice): boolean {
+  /** Ajoute un plat. Refusé si le panier est plein ou figé par un envoi en suspens. */
+  add(choice: DishChoice): AddResult {
+    if (isLocked()) return "locked";
     const instructions = choice.instructions?.trim() || undefined;
     const normalized: DishChoice = {
       productId: choice.productId,
@@ -174,7 +183,7 @@ export const cart = {
     };
     const key = lineKey(normalized);
     const existing = state.lines.find((l) => l.key === key);
-    if (!existing && state.lines.length >= MAX_LINES) return false;
+    if (!existing && state.lines.length >= MAX_LINES) return "full";
     const lines = existing
       ? state.lines.map((l) => (l.key === key ? { ...l, quantity: Math.min(MAX_QUANTITY, l.quantity + normalized.quantity) } : l))
       : [...state.lines, { ...normalized, key }];
@@ -182,11 +191,13 @@ export const cart = {
     return true;
   },
   setQuantity(key: string, quantity: number) {
+    if (isLocked()) return;
     const lines =
       quantity < 1 ? state.lines.filter((l) => l.key !== key) : state.lines.map((l) => (l.key === key ? { ...l, quantity: Math.min(MAX_QUANTITY, quantity) } : l));
     write({ ...state, lines });
   },
   remove(key: string) {
+    if (isLocked()) return;
     write({ ...state, lines: state.lines.filter((l) => l.key !== key) });
   },
   /** Remplace les lignes (panier retrouvé sur le serveur, lignes refusées retirées). */

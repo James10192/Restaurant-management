@@ -8,28 +8,36 @@
  *  - `staff_only` (par défaut) : le client compose un PANIER À MONTRER. « Montrer au serveur »
  *    le confie à Convex, où la tablette du serveur le voit ; rien n'est commandé, l'écran le dit ;
  *  - `guest_with_approval` : « Envoyer la commande » ; elle attend la validation d'un serveur,
- *    et l'écran dit en permanence qu'elle n'est pas encore en cuisine.
+ *    et l'écran dit en permanence qu'elle n'est pas encore en cuisine ;
+ *  - `guest_direct` (T4, D-095) : une fois le code de la table saisi, « Envoyer — part
+ *    directement en cuisine ». L'envoi est une seule mutation rejouable (D-100) : tant qu'on ne
+ *    connaît pas son issue, le panier est figé et le même envoi se rejoue, jamais un second.
+ *
+ * « Mes commandes » suit chaque plat, et l'onglet « La table » montre ce que la tablée a déjà
+ * commandé (D-099, D-103). Après la clôture, un avis se laisse une fois (D-105).
  *
  * Le panier vit dans le téléphone (`lib/guest/cart.ts`) : sans réseau, il reste, et l'envoi
  * attend. L'état de la table est relu par intervalles (pas de connexion temps réel : un `fetch`
  * de quelques centaines d'octets suffit, et le laissez-passer ne quitte pas son cookie).
  */
 
-import { BellRingIcon, CheckIcon, ClockIcon, MinusIcon, PlusIcon, ReceiptTextIcon, ShoppingBagIcon, Trash2Icon, WifiOffIcon } from "lucide-react";
+import { BellRingIcon, CheckIcon, ClockIcon, LockIcon, MessageSquareIcon, MinusIcon, PlusIcon, ReceiptTextIcon, ShoppingBagIcon, Trash2Icon, WifiOffIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { GuestMenu, LiveAvailability, PublicVenue } from "../../../convex/lib/guestMenu";
 import { formatMoney, type CurrencyCode } from "../../../convex/lib/money";
 import { indexPublishedProducts, priceLine, type LineProblemCode } from "../../../convex/lib/ordering";
 import { Alert, AlertDescription, AlertTitle } from "~/components/ui/alert";
-import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { ButtonGroup, ButtonGroupText } from "~/components/ui/button-group";
 import { Drawer, DrawerClose, DrawerContent, DrawerDescription, DrawerFooter, DrawerHeader, DrawerTitle } from "~/components/ui/drawer";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from "~/components/ui/empty";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemFooter, ItemGroup, ItemTitle } from "~/components/ui/item";
+import { GuestFeedback } from "~/components/guest/guest-feedback";
+import { GuestOrders } from "~/components/guest/guest-orders";
+import { TableCodeEntry } from "~/components/guest/table-code-entry";
 import { Separator } from "~/components/ui/separator";
 import { Spinner } from "~/components/ui/spinner";
-import { cart, CART_LIMITS, cartSignature, getCart as cartState, guestKeyFor, useCart, type CartLine } from "~/lib/guest/cart";
+import { cart, CART_LIMITS, cartSignature, getCart as cartState, guestKeyFor, isLocked, useCart, type CartLine } from "~/lib/guest/cart";
 import { localized, type GuestLocale } from "~/lib/guest/i18n";
 import { ORDER_TEXT, type OrderText } from "~/lib/guest/order-text";
 import { callTable, type Presence, type TableCallError } from "~/lib/guest/table-api";
@@ -47,7 +55,7 @@ export type TableOrderingProps = {
 };
 
 type Notice = { tone: "info" | "error"; text: string } | null;
-type Panel = "cart" | "call" | "orders" | null;
+type Panel = "cart" | "call" | "orders" | "feedback" | null;
 
 const POLL_IDLE_MS = 15_000;
 /** Plus serré quand quelque chose attend un geste du personnel. */
@@ -130,7 +138,10 @@ export default function TableOrdering(props: TableOrderingProps) {
   }, []);
   useEffect(() => () => window.clearTimeout(flashTimer.current), []);
   const [cooldowns, setCooldown] = useCooldowns(props.venueSlug);
-  const tick = useTicker(panel === "call");
+  const tick = useTicker(panel === "call" || panel === "orders");
+  /** Dernière lecture réussie de la table : l'écran dit « mis à jour il y a N s » (D-103). */
+  const [updatedAt, setUpdatedAt] = useState<number | null>(null);
+  const [feedbackSent, setFeedbackSent] = useState(false);
 
   /* ── Relire l'état de la table ─────────────────────────────────────────── */
 
@@ -148,6 +159,7 @@ export default function TableOrdering(props: TableOrderingProps) {
     setPresenceError(null);
     const p = res.value;
     setPresence(p);
+    setUpdatedAt(Date.now());
     const local = cartState();
     // Premier regard : un panier déjà confié au serveur (autre onglet, stockage effacé) revient.
     if (!hydrated.current) {
@@ -166,22 +178,31 @@ export default function TableOrdering(props: TableOrderingProps) {
         return;
       }
     }
-    // Le panier montré a disparu chez le serveur : pris (une commande de plus) ou ignoré.
-    // Seule une lecture commencée APRÈS l'envoi fait foi : une réponse en vol dirait « pas de panier ».
+    // Le panier montré a disparu chez le serveur : pris, ignoré, ou envoyé (D-101). Le serveur dit
+    // lequel. Seule une lecture commencée APRÈS l'envoi fait foi : une réponse en vol dirait
+    // « pas de panier ». Un envoi en suspens garde la main sur le panier : on n'y touche pas.
     const shownAt = local.shownAt;
-    if (shownAt !== null && startedAt > shownAt && p.tableOpen && p.cart === null) {
-      if (p.orders.length > (local.shownOrderCount ?? 0)) {
-        cart.clear();
-        setFlash(o.importedByWaiter);
-      } else {
+    if (shownAt !== null && startedAt > shownAt && p.tableOpen && p.cart === null && !isLocked(local)) {
+      const outcome = p.cartOutcome?.status ?? (p.orders.length > (local.shownOrderCount ?? 0) ? "taken" : "dismissed");
+      if (outcome === "dismissed") {
         cart.forgetShown();
         setFlash(o.dismissedByWaiter);
+      } else {
+        cart.clear();
+        setFlash(o.importedByWaiter);
       }
     }
   }, [guestKey, o, setFlash]);
 
+  // Relecture serrée tant qu'un geste du personnel est attendu, ou qu'un de mes plats n'est ni
+  // servi ni annulé (D-103) ; sinon au repos.
   const waiting =
-    state.shownSignature !== null || state.pendingSubmitKey !== null || (presence?.orders.some((x) => x.status === "pending_acceptance") ?? false);
+    state.shownSignature !== null ||
+    state.pendingSubmitKey !== null ||
+    (presence?.orders.some(
+      (x) => x.status === "pending_acceptance" || (x.status !== "rejected" && x.status !== "cancelled" && x.items.some((i) => i.status !== "served" && i.status !== "cancelled")),
+    ) ??
+      false);
 
   useEffect(() => {
     if (!online) return;
@@ -213,6 +234,8 @@ export default function TableOrdering(props: TableOrderingProps) {
 
   /* ── Les lignes, chiffrées par la même règle que le serveur ────────────── */
 
+  // Le plafond par plat ne vaut que pour un envoi du client en direct (D-098).
+  const maxLine = presence?.direct ? Math.min(CART_LIMITS.quantity, presence.maxQuantity) : CART_LIMITS.quantity;
   const priced = useMemo(
     () =>
       state.lines.map((line, i) => {
@@ -234,10 +257,12 @@ export default function TableOrdering(props: TableOrderingProps) {
           name,
           details,
           total: "line" in result ? result.line.lineTotal : null,
-          problem: lineProblems[line.key] ?? ("problem" in result ? problemText(result.problem.code, o) : null),
+          problem:
+            lineProblems[line.key] ??
+            ("problem" in result ? problemText(result.problem.code, o) : line.quantity > maxLine ? o.tooMany(maxLine) : null),
         };
       }),
-    [state.lines, published, props.live, props.now, venue.timezone, locale, lineProblems, o],
+    [state.lines, published, props.live, props.now, venue.timezone, locale, lineProblems, o, maxLine],
   );
   const itemCount = state.lines.reduce((s, l) => s + l.quantity, 0);
   const total = priced.reduce((s, p) => s + (p.total ?? 0), 0);
@@ -247,6 +272,11 @@ export default function TableOrdering(props: TableOrderingProps) {
   const orders = presence?.orders ?? [];
   const pending = orders.filter((x) => x.status === "pending_acceptance");
   const canSend = presence?.canSend ?? false;
+  const direct = presence?.direct ?? false;
+  const removed = presence?.guest?.removed ?? false;
+  const canSendDirect = presence?.canSendDirect ?? false;
+  const locked = state.pendingSubmitKey !== null;
+  const feedbackOpen = presence !== null && !presence.tableOpen && presence.feedback !== null && !presence.feedback.done && !feedbackSent;
 
   /* ── Gestes ────────────────────────────────────────────────────────────── */
 
@@ -343,22 +373,84 @@ export default function TableOrdering(props: TableOrderingProps) {
       }
       cart.cancelSubmit();
       if (r.reason === "rate_limited") setNotice({ tone: "error", text: o.rateLimited(Math.ceil(r.retryAfter / 1000)) });
-      else if (r.reason === "problems") {
-        const lines = cartState().lines;
-        const byKey: Record<string, string> = {};
-        for (const p of r.problems) {
-          const line = lines[p.index];
-          if (line) byKey[line.key] = problemText(p.code, o);
-        }
-        setLineProblems(byKey);
-        setNotice({ tone: "error", text: o.problemsRemoved });
-      } else if (r.reason === "invalid_pass") setNotice({ tone: "error", text: o.noPass });
+      else if (r.reason === "problems") markProblems(r.problems);
+      else if (r.reason === "invalid_pass") setNotice({ tone: "error", text: o.noPass });
       else if (r.reason === "table_not_open") setNotice({ tone: "error", text: `${o.tableClosedTitle}. ${o.tableClosedText}` });
       else if (r.reason === "full") setNotice({ tone: "error", text: o.full });
       else {
         // `not_allowed` : l'établissement a changé de conduite entre-temps ; on relit.
         setNotice({ tone: "error", text: o.networkError });
         void refresh();
+      }
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  /** Refus d'un envoi : les lignes en cause sont signalées, le reste est dit en clair. */
+  const markProblems = (problems: readonly { index: number; code: LineProblemCode }[]) => {
+    const lines = cartState().lines;
+    const byKey: Record<string, string> = {};
+    for (const p of problems) {
+      const line = lines[p.index];
+      if (line) byKey[line.key] = problemText(p.code, o);
+    }
+    setLineProblems(byKey);
+    setNotice({ tone: "error", text: o.problemsRemoved });
+  };
+
+  /**
+   * Envoi direct en cuisine (D-100). La clé d'idempotence est tirée AVANT l'appel et gardée tant
+   * que l'issue est inconnue : le panier reste figé, et le nouvel essai rejoue le même envoi —
+   * s'il était passé, la même commande revient ; sinon il part pour la première fois.
+   */
+  const sendDirect = async () => {
+    if (!online) return setNotice({ tone: "error", text: o.offlineSend });
+    setBusy("send");
+    setNotice(null);
+    try {
+      const idempotencyKey = cart.beginSubmit();
+      const res = await callTable({ action: "submitLines", guestKey, idempotencyKey, lines: wire(cartState().lines) });
+      if (!res.ok) {
+        setNotice({ tone: "error", text: res.error === "no_pass" ? o.noPass : o.lockedNote });
+        return;
+      }
+      const r = res.value;
+      if (r.ok) {
+        cart.clear();
+        setLineProblems({});
+        setNotice({ tone: "info", text: o.sentDirect(r.reference) });
+        setPanel("orders");
+        void refresh();
+        return;
+      }
+      // Refus tranché par le serveur : rien n'est parti, le panier se débloque.
+      cart.cancelSubmit();
+      switch (r.reason) {
+        case "rate_limited":
+          return setNotice({ tone: "error", text: o.rateLimited(Math.ceil(r.retryAfter / 1000)) });
+        case "problems":
+          return markProblems(r.problems);
+        case "too_many":
+          return setNotice({ tone: "error", text: o.tooMany(r.max) });
+        case "too_many_lines":
+          return setNotice({ tone: "error", text: o.tooManyLines });
+        case "invalid_pass":
+          return setNotice({ tone: "error", text: o.noPass });
+        case "table_not_open":
+          return setNotice({ tone: "error", text: `${o.tableClosedTitle}. ${o.tableClosedText}` });
+        case "full":
+          return setNotice({ tone: "error", text: o.full });
+        case "removed":
+          void refresh();
+          return setNotice({ tone: "error", text: o.removedText });
+        case "code_required":
+          void refresh();
+          return setNotice({ tone: "error", text: o.codeRequired });
+        default:
+          // `not_allowed` : l'établissement a changé de conduite entre-temps ; on relit.
+          void refresh();
+          return setNotice({ tone: "error", text: o.networkError });
       }
     } finally {
       setBusy(null);
@@ -407,11 +499,13 @@ export default function TableOrdering(props: TableOrderingProps) {
   const noPass = presenceError === "no_pass";
   const statusLine = noPass
     ? o.noPass
-    : pending.length > 0
+    : locked
+      ? o.cartLocked
+      : pending.length > 0
       ? `${o.order(pending[pending.length - 1]!.reference)} · ${o.statusPendingText}`
-      : shown && !changedSinceShown
-        ? o.shownTitle
-        : null;
+        : shown && !changedSinceShown
+          ? o.shownTitle
+          : null;
 
   return (
     <>
@@ -429,7 +523,7 @@ export default function TableOrdering(props: TableOrderingProps) {
             </p>
           ) : statusLine ? (
             <p className="flex items-center gap-2 text-sm text-muted-foreground" role="status">
-              {pending.length > 0 ? <ClockIcon className="size-4 shrink-0" /> : <CheckIcon className="size-4 shrink-0" />}
+              {locked ? <LockIcon className="size-4 shrink-0" /> : pending.length > 0 ? <ClockIcon className="size-4 shrink-0" /> : <CheckIcon className="size-4 shrink-0" />}
               <span className="min-w-0">{statusLine}</span>
             </p>
           ) : null}
@@ -438,7 +532,13 @@ export default function TableOrdering(props: TableOrderingProps) {
               <BellRingIcon data-icon="inline-start" />
               {o.call}
             </Button>
-            {orders.length > 0 ? (
+            {feedbackOpen ? (
+              <Button type="button" variant="outline" size="lg" className="h-12" onClick={() => openPanel("feedback")}>
+                <MessageSquareIcon data-icon="inline-start" />
+                {o.feedbackCta}
+              </Button>
+            ) : null}
+            {orders.length > 0 || (presence?.table.length ?? 0) > 0 ? (
               <Button type="button" variant="outline" size="lg" className="h-12" onClick={() => openPanel("orders")} aria-label={`${o.myOrders} (${orders.length})`}>
                 <ReceiptTextIcon data-icon="inline-start" />
                 {state.lines.length === 0 ? o.myOrders : orders.length}
@@ -489,7 +589,7 @@ export default function TableOrdering(props: TableOrderingProps) {
                     <ItemActions className="tabular-nums">{lineTotal !== null ? money(lineTotal, venue.currency) : "—"}</ItemActions>
                     <ItemFooter>
                       <ButtonGroup aria-label={`${o.quantity} — ${name}`}>
-                        <Button type="button" variant="outline" size="icon-lg" className="size-10" aria-label={o.less} onClick={() => setQuantity(line.key, line.quantity - 1)}>
+                        <Button type="button" variant="outline" size="icon-lg" className="size-10" aria-label={o.less} disabled={locked} onClick={() => setQuantity(line.key, line.quantity - 1)}>
                           <MinusIcon />
                         </Button>
                         <ButtonGroupText className="min-w-10 justify-center tabular-nums">{line.quantity}</ButtonGroupText>
@@ -499,13 +599,13 @@ export default function TableOrdering(props: TableOrderingProps) {
                           size="icon-lg"
                           className="size-10"
                           aria-label={o.more}
-                          disabled={line.quantity >= CART_LIMITS.quantity}
+                          disabled={locked || line.quantity >= maxLine}
                           onClick={() => setQuantity(line.key, line.quantity + 1)}
                         >
                           <PlusIcon />
                         </Button>
                       </ButtonGroup>
-                      <Button type="button" variant="ghost" size="lg" className="h-10" onClick={() => setQuantity(line.key, 0)}>
+                      <Button type="button" variant="ghost" size="lg" className="h-10" disabled={locked} onClick={() => setQuantity(line.key, 0)}>
                         <Trash2Icon data-icon="inline-start" />
                         {o.remove}
                       </Button>
@@ -542,14 +642,38 @@ export default function TableOrdering(props: TableOrderingProps) {
                   <AlertDescription>{o.tableClosedText}</AlertDescription>
                 </Alert>
               ) : null}
-              {!canSend && shown && !changedSinceShown ? (
+              {direct && removed ? (
+                <Alert variant="destructive">
+                  <AlertTitle>{o.removedTitle}</AlertTitle>
+                  <AlertDescription>{o.removedText}</AlertDescription>
+                </Alert>
+              ) : direct && presence?.tableOpen && !canSendDirect && !noPass ? (
+                <TableCodeEntry
+                  guestKey={guestKey}
+                  online={online}
+                  o={o}
+                  onAdmitted={() => {
+                    setFlash(o.codeOk);
+                    void refresh();
+                  }}
+                />
+              ) : null}
+              {canSendDirect && presence?.code ? <TableCodeCard code={presence.code} guestNumber={presence.guest?.number ?? null} o={o} /> : null}
+              {locked && direct ? (
+                <Alert>
+                  <LockIcon />
+                  <AlertDescription>{o.lockedNote}</AlertDescription>
+                </Alert>
+              ) : null}
+              {canSendDirect && state.lines.length > 0 && !locked ? <p className="text-sm text-muted-foreground">{o.sendDirectNote}</p> : null}
+              {!canSend && !canSendDirect && shown && !changedSinceShown ? (
                 <Alert>
                   <CheckIcon />
                   <AlertTitle>{o.shownTitle}</AlertTitle>
                   <AlertDescription>{o.shownText}</AlertDescription>
                 </Alert>
               ) : null}
-              {!canSend && changedSinceShown ? (
+              {!canSend && !canSendDirect && changedSinceShown ? (
                 <Alert>
                   <AlertDescription>{o.changedSinceShown}</AlertDescription>
                 </Alert>
@@ -564,7 +688,18 @@ export default function TableOrdering(props: TableOrderingProps) {
           </div>
           <DrawerFooter>
             {state.lines.length > 0 && presence ? (
-              canSend ? (
+              canSendDirect ? (
+                <Button
+                  type="button"
+                  size="lg"
+                  className="h-auto min-h-12 whitespace-normal"
+                  disabled={!online || busy !== null || hasProblem || noPass || !presence.tableOpen}
+                  onClick={() => void sendDirect()}
+                >
+                  {busy === "send" ? <Spinner data-icon="inline-start" /> : null}
+                  {locked ? o.retrySend : `${o.sendDirect} · ${money(total, venue.currency)}`}
+                </Button>
+              ) : direct && removed ? null : canSend ? (
                 <Button type="button" size="lg" className="h-12" disabled={!online || busy !== null || hasProblem || noPass || !presence.tableOpen} onClick={() => void send()}>
                   {busy === "send" ? <Spinner data-icon="inline-start" /> : null}
                   {o.send} · {money(total, venue.currency)}
@@ -678,15 +813,8 @@ export default function TableOrdering(props: TableOrderingProps) {
                 <AlertDescription>{notice.text}</AlertDescription>
               </Alert>
             ) : null}
-            {orders.length === 0 ? (
-              <p className="py-4 text-muted-foreground">{o.ordersEmpty}</p>
-            ) : (
-              <ItemGroup className="gap-2">
-                {[...orders].reverse().map((order) => (
-                  <OrderItem key={order.reference} order={order} o={o} />
-                ))}
-              </ItemGroup>
-            )}
+            {presence?.code ? <TableCodeCard code={presence.code} guestNumber={presence.guest?.number ?? null} o={o} /> : null}
+            <GuestOrders presence={presence} now={tick} updatedAt={updatedAt} o={o} />
           </div>
           <DrawerFooter>
             <DrawerClose asChild>
@@ -697,49 +825,40 @@ export default function TableOrdering(props: TableOrderingProps) {
           </DrawerFooter>
         </DrawerContent>
       </Drawer>
+
+      {presence && presence.feedback ? (
+        <GuestFeedback
+          open={panel === "feedback"}
+          onOpenChange={(open) => !open && setPanel(null)}
+          guestKey={guestKey}
+          topics={presence.topics}
+          online={online}
+          o={o}
+          onDone={() => {
+            setFeedbackSent(true);
+            setPanel(null);
+            setFlash(o.feedbackThanks);
+          }}
+        />
+      ) : null}
     </>
   );
 }
 
-type GuestOrder = Presence["orders"][number];
-
-function orderStatus(order: GuestOrder, o: OrderText): { label: string; detail: string | null; variant: "default" | "secondary" | "outline" | "destructive" } {
-  switch (order.status) {
-    case "pending_acceptance":
-      return { label: o.statusPending, detail: o.statusPendingText, variant: "outline" };
-    case "accepted":
-      return { label: o.statusAccepted, detail: null, variant: "secondary" };
-    case "in_preparation":
-    case "partially_ready":
-      return { label: o.statusInPreparation, detail: null, variant: "secondary" };
-    case "ready":
-      return { label: o.statusReady, detail: null, variant: "default" };
-    case "partially_served":
-    case "served":
-      return { label: o.statusServed, detail: null, variant: "secondary" };
-    case "rejected":
-      return order.expired
-        ? { label: o.statusExpired, detail: o.statusExpiredText, variant: "destructive" }
-        : { label: o.statusRejected, detail: order.rejectedReason ? `${o.reason} : ${order.rejectedReason}` : null, variant: "destructive" };
-    case "cancelled":
-      return { label: o.statusCancelled, detail: null, variant: "destructive" };
-    default:
-      return { label: order.label, detail: null, variant: "secondary" };
-  }
-}
-
-function OrderItem({ order, o }: { order: GuestOrder; o: OrderText }) {
-  const status = orderStatus(order, o);
+/** Le code de la tablée, redonné à un convive admis : il le passe à ceux qui le rejoignent (D-095). */
+function TableCodeCard({ code, guestNumber, o }: { code: string; guestNumber: number | null; o: OrderText }) {
   return (
-    <Item role="listitem" variant="outline">
-      <ItemContent className="min-w-0">
-        <ItemTitle className="text-base">{o.order(order.reference)}</ItemTitle>
-        {order.items.length > 0 ? <ItemDescription>{order.items.map((i) => `${i.quantity} × ${i.name}`).join(" · ")}</ItemDescription> : null}
-        {status.detail ? <p className="text-sm text-muted-foreground">{status.detail}</p> : null}
+    <Item variant="muted" role="note">
+      <ItemContent>
+        <ItemDescription>
+          {guestNumber !== null ? `${o.youAreGuest(guestNumber)} · ` : ""}
+          {o.tableCode}
+        </ItemDescription>
+        <ItemTitle className="font-mono text-2xl tracking-[0.3em] tabular-nums" data-table-code>
+          {code}
+        </ItemTitle>
+        <ItemDescription>{o.shareCode}</ItemDescription>
       </ItemContent>
-      <ItemActions>
-        <Badge variant={status.variant}>{status.label}</Badge>
-      </ItemActions>
     </Item>
   );
 }

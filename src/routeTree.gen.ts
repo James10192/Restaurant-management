@@ -24,6 +24,7 @@ import { Route as MenuVenueSlugRouteImport } from './routes/menu.$venueSlug'
 import { Route as AuthAppIndexRouteImport } from './routes/_auth.app.index'
 import { Route as AuthAppAccountRouteImport } from './routes/_auth.app.account'
 import { Route as AuthAppCuisineRouteImport } from './routes/_auth.app.cuisine'
+import { Route as AuthAppFeedbackRouteImport } from './routes/_auth.app.feedback'
 import { Route as AuthAppMenuRouteImport } from './routes/_auth.app.menu'
 import { Route as AuthAppOnboardingRouteImport } from './routes/_auth.app.onboarding'
 import { Route as AuthAppRapportRouteImport } from './routes/_auth.app.rapport'
@@ -126,6 +127,11 @@ const AuthAppAccountRoute = AuthAppAccountRouteImport.update({
 const AuthAppCuisineRoute = AuthAppCuisineRouteImport.update({
   id: '/cuisine',
   path: '/cuisine',
+  getParentRoute: () => AuthAppRoute,
+} as any)
+const AuthAppFeedbackRoute = AuthAppFeedbackRouteImport.update({
+  id: '/feedback',
+  path: '/feedback',
   getParentRoute: () => AuthAppRoute,
 } as any)
 const AuthAppMenuRoute = AuthAppMenuRouteImport.update({
@@ -291,6 +297,7 @@ export interface FileRoutesByFullPath {
   '/appareil/': typeof AppareilIndexRoute
   '/app/account': typeof AuthAppAccountRoute
   '/app/cuisine': typeof AuthAppCuisineRoute
+  '/app/feedback': typeof AuthAppFeedbackRoute
   '/app/menu': typeof AuthAppMenuRouteWithChildren
   '/app/onboarding': typeof AuthAppOnboardingRoute
   '/app/rapport': typeof AuthAppRapportRoute
@@ -334,6 +341,7 @@ export interface FileRoutesByTo {
   '/appareil': typeof AppareilIndexRoute
   '/app/account': typeof AuthAppAccountRoute
   '/app/cuisine': typeof AuthAppCuisineRoute
+  '/app/feedback': typeof AuthAppFeedbackRoute
   '/app/onboarding': typeof AuthAppOnboardingRoute
   '/app/rapport': typeof AuthAppRapportRoute
   '/app/team': typeof AuthAppTeamRoute
@@ -379,6 +387,7 @@ export interface FileRoutesById {
   '/appareil/': typeof AppareilIndexRoute
   '/_auth/app/account': typeof AuthAppAccountRoute
   '/_auth/app/cuisine': typeof AuthAppCuisineRoute
+  '/_auth/app/feedback': typeof AuthAppFeedbackRoute
   '/_auth/app/menu': typeof AuthAppMenuRouteWithChildren
   '/_auth/app/onboarding': typeof AuthAppOnboardingRoute
   '/_auth/app/rapport': typeof AuthAppRapportRoute
@@ -426,6 +435,7 @@ export interface FileRouteTypes {
     | '/appareil/'
     | '/app/account'
     | '/app/cuisine'
+    | '/app/feedback'
     | '/app/menu'
     | '/app/onboarding'
     | '/app/rapport'
@@ -469,6 +479,7 @@ export interface FileRouteTypes {
     | '/appareil'
     | '/app/account'
     | '/app/cuisine'
+    | '/app/feedback'
     | '/app/onboarding'
     | '/app/rapport'
     | '/app/team'
@@ -513,6 +524,7 @@ export interface FileRouteTypes {
     | '/appareil/'
     | '/_auth/app/account'
     | '/_auth/app/cuisine'
+    | '/_auth/app/feedback'
     | '/_auth/app/menu'
     | '/_auth/app/onboarding'
     | '/_auth/app/rapport'
@@ -665,6 +677,13 @@ declare module '@tanstack/react-router' {
       path: '/cuisine'
       fullPath: '/app/cuisine'
       preLoaderRoute: typeof AuthAppCuisineRouteImport
+      parentRoute: typeof AuthAppRoute
+    }
+    '/_auth/app/feedback': {
+      id: '/_auth/app/feedback'
+      path: '/feedback'
+      fullPath: '/app/feedback'
+      preLoaderRoute: typeof AuthAppFeedbackRouteImport
       parentRoute: typeof AuthAppRoute
     }
     '/_auth/app/menu': {
@@ -914,6 +933,7 @@ const AuthAppServiceRouteWithChildren = AuthAppServiceRoute._addFileChildren(
 interface AuthAppRouteChildren {
   AuthAppAccountRoute: typeof AuthAppAccountRoute
   AuthAppCuisineRoute: typeof AuthAppCuisineRoute
+  AuthAppFeedbackRoute: typeof AuthAppFeedbackRoute
   AuthAppMenuRoute: typeof AuthAppMenuRouteWithChildren
   AuthAppOnboardingRoute: typeof AuthAppOnboardingRoute
   AuthAppRapportRoute: typeof AuthAppRapportRoute
@@ -933,6 +953,7 @@ interface AuthAppRouteChildren {
 const AuthAppRouteChildren: AuthAppRouteChildren = {
   AuthAppAccountRoute: AuthAppAccountRoute,
   AuthAppCuisineRoute: AuthAppCuisineRoute,
+  AuthAppFeedbackRoute: AuthAppFeedbackRoute,
   AuthAppMenuRoute: AuthAppMenuRouteWithChildren,
   AuthAppOnboardingRoute: AuthAppOnboardingRoute,
   AuthAppRapportRoute: AuthAppRapportRoute,

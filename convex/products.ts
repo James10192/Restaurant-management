@@ -233,6 +233,8 @@ export const get = query({
       allergens: p.allergens,
       dietary: p.dietary,
       prepMinutes: p.prepMinutes ?? null,
+      /** Les plats que le restaurant suggère avec celui-ci, dans son ordre (D-104). */
+      relatedProductIds: p.relatedProductIds,
       isActive: p.isActive,
       isAvailable: p.isAvailable,
       unavailableUntil: p.unavailableUntil ?? null,

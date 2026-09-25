@@ -58,6 +58,14 @@ function SplitForm({ bill, rest, onDone }: { bill: Bill; rest: BillCheck; onDone
 
   const estimate = lines.reduce((s, l) => s + Math.floor((l.amount * (taken[l.orderItemId] ?? 0)) / l.quantity), 0);
   const chosen = Object.entries(taken).filter(([, q]) => q > EPSILON);
+  // Les convives qui ont commandé de leur téléphone (D-102) : « Articles du convive 2 » coche d'un
+  // geste toutes leurs lignes. Les lignes sans convive unique restent au reste de la table.
+  const guestNumbers = [...new Set(lines.map((l) => l.guestNumber).filter((n): n is number => n !== null))].sort((a, b) => a - b);
+
+  function presetGuest(n: number) {
+    setTaken(Object.fromEntries(lines.filter((l) => l.guestNumber === n).map((l) => [l.orderItemId, l.quantity])));
+    if (!label.trim()) setLabel(`Convive ${n}`);
+  }
 
   function set(id: Id<"orderItems">, q: number, max: number) {
     setTaken((t) => ({ ...t, [id]: Math.max(0, Math.min(max, q)) }));
@@ -88,6 +96,15 @@ function SplitForm({ bill, rest, onDone }: { bill: Bill; rest: BillCheck; onDone
         <ResponsiveDialogTitle>Partager par articles</ResponsiveDialogTitle>
         <ResponsiveDialogDescription>Choisissez ce que cette personne paie. Un plat partagé : prenez-en la moitié.</ResponsiveDialogDescription>
       </ResponsiveDialogHeader>
+      {guestNumbers.length > 0 ? (
+        <div className="flex flex-wrap gap-2" role="group" aria-label="Présélection par convive">
+          {guestNumbers.map((n) => (
+            <Button key={n} type="button" size="sm" variant="outline" onClick={() => presetGuest(n)}>
+              Articles du convive {n}
+            </Button>
+          ))}
+        </div>
+      ) : null}
       <FormField label="Au nom de" optional>
         <Input maxLength={40} placeholder="Ex. : Marcel" value={label} onChange={(e) => setLabel(e.target.value)} />
       </FormField>
@@ -102,7 +119,10 @@ function SplitForm({ bill, rest, onDone }: { bill: Bill; rest: BillCheck; onDone
                   {quantityLabel(l.quantity)} × {l.name}
                   {l.variantName ? ` — ${l.variantName}` : ""}
                 </ItemTitle>
-                <ItemDescription>{money(l.amount)}</ItemDescription>
+                <ItemDescription>
+                  {money(l.amount)}
+                  {l.guestNumber !== null ? ` · Convive ${l.guestNumber}` : ""}
+                </ItemDescription>
               </ItemContent>
               <ItemActions>
                 <Button type="button" size="sm" variant="ghost" disabled={!canHalf} onClick={() => set(l.orderItemId, q + 0.5, l.quantity)}>

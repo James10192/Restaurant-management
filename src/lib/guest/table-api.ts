@@ -13,6 +13,9 @@ export type Presence = NonNullable<FunctionReturnType<typeof api.guestService.pr
 export type SaveCartResult = FunctionReturnType<typeof api.guestService.saveCart>;
 export type SubmitCartResult = FunctionReturnType<typeof api.guestService.submitCart>;
 export type RequestServiceResult = FunctionReturnType<typeof api.guestService.requestService>;
+export type EnterCodeResult = FunctionReturnType<typeof api.guestService.enterCode>;
+export type SubmitLinesResult = FunctionReturnType<typeof api.guestService.submitLines>;
+export type SubmitFeedbackResult = FunctionReturnType<typeof api.guestService.submitFeedback>;
 
 export type WireLine = { productId: string; variantId?: string; optionIds: string[]; quantity: number; instructions?: string };
 
@@ -20,15 +23,22 @@ export type TableAction =
   | { action: "presence"; guestKey: string }
   | { action: "saveCart"; guestKey: string; lines: WireLine[] }
   | { action: "submitCart"; guestKey: string; idempotencyKey: string }
-  | { action: "requestService"; guestKey: string; type: string };
+  | { action: "requestService"; guestKey: string; type: string }
+  | { action: "enterCode"; guestKey: string; code: string }
+  | { action: "submitLines"; guestKey: string; idempotencyKey: string; lines: WireLine[] }
+  | { action: "submitFeedback"; guestKey: string; rating: number; comment?: string; topics: string[] };
 
-type ResultOf<A extends TableAction["action"]> = A extends "presence"
-  ? Presence
-  : A extends "saveCart"
-    ? SaveCartResult
-    : A extends "submitCart"
-      ? SubmitCartResult
-      : RequestServiceResult;
+type Results = {
+  presence: Presence;
+  saveCart: SaveCartResult;
+  submitCart: SubmitCartResult;
+  requestService: RequestServiceResult;
+  enterCode: EnterCodeResult;
+  submitLines: SubmitLinesResult;
+  submitFeedback: SubmitFeedbackResult;
+};
+
+type ResultOf<A extends TableAction["action"]> = Results[A];
 
 /** `no_pass` : le laissez-passer n'est plus valable, il faut rescanner. `network` : pas de réponse. */
 export type TableCallError = "no_pass" | "network" | "unavailable";

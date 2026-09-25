@@ -43,6 +43,7 @@ import { EMPTY_DRAFT, OrderComposer, type Draft } from "./order-composer";
 import { useOutbox } from "./outbox-provider";
 import { useMoney, useServiceScope } from "./service-scope";
 import { ServiceStatus } from "./service-status";
+import { TableCodePending, TableGuests } from "./table-guests";
 
 type Detail = FunctionReturnType<typeof api.sessions.detail>;
 type Order = Detail["orders"][number];
@@ -176,6 +177,8 @@ export function TableView({ tableId }: { tableId: Id<"restaurantTables"> }) {
         {detail ? <TableActions detail={detail} /> : null}
       </div>
       <ServiceStatus />
+
+      {detail ? <TableGuests detail={detail} /> : !sessionId && openEntry && floor.orderingMode === "guest_direct" ? <TableCodePending /> : null}
 
       {!sessionId && !openEntry ? (
         <EmptyState
@@ -419,7 +422,7 @@ function OrderCard({ order, detail }: { order: Order; detail: Detail }) {
                     {i.variantName ? ` (${i.variantName})` : ""}
                   </ItemTitle>
                   <ItemDescription>
-                    {[`S${i.courseNumber}`, waiting ? "Attend l'appel" : (ITEM_STATUS[i.status] ?? i.status), ...i.modifiers, i.instructions ? `« ${i.instructions} »` : null, i.cancelledReason]
+                    {[`S${i.courseNumber}`, i.guestNumber !== null ? `Convive ${i.guestNumber}` : null, waiting ? "Attend l'appel" : (ITEM_STATUS[i.status] ?? i.status), ...i.modifiers, i.instructions ? `« ${i.instructions} »` : null, i.cancelledReason]
                       .filter(Boolean)
                       .join(" · ")}
                   </ItemDescription>
