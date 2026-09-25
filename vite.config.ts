@@ -62,6 +62,16 @@ export default defineConfig(({ command }) => ({
             "Referrer-Policy": "no-referrer",
           },
         },
+        // L'aperçu de l'écran Apparence (D-157) : la SEULE page qui se laisse encadrer, et par
+        // Joliba seulement. Données du restaurant avant publication : jamais en cache, jamais indexée.
+        "/apercu/**": {
+          headers: {
+            "X-Frame-Options": "SAMEORIGIN",
+            "Content-Security-Policy": "frame-ancestors 'self'",
+            "Cache-Control": "no-store",
+            "X-Robots-Tag": "noindex, nofollow",
+          },
+        },
         // La carte publique : courte durée en cache partagé, la disponibilité arrive en direct.
         "/menu/**": { headers: { "Cache-Control": "public, max-age=0, s-maxage=60, stale-while-revalidate=300" } },
         // Le service worker doit être relu à chaque visite, sinon une correction n'arrive jamais.

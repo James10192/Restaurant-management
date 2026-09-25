@@ -667,6 +667,9 @@ const CASES: Record<string, (w: Awaited<ReturnType<typeof twoTenants>>) => Promi
   "branding.get": async ({ a, b }) => {
     await expectCode(a.owner.as.query(api.branding.get, { venueId: b.venueId }), "NOT_FOUND");
   },
+  "branding.previewMenu": async ({ a, b }) => {
+    await expectCode(a.owner.as.query(api.branding.previewMenu, { venueId: b.venueId }), "NOT_FOUND");
+  },
   "branding.setColor": async ({ a, b }) => {
     await expectCode(a.owner.as.mutation(api.branding.setColor, { venueId: b.venueId, color: "#b00020" }), "NOT_FOUND");
   },

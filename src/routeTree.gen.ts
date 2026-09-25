@@ -21,6 +21,7 @@ import { Route as ApiHealthRouteImport } from './routes/api/health'
 import { Route as AppareilIndexRouteImport } from './routes/appareil.index'
 import { Route as AppareilCaisseRouteImport } from './routes/appareil.caisse'
 import { Route as MenuVenueSlugRouteImport } from './routes/menu.$venueSlug'
+import { Route as AuthApercuVenueIdRouteImport } from './routes/_auth.apercu.$venueId'
 import { Route as AuthAppIndexRouteImport } from './routes/_auth.app.index'
 import { Route as AuthAppAccountRouteImport } from './routes/_auth.app.account'
 import { Route as AuthAppAnalyticsRouteImport } from './routes/_auth.app.analytics'
@@ -47,6 +48,7 @@ import { Route as AuthAppRolesIndexRouteImport } from './routes/_auth.app.roles.
 import { Route as AuthAppRolesRoleIdRouteImport } from './routes/_auth.app.roles.$roleId'
 import { Route as AuthAppServiceIndexRouteImport } from './routes/_auth.app.service.index'
 import { Route as AuthAppServiceCaisseRouteImport } from './routes/_auth.app.service.caisse'
+import { Route as AuthAppSettingsApparenceRouteImport } from './routes/_auth.app.settings.apparence'
 import { Route as AuthAppSettingsDevicesRouteImport } from './routes/_auth.app.settings.devices'
 import { Route as AuthAppSettingsPaymentsRouteImport } from './routes/_auth.app.settings.payments'
 import { Route as AuthAppSettingsStationsRouteImport } from './routes/_auth.app.settings.stations'
@@ -114,6 +116,11 @@ const MenuVenueSlugRoute = MenuVenueSlugRouteImport.update({
   id: '/menu/$venueSlug',
   path: '/menu/$venueSlug',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AuthApercuVenueIdRoute = AuthApercuVenueIdRouteImport.update({
+  id: '/apercu/$venueId',
+  path: '/apercu/$venueId',
+  getParentRoute: () => AuthRoute,
 } as any)
 const AuthAppIndexRoute = AuthAppIndexRouteImport.update({
   id: '/',
@@ -245,6 +252,12 @@ const AuthAppServiceCaisseRoute = AuthAppServiceCaisseRouteImport.update({
   path: '/caisse',
   getParentRoute: () => AuthAppServiceRoute,
 } as any)
+const AuthAppSettingsApparenceRoute =
+  AuthAppSettingsApparenceRouteImport.update({
+    id: '/settings/apparence',
+    path: '/settings/apparence',
+    getParentRoute: () => AuthAppRoute,
+  } as any)
 const AuthAppSettingsDevicesRoute = AuthAppSettingsDevicesRouteImport.update({
   id: '/settings/devices',
   path: '/settings/devices',
@@ -301,6 +314,7 @@ export interface FileRoutesByFullPath {
   '/appareil/caisse': typeof AppareilCaisseRoute
   '/menu/$venueSlug': typeof MenuVenueSlugRoute
   '/appareil/': typeof AppareilIndexRoute
+  '/apercu/$venueId': typeof AuthApercuVenueIdRoute
   '/app/account': typeof AuthAppAccountRoute
   '/app/analytics': typeof AuthAppAnalyticsRoute
   '/app/cuisine': typeof AuthAppCuisineRoute
@@ -323,6 +337,7 @@ export interface FileRoutesByFullPath {
   '/app/menu/options': typeof AuthAppMenuOptionsRoute
   '/app/roles/$roleId': typeof AuthAppRolesRoleIdRoute
   '/app/service/caisse': typeof AuthAppServiceCaisseRoute
+  '/app/settings/apparence': typeof AuthAppSettingsApparenceRoute
   '/app/settings/devices': typeof AuthAppSettingsDevicesRoute
   '/app/settings/payments': typeof AuthAppSettingsPaymentsRoute
   '/app/settings/stations': typeof AuthAppSettingsStationsRoute
@@ -346,6 +361,7 @@ export interface FileRoutesByTo {
   '/appareil/caisse': typeof AppareilCaisseRoute
   '/menu/$venueSlug': typeof MenuVenueSlugRoute
   '/appareil': typeof AppareilIndexRoute
+  '/apercu/$venueId': typeof AuthApercuVenueIdRoute
   '/app/account': typeof AuthAppAccountRoute
   '/app/analytics': typeof AuthAppAnalyticsRoute
   '/app/cuisine': typeof AuthAppCuisineRoute
@@ -366,6 +382,7 @@ export interface FileRoutesByTo {
   '/app/menu/options': typeof AuthAppMenuOptionsRoute
   '/app/roles/$roleId': typeof AuthAppRolesRoleIdRoute
   '/app/service/caisse': typeof AuthAppServiceCaisseRoute
+  '/app/settings/apparence': typeof AuthAppSettingsApparenceRoute
   '/app/settings/devices': typeof AuthAppSettingsDevicesRoute
   '/app/settings/payments': typeof AuthAppSettingsPaymentsRoute
   '/app/settings/stations': typeof AuthAppSettingsStationsRoute
@@ -393,6 +410,7 @@ export interface FileRoutesById {
   '/appareil/caisse': typeof AppareilCaisseRoute
   '/menu/$venueSlug': typeof MenuVenueSlugRoute
   '/appareil/': typeof AppareilIndexRoute
+  '/_auth/apercu/$venueId': typeof AuthApercuVenueIdRoute
   '/_auth/app/account': typeof AuthAppAccountRoute
   '/_auth/app/analytics': typeof AuthAppAnalyticsRoute
   '/_auth/app/cuisine': typeof AuthAppCuisineRoute
@@ -415,6 +433,7 @@ export interface FileRoutesById {
   '/_auth/app/menu/options': typeof AuthAppMenuOptionsRoute
   '/_auth/app/roles/$roleId': typeof AuthAppRolesRoleIdRoute
   '/_auth/app/service/caisse': typeof AuthAppServiceCaisseRoute
+  '/_auth/app/settings/apparence': typeof AuthAppSettingsApparenceRoute
   '/_auth/app/settings/devices': typeof AuthAppSettingsDevicesRoute
   '/_auth/app/settings/payments': typeof AuthAppSettingsPaymentsRoute
   '/_auth/app/settings/stations': typeof AuthAppSettingsStationsRoute
@@ -442,6 +461,7 @@ export interface FileRouteTypes {
     | '/appareil/caisse'
     | '/menu/$venueSlug'
     | '/appareil/'
+    | '/apercu/$venueId'
     | '/app/account'
     | '/app/analytics'
     | '/app/cuisine'
@@ -464,6 +484,7 @@ export interface FileRouteTypes {
     | '/app/menu/options'
     | '/app/roles/$roleId'
     | '/app/service/caisse'
+    | '/app/settings/apparence'
     | '/app/settings/devices'
     | '/app/settings/payments'
     | '/app/settings/stations'
@@ -487,6 +508,7 @@ export interface FileRouteTypes {
     | '/appareil/caisse'
     | '/menu/$venueSlug'
     | '/appareil'
+    | '/apercu/$venueId'
     | '/app/account'
     | '/app/analytics'
     | '/app/cuisine'
@@ -507,6 +529,7 @@ export interface FileRouteTypes {
     | '/app/menu/options'
     | '/app/roles/$roleId'
     | '/app/service/caisse'
+    | '/app/settings/apparence'
     | '/app/settings/devices'
     | '/app/settings/payments'
     | '/app/settings/stations'
@@ -533,6 +556,7 @@ export interface FileRouteTypes {
     | '/appareil/caisse'
     | '/menu/$venueSlug'
     | '/appareil/'
+    | '/_auth/apercu/$venueId'
     | '/_auth/app/account'
     | '/_auth/app/analytics'
     | '/_auth/app/cuisine'
@@ -555,6 +579,7 @@ export interface FileRouteTypes {
     | '/_auth/app/menu/options'
     | '/_auth/app/roles/$roleId'
     | '/_auth/app/service/caisse'
+    | '/_auth/app/settings/apparence'
     | '/_auth/app/settings/devices'
     | '/_auth/app/settings/payments'
     | '/_auth/app/settings/stations'
@@ -669,6 +694,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/menu/$venueSlug'
       preLoaderRoute: typeof MenuVenueSlugRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_auth/apercu/$venueId': {
+      id: '/_auth/apercu/$venueId'
+      path: '/apercu/$venueId'
+      fullPath: '/apercu/$venueId'
+      preLoaderRoute: typeof AuthApercuVenueIdRouteImport
+      parentRoute: typeof AuthRoute
     }
     '/_auth/app/': {
       id: '/_auth/app/'
@@ -852,6 +884,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthAppServiceCaisseRouteImport
       parentRoute: typeof AuthAppServiceRoute
     }
+    '/_auth/app/settings/apparence': {
+      id: '/_auth/app/settings/apparence'
+      path: '/settings/apparence'
+      fullPath: '/app/settings/apparence'
+      preLoaderRoute: typeof AuthAppSettingsApparenceRouteImport
+      parentRoute: typeof AuthAppRoute
+    }
     '/_auth/app/settings/devices': {
       id: '/_auth/app/settings/devices'
       path: '/settings/devices'
@@ -962,6 +1001,7 @@ interface AuthAppRouteChildren {
   AuthAppIndexRoute: typeof AuthAppIndexRoute
   AuthAppFloorPrintRoute: typeof AuthAppFloorPrintRoute
   AuthAppRolesRoleIdRoute: typeof AuthAppRolesRoleIdRoute
+  AuthAppSettingsApparenceRoute: typeof AuthAppSettingsApparenceRoute
   AuthAppSettingsDevicesRoute: typeof AuthAppSettingsDevicesRoute
   AuthAppSettingsPaymentsRoute: typeof AuthAppSettingsPaymentsRoute
   AuthAppSettingsStationsRoute: typeof AuthAppSettingsStationsRoute
@@ -983,6 +1023,7 @@ const AuthAppRouteChildren: AuthAppRouteChildren = {
   AuthAppIndexRoute: AuthAppIndexRoute,
   AuthAppFloorPrintRoute: AuthAppFloorPrintRoute,
   AuthAppRolesRoleIdRoute: AuthAppRolesRoleIdRoute,
+  AuthAppSettingsApparenceRoute: AuthAppSettingsApparenceRoute,
   AuthAppSettingsDevicesRoute: AuthAppSettingsDevicesRoute,
   AuthAppSettingsPaymentsRoute: AuthAppSettingsPaymentsRoute,
   AuthAppSettingsStationsRoute: AuthAppSettingsStationsRoute,
@@ -997,6 +1038,7 @@ const AuthAppRouteWithChildren =
 interface AuthRouteChildren {
   AuthAppRoute: typeof AuthAppRouteWithChildren
   AuthConnexionRoute: typeof AuthConnexionRoute
+  AuthApercuVenueIdRoute: typeof AuthApercuVenueIdRoute
   AuthAuthOtpRoute: typeof AuthAuthOtpRoute
   AuthInvitationTokenRoute: typeof AuthInvitationTokenRoute
 }
@@ -1004,6 +1046,7 @@ interface AuthRouteChildren {
 const AuthRouteChildren: AuthRouteChildren = {
   AuthAppRoute: AuthAppRouteWithChildren,
   AuthConnexionRoute: AuthConnexionRoute,
+  AuthApercuVenueIdRoute: AuthApercuVenueIdRoute,
   AuthAuthOtpRoute: AuthAuthOtpRoute,
   AuthInvitationTokenRoute: AuthInvitationTokenRoute,
 }

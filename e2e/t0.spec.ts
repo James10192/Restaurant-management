@@ -26,6 +26,10 @@ test("T0 — ouvrir, inviter, cloisonner", async ({ browser }) => {
   await owner.getByLabel("Ville").fill("Abidjan");
   await shot(owner, "onboarding");
   await owner.getByRole("button", { name: "Ouvrir l'établissement" }).click();
+  // Deuxième étape, facultative : la marque (D-159).
+  await expect(owner.getByRole("heading", { name: "Votre marque sur la carte" })).toBeVisible();
+  await shot(owner, "onboarding-marque");
+  await owner.getByRole("button", { name: "Continuer" }).click();
   await expect(owner.getByRole("heading", { name: "Maquis Awa" })).toBeVisible();
   await shot(owner, "accueil-proprietaire");
 

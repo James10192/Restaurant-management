@@ -48,6 +48,7 @@ test("T1 — composer, publier, imprimer, scanner, couper un plat", async ({ bro
   await owner.getByLabel("Nom de votre restaurant ou de votre groupe").fill(`Chez Mariam ${run}`);
   await owner.getByLabel("Ville").fill("Abidjan");
   await owner.getByRole("button", { name: "Ouvrir l'établissement" }).click();
+  await owner.getByRole("button", { name: "Continuer" }).click();
   await expect(owner.getByRole("heading", { name: `Chez Mariam ${run}` })).toBeVisible();
 
   // ── Une carte, ses sections ─────────────────────────────────────────────────────

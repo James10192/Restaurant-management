@@ -16,6 +16,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { writeAudit } from "./lib/audit";
 import { HEX_PATTERN, hexToRgb, JOLIBA_BRAND, normalizeHex, resolveBrandColor, worstContrast, type BrandColor } from "./lib/brand";
 import { invalid } from "./lib/errors";
+import { loadLiveAvailability, loadPublishedMenus, publicVenue } from "./lib/guestMenu";
 import { requirePermission, type ReadCtx, type VenueActor } from "./lib/guards";
 import { assertFreshUnusedFiles } from "./lib/uploads";
 
@@ -59,6 +60,23 @@ export const get = query({
       logo: branding.logo
         ? { url: await ctx.storage.getUrl(branding.logo.storageId), width: branding.logo.width, height: branding.logo.height }
         : null,
+    };
+  },
+});
+
+/**
+ * La carte EN LIGNE telle que le client la voit, pour l'aperçu de l'écran Apparence (D-157).
+ * Mêmes données que la carte publique, mais sans exiger qu'elle soit publique : on règle son
+ * apparence avant de l'ouvrir au monde.
+ */
+export const previewMenu = query({
+  args: { venueId: v.id("venues") },
+  handler: async (ctx, args) => {
+    const actor = await requirePermission(ctx, "venue.manage", { venueId: args.venueId });
+    return {
+      venue: await publicVenue(ctx, actor.venue),
+      menus: await loadPublishedMenus(ctx, actor.venue._id),
+      live: await loadLiveAvailability(ctx, actor.venue._id),
     };
   },
 });

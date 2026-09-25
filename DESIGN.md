@@ -835,6 +835,29 @@ d'entrée de gamme en 4G bridée à 1,6 Mbit/s avec 300 ms de latence. HTML + CS
 compressés. Images au-dessus de la ligne de flottaison ≤ **180 Ko** au total. JavaScript avant
 interaction ≤ **120 Ko** compressés. **Un dépassement est un défaut bloquant, pas une dette.**
 
+### 5.0 L'apparence du restaurant (T7.a, D-149 à D-167)
+
+La carte client porte **la couleur et le logo du restaurant, et rien d'autre** : ni gabarit, ni
+police, ni mode sombre par établissement.
+
+- **La couleur** est celle que le restaurant saisit, rendue lisible à l'enregistrement : même
+  teinte, clarté OKLCH abaissée jusqu'à 4,5:1 sur trois paires (couleur sur fond, texte clair sur
+  couleur, ce texte à 80 %). Elle arrive dans la page par un `<style>` sur `:root`
+  (`--primary`, `--ring`), sans JavaScript. Sans couleur choisie, c'est celle de Joliba.
+- **Elle ne marque que deux choses** : le « + » d'ajout et la section qu'on lit (D-166). Le nom, les
+  prix, les titres restent dans la couleur du texte : une couleur vive ne doit pas crier partout.
+- **Le logo** : 48 px, sur une pastille blanche bordée d'un filet, à gauche du nom ; PNG ou WebP de
+  256 px au plus, 20 Ko au plus, sans SVG.
+- **Le nom** en casse normale, gras, 28–32 px ; les titres de section en 20 px gras, sur un filet
+  fin, sans rang. Sections et cartes publiées sont **soulignées**, jamais remplies.
+- **La devise est écrite une fois** (« Prix en F CFA ») au-dessus de la liste ; chaque prix de la
+  liste n'affiche que ses chiffres. La fiche, le panier et toute pièce gardent le montant complet.
+- **L'écran Apparence** (Réglages › Apparence, et l'étape « Votre marque » de la mise en route) montre
+  la vraie carte dans un cadre de 390 px, qui suit la saisie avant l'enregistrement.
+
+> Ce qui suit (§5.1 et au-delà) décrit la cible d'origine. Là où la carte livrée en diffère — lignes
+> de plat plutôt que grille, prix en couleur du texte —, c'est UI.7 (D-161) et D-166 qui font foi.
+
 ### 5.1 Carte produit (`DishCard`)
 
 Deux formes, jamais trois.

@@ -14,7 +14,10 @@ téléphone sans code tenu à l'écart) et `t5.spec.ts` (le paiement en ligne : 
 le prouve par un événement de test signé, deux convives règlent depuis la table — ses articles pour
 l'un, le reste pour l'autre — en passant par la page de paiement Wave, un double appui ne crée
 qu'une session, le serveur voit l'addition soldée sans recharger, un webhook rejoué ne double rien,
-un corps altéré est refusé, et le rapprochement du lendemain retrouve les deux paiements) s'exécutent dans un vrai navigateur, contre le build de production et un
+un corps altéré est refusé, et le rapprochement du lendemain retrouve les deux paiements) et `t7.spec.ts`
+(l'apparence : un jaune vif et un logo choisis à la mise en route, suivis par l'aperçu avant
+l'enregistrement ; sur la carte publique, les contrastes mesurés dans la page rendue, et la même
+couleur que dans l'aperçu) s'exécutent dans un vrai navigateur, contre le build de production et un
 backend Convex **local** (sans compte). Aucun service extérieur n'est appelé : les e-mails, codes
 de connexion compris, sont recueillis par un faux serveur de courrier, et Wave est joué par un faux
 serveur Wave (`e2e/wave-sink.mjs`) auquel parle le vrai adaptateur de Joliba (D-125).

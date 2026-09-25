@@ -14,9 +14,14 @@ import { Checkbox } from "~/components/ui/checkbox";
 import { Field, FieldGroup, FieldLabel } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "~/components/ui/native-select";
+import { Button } from "~/components/ui/button";
+import { AppearanceEditor } from "~/components/venue/appearance";
 import { describeError } from "~/lib/errors";
 
 export const Route = createFileRoute("/_auth/app/onboarding")({
+  // L'étape vit dans l'adresse : choisir la nouvelle organisation remonte la page, un état local
+  // serait perdu (et un rechargement ramènerait au formulaire déjà envoyé).
+  validateSearch: (search: Record<string, unknown>): { etape?: "marque" } => (search.etape === "marque" ? { etape: "marque" } : {}),
   head: () => ({ meta: [{ title: "Ouvrir mon établissement — Joliba" }] }),
   component: Onboarding,
 });
@@ -40,6 +45,7 @@ function Onboarding() {
   const [errors, setErrors] = useState<Errors>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const { etape } = Route.useSearch();
 
   const country = COUNTRIES[countryCode];
   const venueName = sameName ? organization : venue;
@@ -62,11 +68,31 @@ function Onboarding() {
         venue: { name: venueName, venueType, ...(city.trim() ? { city } : {}) },
       });
       w.selectOrganization(result.organizationId);
-      await navigate({ to: "/app" });
+      // Deuxième étape, facultative : la marque (D-159).
+      await navigate({ to: "/app/onboarding", search: { etape: "marque" } });
+      setSubmitting(false);
     } catch (e) {
       setFormError(describeError(e).message);
       setSubmitting(false);
     }
+  }
+
+  // Le même éditeur que Réglages › Apparence, sur l'établissement qu'on vient d'ouvrir.
+  if (etape === "marque" && w.venue && w.canInVenue("venue.manage")) {
+    return (
+      <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div className="flex flex-col gap-1">
+            <h1 className="text-2xl font-semibold tracking-tight">Votre marque sur la carte</h1>
+            <p className="text-muted-foreground">Facultatif : votre couleur et votre logo. Vous les retrouverez dans Réglages › Apparence.</p>
+          </div>
+          <Button size="lg" onClick={() => void navigate({ to: "/app" })}>
+            Continuer
+          </Button>
+        </div>
+        <AppearanceEditor venueId={w.venue._id} />
+      </div>
+    );
   }
 
   return (
