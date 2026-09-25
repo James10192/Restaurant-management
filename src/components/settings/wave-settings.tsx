@@ -15,6 +15,16 @@ import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { PendingButton } from "~/components/app/pending-button";
 import { Alert, AlertDescription, AlertTitle } from "~/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "~/components/ui/alert-dialog";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "~/components/ui/card";
@@ -34,6 +44,14 @@ const STATUS = {
   disabled: { label: "Coupé", variant: "destructive" },
 } as const;
 
+/** Ce que Wave a répondu au test, dit au gérant. */
+function connectionError(code: string | null): string {
+  if (code === "invalid-wallet" || code === "disabled-wallet") return "Wave répond, mais le portefeuille Wave Business de cette clé est invalide ou bloqué : voyez avec Wave.";
+  if (code === "unauthorized") return "Wave refuse cette clé, ou elle n'a pas le droit « Checkout » : vérifiez la clé collée et ses droits dans le portail.";
+  if (code === "unreachable" || code === "rate_limited") return "Wave ne répond pas pour l'instant : réessayez dans un moment.";
+  return "Wave a refusé la connexion : vérifiez la clé collée.";
+}
+
 export function WaveSettings({ venueId }: { venueId: Id<"venues"> }) {
   const view = useQuery(api.paymentAccounts.forVenue, { venueId });
   const history = useQuery(api.onlinePayments.reconciliations, { venueId });
@@ -48,6 +66,8 @@ export function WaveSettings({ venueId }: { venueId: Id<"venues"> }) {
   const [webhookSecret, setWebhookSecret] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** Les gestes qui coupent le paiement en ligne aux clients se confirment. */
+  const [confirming, setConfirming] = useState<"save" | "disable" | "path" | null>(null);
 
   if (!view) return null;
   const account = view.account;
@@ -75,6 +95,39 @@ export function WaveSettings({ venueId }: { venueId: Id<"venues"> }) {
       </Card>
     );
   }
+
+  const save = () =>
+    void run(
+      "save",
+      async () => {
+        await saveSecrets({ venueId, ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {}), ...(webhookSecret.trim() ? { webhookSecret: webhookSecret.trim() } : {}) });
+        setApiKey("");
+        setWebhookSecret("");
+      },
+      "Enregistré et chiffré.",
+    );
+  const disableNow = () => void run("disable", () => disable({ venueId }), "Paiement en ligne coupé.");
+  const rotateNow = () => void run("path", () => rotatePath({ venueId }), "Nouvelle adresse : recollez-la chez Wave, puis renvoyez l'événement de test.");
+  const confirmText = {
+    save: {
+      title: "Remplacer les clés Wave ?",
+      text: "Le paiement en ligne est coupé pour les clients jusqu'à ce que les nouvelles clés soient prouvées : tester la connexion, recevoir l'événement de test, puis « Proposer aux clients ».",
+      action: "Remplacer",
+      run: save,
+    },
+    disable: {
+      title: "Couper le paiement en ligne ?",
+      text: "Les clients ne verront plus « Régler ». Les paiements déjà commencés vont à leur terme et restent enregistrés.",
+      action: "Couper",
+      run: disableNow,
+    },
+    path: {
+      title: "Changer l'adresse du webhook ?",
+      text: "L'ancienne adresse cesse de répondre tout de suite, et le paiement en ligne est coupé jusqu'à ce que la nouvelle soit collée chez Wave et prouvée par l'événement de test. Ne le faites qu'en cas de fuite de l'adresse.",
+      action: "Changer l'adresse",
+      run: rotateNow,
+    },
+  } as const;
 
   const tested = account?.lastConnectionOk === true;
   const eventReceived = account?.lastTestEventAt !== null && account?.lastTestEventAt !== undefined;
@@ -172,17 +225,7 @@ export function WaveSettings({ venueId }: { venueId: Id<"venues"> }) {
           className="self-start"
           pending={busy === "save"}
           disabled={!view.encryptionReady || (!apiKey.trim() && !webhookSecret.trim())}
-          onClick={() =>
-            void run(
-              "save",
-              async () => {
-                await saveSecrets({ venueId, ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {}), ...(webhookSecret.trim() ? { webhookSecret: webhookSecret.trim() } : {}) });
-                setApiKey("");
-                setWebhookSecret("");
-              },
-              "Enregistré et chiffré.",
-            )
-          }
+          onClick={() => (account?.status === "active" ? setConfirming("save") : save())}
         >
           <KeyRound />
           Enregistrer les clés
@@ -204,7 +247,13 @@ export function WaveSettings({ venueId }: { venueId: Id<"venues"> }) {
                   </ItemDescription>
                 </ItemContent>
                 <ItemActions>
-                  <PendingButton size="sm" variant="outline" pending={busy === "test"} onClick={() => void run("test", () => testConnection({ venueId }))}>
+                  <PendingButton size="sm" variant="outline" pending={busy === "test"} onClick={() =>
+                      void run("test", async () => {
+                        const r = await testConnection({ venueId });
+                        if (!r.ok) setError(connectionError(r.error));
+                      })
+                    }
+                  >
                     Tester la connexion
                   </PendingButton>
                 </ItemActions>
@@ -262,7 +311,7 @@ export function WaveSettings({ venueId }: { venueId: Id<"venues"> }) {
                         {r.status === "unavailable"
                           ? "Indisponible : la clé n'a pas le droit « Solde »."
                           : r.status === "failed"
-                            ? "Wave n'a pas répondu ; nouvel essai demain."
+                            ? "Wave n'a pas répondu : la lecture sera retentée chaque matin pendant une semaine."
                             : `${r.matched} rapproché${r.matched > 1 ? "s" : ""} · commissions ${formatMoney({ amount: r.fees, currency: "XOF" })}`}
                       </ItemDescription>
                     </ItemContent>
@@ -288,7 +337,7 @@ export function WaveSettings({ venueId }: { venueId: Id<"venues"> }) {
               Proposer aux clients
             </PendingButton>
           ) : (
-            <PendingButton variant="outline" pending={busy === "disable"} onClick={() => void run("disable", () => disable({ venueId }), "Paiement en ligne coupé.")}>
+            <PendingButton variant="outline" pending={busy === "disable"} onClick={() => setConfirming("disable")}>
               Couper le paiement en ligne
             </PendingButton>
           )}
@@ -297,11 +346,30 @@ export function WaveSettings({ venueId }: { venueId: Id<"venues"> }) {
               Retirer l'ancien secret du webhook
             </Button>
           ) : null}
-          <Button variant="ghost" onClick={() => void run("path", () => rotatePath({ venueId }), "Nouvelle adresse : recollez-la chez Wave.")}>
+          <Button variant="ghost" onClick={() => setConfirming("path")}>
             Changer l'adresse du webhook
           </Button>
         </CardFooter>
       ) : null}
+      <AlertDialog open={confirming !== null} onOpenChange={(o) => !o && setConfirming(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{confirming ? confirmText[confirming].title : ""}</AlertDialogTitle>
+            <AlertDialogDescription>{confirming ? confirmText[confirming].text : ""}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (confirming) confirmText[confirming].run();
+                setConfirming(null);
+              }}
+            >
+              {confirming ? confirmText[confirming].action : ""}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 }

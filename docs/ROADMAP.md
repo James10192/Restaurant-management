@@ -218,6 +218,7 @@ falsifié compris.
 | T5.a | Arbitrages adverses : un seul rail réel (Wave Côte d'Ivoire), qui paie et quoi, montant figé, comptes et secrets chiffrés, webhooks dans Convex, session Wave sans doublon, rattrapage, rapprochement, remboursements, faux serveur Wave, pourboires *(D-109 à D-129)* | fait (2026-09-25) |
 | T5.b | Moteur : comptes Wave par établissement, adaptateur Wave, intentions, webhooks signés, confirmation idempotente, gardes d'une intention ouverte, rattrapage toutes les 2 min, rapprochement quotidien, remboursement par Wave, alertes | fait (2026-09-25) |
 | T5.c | Écrans (composants shadcn uniquement) : « Régler » à la table et retour de Wave, paiements en ligne sur l'addition avec l'état du relevé, alertes à la caisse, réglage du compte Wave. Bout en bout `e2e/t5.spec.ts` contre un faux Wave, revue adverse, documentation, script d'essai réel `scripts/wave-probe.mjs` | fait (2026-09-25) |
+| T5.d | Corrections de la revue adverse : panne Wave sans table gelée, encaissement partiel refusé pendant un paiement en ligne, trop-perçu remboursé à hauteur de son montant, preuve par le secret en cours, ré-encodage après rotation, test du droit Checkout, rapprochement dans le bon ordre, limites par établissement *(D-130, D-131)* | fait (2026-09-25) |
 
 - Écarts assumés à la fin de T5 : **un seul rail en ligne** (Wave Côte d'Ivoire), l'agrégateur
   multi-rails reste à brancher *(D-109)* ; l'espèce ne passe pas derrière le contrat, le comptoir

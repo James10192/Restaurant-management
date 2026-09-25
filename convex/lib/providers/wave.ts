@@ -185,10 +185,17 @@ export function createWaveProvider(secrets: ProviderSecrets, baseUrl: string): O
     },
 
     async testConnection() {
+      // Le droit « Checkout » d'abord : une recherche sans effet, qui l'exige. Sans lui, la clé
+      // n'encaisse rien, quel que soit le reste.
+      await call("GET", `/v1/checkout/sessions/search?client_reference=${encodeURIComponent("jp_test_connexion")}`);
       try {
         await call("GET", "/v1/balance");
         return { balanceAccess: true };
       } catch (error) {
+        // Un portefeuille invalide ou bloqué répond aussi 403 : ce n'est pas un droit manquant.
+        if (error instanceof ProviderError && (error.providerCode === "invalid-wallet" || error.providerCode === "disabled-wallet")) {
+          throw new ProviderError("rejected", error.status, error.providerCode);
+        }
         // Une clé sans le droit « Solde » répond 403 : elle reste utilisable pour encaisser.
         if (error instanceof ProviderError && error.code === "unauthorized" && error.status === 403) return { balanceAccess: false };
         throw error;

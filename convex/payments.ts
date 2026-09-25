@@ -20,13 +20,13 @@ import { mutation } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { writeAudit } from "./lib/audit";
-import { closingState, loadSessionBilling } from "./lib/billing";
+import { closingState, formatAmount, loadSessionBilling } from "./lib/billing";
 import { getInVenue } from "./lib/catalogAccess";
 import { conflict, invalid, notFound } from "./lib/errors";
 import type { MutationCtx } from "./lib/guards";
 import { requireServiceMutation, type ServiceActor } from "./lib/serviceActor";
 import { isOpenSession, settingsOf } from "./lib/service";
-import { expireOpenIntentsOf } from "./lib/intents";
+import { expireOpenIntentsOf, openIntentsOfCheck, resolveOverpaidIfCovered } from "./lib/intents";
 import { cashModeOf, memberOf, requireAmount, requireReason, resolveCashSession } from "./cash";
 import { assertBillable, ensureRemainder } from "./checks";
 import { issueCreditNote } from "./bills";
@@ -96,6 +96,18 @@ export async function applyPayment(ctx: MutationCtx, actor: ServiceActor, sessio
   if (!target) throw notFound("Cette addition");
   if (target.balance.due <= 0) throw conflict("Cette addition est déjà soldée.");
   if (amount > target.balance.due) throw conflict(`Le montant dépasse ce qui reste à payer sur cette addition.`);
+  // Un paiement en ligne est en cours sur cette addition : un encaissement PARTIEL ferait passer le
+  // dû sous son montant figé, et Wave encaisserait un trop-perçu (D-114). Solder l'addition reste
+  // permis : la session Wave est alors fermée.
+  if (target.check && amount < target.balance.due) {
+    const open = await openIntentsOfCheck(ctx, target.check._id);
+    const online = open.reduce((sum, i) => sum + i.amount, 0);
+    if (online > 0 && target.balance.due - amount < online) {
+      throw conflict(
+        `Un client règle ${formatAmount(online, open[0]!.currency)} par Wave sur cette addition en ce moment : encaissez la totalité, ou annulez d'abord le paiement en ligne.`,
+      );
+    }
+  }
 
   // Espèces : remis ≥ montant ; monnaie rendue ≤ ce qui est dû au client. Sans monnaie rendue
   // saisie, on rend tout. Si le serveur la garde, elle ressortira en écart positif.
@@ -428,10 +440,8 @@ export const refund = mutation({
       await ctx.db.patch(payment._id, { status: settled + amount >= payment.amount ? "refunded" : "partially_refunded" });
       const sale = await saleBillFor(ctx, payment.checkId);
       if (sale) await issueCreditNote(ctx, actor.venue, sale, amount, reason);
-      // Un trop-perçu rendu en espèces n'est plus à rendre.
-      for (const alert of await ctx.db.query("paymentAlerts").withIndex("by_venue_dedupe", (q) => q.eq("venueId", actor.venue._id).eq("dedupeKey", `overpaid:${payment._id}`)).collect()) {
-        if (alert.resolvedAt === undefined) await ctx.db.patch(alert._id, { resolvedAt: now, resolvedByMemberId: member._id, resolution: "refunded" });
-      }
+      // Un trop-perçu rendu en espèces n'est plus à rendre — s'il l'est en entier.
+      await resolveOverpaidIfCovered(ctx, payment, member._id);
     }
     await writeAudit(ctx, {
       organizationId: actor.organization._id,

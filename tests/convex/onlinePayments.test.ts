@@ -16,6 +16,8 @@ import { expectCode } from "./setup";
 import { installFakeWave, signed, type FakeWave } from "./fakeWave";
 import { line, tableWithGuest } from "./guestFixtures";
 
+// L'adresse publique où Wave renvoie le client : l'activation l'exige en https.
+process.env.SITE_URL ??= "https://joliba.test";
 // La clé maîtresse des secrets, pour la durée des tests (jamais écrite ailleurs).
 process.env.PAYMENT_SECRETS_KEY ??= btoa(String.fromCharCode(...Array.from({ length: 32 }, (_, i) => (i * 37 + 11) % 256)));
 
@@ -321,6 +323,10 @@ describe("PAYMENTS §12 — la batterie de sortie de T5", () => {
     expect(await v.payments()).toHaveLength(0);
     const alerts = await v.t.run((ctx) => ctx.db.query("paymentAlerts").collect());
     expect(alerts.map((a) => a.kind)).toContain("currency_mismatch");
+    // Terminal : sinon la table ne se clôturerait plus jamais.
+    expect((await v.intents())[0]!.status).toBe("failed");
+    const rest = (await v.bill()).checks.find((c) => c.kind === "remainder")!;
+    await v.owner.as.mutation(api.checks.discount, { venueId: v.venueId, sessionId: v.sessionId, checkId: rest._id, amount: 500, reason: "Fidélité" });
   });
 
   test("montant du client ≠ montant du serveur → le serveur gagne ; un montant reçu différent s'enregistre tel quel, signalé", async () => {
@@ -385,6 +391,75 @@ describe("une intention ouverte protège son addition (D-114)", () => {
     expect((await v.intents())[0]!.status).toBe("cancelled");
   });
 
+  test("encaisser une PARTIE au comptoir pendant un paiement Wave ouvert : refusé, sinon Wave encaisserait un trop-perçu", async () => {
+    const v = await waveVenue();
+    await dinner(v);
+    expect(await v.pay(AYA)).toMatchObject({ amount: 8500 });
+    await v.owner.as.mutation(api.cash.open, { venueId: v.venueId, openingFloat: 0 });
+    await expectCode(
+      v.owner.as.mutation(api.payments.collect, { venueId: v.venueId, sessionId: v.sessionId, checkId: null, method: "cash", amount: 5000, receivedAmount: 5000, idempotencyKey: key() }),
+      "CONFLICT",
+    );
+    expect(await v.payments()).toHaveLength(0);
+  });
+
+  test("un trop-perçu de 5 000 : l'alerte ne se referme que lorsque les 5 000 sont rendus", async () => {
+    const v = await waveVenue();
+    await dinner(v);
+    await v.pay(AYA);
+    const [intent] = await v.intents();
+    // L'intention passe pour close (course, horloge) : le comptoir encaisse 5 000, puis Wave 8 500.
+    await v.t.run((ctx) => ctx.db.patch(intent!._id, { status: "expired" }));
+    const register = await v.owner.as.mutation(api.cash.open, { venueId: v.venueId, openingFloat: 10_000 });
+    await v.owner.as.mutation(api.payments.collect, { venueId: v.venueId, sessionId: v.sessionId, checkId: null, method: "cash", amount: 5000, receivedAmount: 5000, idempotencyKey: key() });
+    wave.pay(lastSession().id);
+    await v.hook(wave.event(lastSession().id));
+    const online = (await v.payments()).find((p) => p.paymentIntentId !== undefined)!;
+    const alertOf = async () => (await v.t.run((ctx) => ctx.db.query("paymentAlerts").collect())).find((a) => a.kind === "overpaid_closed")!;
+    expect(await alertOf()).toMatchObject({ amount: 5000 });
+    const refund = (amount: number) =>
+      v.owner.as.mutation(api.payments.refund, { venueId: v.venueId, paymentId: online._id, amount, reason: "Trop-perçu rendu", method: "cash", registerSessionId: register, idempotencyKey: key() });
+    await refund(1000);
+    expect((await alertOf()).resolvedAt).toBeUndefined();
+    await refund(4000);
+    expect((await alertOf()).resolvedAt).toBeDefined();
+  });
+
+  test("Wave injoignable à la création : annuler ferme ici, la table reste utilisable", async () => {
+    const v = await waveVenue();
+    await dinner(v);
+    wave.behaviour.unreachable = true;
+    expect(await v.pay(AYA)).toEqual({ ok: false, reason: "provider_unavailable" });
+    const rest = (await v.bill()).checks.find((c) => c.kind === "remainder")!;
+    const discount = () => v.owner.as.mutation(api.checks.discount, { venueId: v.venueId, sessionId: v.sessionId, checkId: rest._id, amount: 500, reason: "Fidélité" });
+    await expectCode(discount(), "CONFLICT");
+    vi.advanceTimersByTime(61_000);
+    const [intent] = await v.intents();
+    expect(await v.owner.as.mutation(api.onlinePayments.cancel, { venueId: v.venueId, intentId: intent!._id })).toEqual({ status: "cancelled" });
+    await discount();
+  });
+
+  test("Wave tombe pendant le paiement : l'annulation non confirmée se ferme ici ; un paiement tardif s'enregistre quand même (D-115)", async () => {
+    const v = await waveVenue();
+    await dinner(v);
+    await v.pay(AYA);
+    const sessionId = lastSession().id;
+    wave.behaviour.unreachable = true;
+    const [intent] = await v.intents();
+    await v.owner.as.mutation(api.onlinePayments.cancel, { venueId: v.venueId, intentId: intent!._id });
+    await v.settle();
+    expect((await v.intents())[0]).toMatchObject({ status: "cancelled", failureReason: "provider_unreachable" });
+    const rest = (await v.bill()).checks.find((c) => c.kind === "remainder")!;
+    await v.owner.as.mutation(api.checks.discount, { venueId: v.venueId, sessionId: v.sessionId, checkId: rest._id, amount: 500, reason: "Fidélité" });
+    // Wave revient : le client avait payé. L'argent est enregistré, le trop-perçu signalé.
+    wave.behaviour.unreachable = false;
+    wave.pay(sessionId);
+    await v.hook(wave.event(sessionId));
+    expect(await v.payments()).toHaveLength(1);
+    const kinds = (await v.t.run((ctx) => ctx.db.query("paymentAlerts").collect())).map((a) => a.kind);
+    expect(kinds).toEqual(expect.arrayContaining(["provider_unreachable", "overpaid_closed"]));
+  });
+
   test("« mes articles » expiré sans paiement : l'addition Convive N se défait", async () => {
     const v = await waveVenue();
     await dinner(v);
@@ -423,6 +498,40 @@ describe("une intention ouverte protège son addition (D-114)", () => {
     expect(await v.payments()).toHaveLength(2);
     const { alerts } = await v.owner.as.query(api.onlinePayments.alerts, { venueId: v.venueId });
     expect(alerts.find((a) => a.kind === "overpaid_closed")).toMatchObject({ severity: "critical", amount: 8500 });
+  });
+});
+
+describe("les secrets dans le temps (D-117)", () => {
+  test("un événement de test signé de l'ANCIEN secret ne prouve pas le nouveau", async () => {
+    const v = await waveVenue();
+    const NEW = "wave_ci_prod_WHS_nouveau_secret_du_webhook";
+    await v.owner.as.action(api.paymentAccounts.saveSecrets, { venueId: v.venueId, webhookSecret: NEW });
+    // L'ancien secret reste accepté pour les paiements (rotation), mais ne réactive rien.
+    expect((await v.hook(JSON.stringify({ id: "EV_test_old", type: "test.test_event" }))).status).toBe(200);
+    await expectCode(v.owner.as.mutation(api.paymentAccounts.activate, { venueId: v.venueId }), "CONFLICT");
+    expect((await v.hook(JSON.stringify({ id: "EV_test_new", type: "test.test_event" }), { secret: NEW })).status).toBe(200);
+    await v.owner.as.mutation(api.paymentAccounts.activate, { venueId: v.venueId });
+  });
+
+  test("rotation de la clé maîtresse : tout est ré-encodé, l'ancienne clé peut partir", async () => {
+    const v = await waveVenue();
+    const saved = { key: process.env.PAYMENT_SECRETS_KEY, version: process.env.PAYMENT_SECRETS_KEY_VERSION, previous: process.env.PAYMENT_SECRETS_KEY_PREVIOUS };
+    try {
+      process.env.PAYMENT_SECRETS_KEY_PREVIOUS = saved.key;
+      process.env.PAYMENT_SECRETS_KEY = btoa(String.fromCharCode(...Array.from({ length: 32 }, (_, i) => (i * 53 + 7) % 256)));
+      process.env.PAYMENT_SECRETS_KEY_VERSION = "2";
+      expect(await v.t.action(internal.paymentAccounts.resealAll, {})).toEqual({ resealed: 1, unreadable: 0 });
+      expect(await v.t.action(internal.paymentAccounts.resealAll, {})).toEqual({ resealed: 0, unreadable: 0 });
+      delete process.env.PAYMENT_SECRETS_KEY_PREVIOUS;
+      expect(await v.owner.as.action(api.paymentAccounts.testConnection, { venueId: v.venueId })).toMatchObject({ ok: true });
+      expect((await v.hook(JSON.stringify({ id: "EV_test_apres_rotation", type: "test.test_event" }))).status).toBe(200);
+    } finally {
+      process.env.PAYMENT_SECRETS_KEY = saved.key;
+      if (saved.version === undefined) delete process.env.PAYMENT_SECRETS_KEY_VERSION;
+      else process.env.PAYMENT_SECRETS_KEY_VERSION = saved.version;
+      if (saved.previous === undefined) delete process.env.PAYMENT_SECRETS_KEY_PREVIOUS;
+      else process.env.PAYMENT_SECRETS_KEY_PREVIOUS = saved.previous;
+    }
   });
 });
 
@@ -517,6 +626,31 @@ describe("le rapprochement du lendemain (D-121, D-122)", () => {
       return Promise.all(payments.map((p) => settlementOf(ctx, p)));
     });
     expect(settlement.sort()).toEqual(["late", "settled", "settled"]);
+  });
+
+  test("une lecture ratée du relevé ne compte pas comme une passe : pas de fausse alerte « absent »", async () => {
+    const v = await waveVenue();
+    await dinner(v);
+    await v.pay(AYA);
+    wave.pay(lastSession().id);
+    await v.hook(wave.event(lastSession().id));
+    const day = new Date(Date.now()).toISOString().slice(0, 10);
+    wave.behaviour.unreachable = true;
+    await v.t.action(internal.onlinePayments.reconcileAll, { now: Date.now() + 86_400_000 });
+    wave.behaviour.unreachable = false;
+    await v.t.action(internal.onlinePayments.reconcileAll, { now: Date.now() + 2 * 86_400_000 });
+    const [rec] = await v.t.run((ctx) => ctx.db.query("providerReconciliations").collect().then((rows) => rows.filter((r) => r.dayUtc === day)));
+    expect(rec).toMatchObject({ status: "done", passes: 1 });
+    expect((await v.t.run((ctx) => ctx.db.query("paymentAlerts").collect())).some((a) => a.kind === "missing_at_provider")).toBe(false);
+  });
+
+  test("un compte repassé en brouillon (secret recollé) reste rapproché", async () => {
+    const v = await waveVenue();
+    await v.owner.as.action(api.paymentAccounts.saveSecrets, { venueId: v.venueId, webhookSecret: "wave_ci_prod_WHS_nouveau_secret_du_webhook" });
+    expect((await v.owner.as.query(api.paymentAccounts.forVenue, { venueId: v.venueId })).account!.status).toBe("draft");
+    await v.t.action(internal.onlinePayments.reconcileAll, {});
+    const rows = await v.t.run((ctx) => ctx.db.query("providerReconciliations").collect());
+    expect(rows.map((r) => r.status)).toEqual(["done", "done"]);
   });
 
   test("une clé sans le droit « Solde » : rapprochement indisponible, dit comme tel", async () => {

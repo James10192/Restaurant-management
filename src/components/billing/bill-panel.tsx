@@ -691,7 +691,15 @@ function BillPrinter({
   return <PrintJob doc={doc} money={money} onDone={onDone} />;
 }
 
-export type RefundTarget = Pick<Payment, "_id" | "label" | "amount" | "refundable" | "method" | "online">;
+export type RefundTarget = Pick<Payment, "_id" | "label" | "amount" | "refundable" | "method" | "online"> & {
+  /** Le montant à rendre, quand on le sait (un trop-perçu) : pas tout le paiement. */
+  suggested?: number;
+};
+
+/** Rendre moins que tout le paiement : Wave ne sait pas le faire. */
+function partial(payment: RefundTarget): boolean {
+  return payment.refundable < payment.amount || (payment.suggested !== undefined && payment.suggested < payment.amount);
+}
 
 /** Rembourser : en espèces depuis une caisse choisie, ou par le même moyen. Compte seulement. */
 export function RefundDialog({
@@ -719,12 +727,14 @@ export function RefundDialog({
   useEffect(() => {
     if (payment) {
       setKey(uuidv7());
-      // Un paiement Wave en ligne déjà en partie rendu ne se rembourse plus par Wave (total seulement).
-      setMethod(payment.method === "cash" || (payment.online && payment.refundable < payment.amount) ? "cash" : "original");
+      // Un paiement Wave en ligne déjà en partie rendu — ou dont on ne rend qu'une partie, comme un
+      // trop-perçu — ne se rembourse pas par Wave (total seulement) : en espèces.
+      setMethod(payment.method === "cash" || (payment.online && partial(payment)) ? "cash" : "original");
       setRegisterSessionId(null);
     }
   }, [payment]);
   const waveTotalOnly = payment?.online === true;
+  const initialAmount = payment ? Math.min(payment.suggested ?? payment.refundable, payment.refundable) : 0;
   return (
     <ReasonDialog
       open={payment !== null}
@@ -735,7 +745,7 @@ export function RefundDialog({
       destructive
       amount={{
         label: "Montant remboursé",
-        initial: payment ? amountToText(payment.refundable, currency) : "",
+        initial: payment ? amountToText(initialAmount, currency) : "",
         parse: (t) => parseAmount(t, currency),
       }}
       onConfirm={async ({ reason, amount }) => {
@@ -774,7 +784,7 @@ export function RefundDialog({
           >
             <ToggleGroupItem
               value="original"
-              disabled={waveTotalOnly && payment !== null && payment.refundable < payment.amount}
+              disabled={waveTotalOnly && payment !== null && partial(payment)}
             >
               {waveTotalOnly ? "Par Wave (la totalité)" : "Par le même moyen"}
             </ToggleGroupItem>
@@ -841,8 +851,8 @@ function OnlineIntentAlert({ intent, canCancel }: { intent: OnlineIntent; canCan
       </AlertTitle>
       <AlertDescription>
         {intent.cancelRequested
-          ? "Annulation demandée à Wave…"
-          : `${intent.guestNumber !== null ? `Convive ${intent.guestNumber}` : "Un client"} paie ${intent.target === "my_items" ? "ses articles" : "le reste de la table"} depuis son téléphone. Offrir, remiser ou clôturer attend la fin de ce paiement.`}
+          ? "Annulation demandée à Wave. Sans réponse de Wave d'ici deux minutes, le paiement en ligne est fermé ici."
+          : `${intent.guestNumber !== null ? `Convive ${intent.guestNumber}` : "Un client"} paie ${intent.target === "my_items" ? "ses articles" : "le reste de la table"} depuis son téléphone, depuis ${Math.max(1, Math.round((Date.now() - intent.createdAt) / 60_000))} min. Encaisser une partie, offrir, remiser ou clôturer attend la fin de ce paiement ; encaisser la totalité le ferme.`}
       </AlertDescription>
       {canCancel && !intent.cancelRequested ? (
         <AlertAction>

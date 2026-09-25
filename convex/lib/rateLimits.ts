@@ -46,6 +46,10 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
   guestPay: { kind: "fixed window", rate: 10, period: 10 * MINUTE },
   // « J'ai payé, vérifier » : une relecture chez Wave par appui, bornée.
   guestPayCheck: { kind: "fixed window", rate: 10, period: 10 * MINUTE },
+  // Par établissement, tous convives confondus (D-119) : un restaurant plein reste loin de ces
+  // chiffres ; un script qui tourne sur une photo du QR, non.
+  guestPayVenue: { kind: "fixed window", rate: 60, period: 10 * MINUTE },
+  guestPayCheckVenue: { kind: "fixed window", rate: 200, period: 10 * MINUTE },
   // Nouveaux convives, par tablée : une photo du QR ne doit pas remplir la table de faux invités.
   guestJoin: { kind: "fixed window", rate: 15, period: 10 * MINUTE },
 });

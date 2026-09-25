@@ -577,7 +577,7 @@ function OnlineAlertsCard() {
               </ItemContent>
               <ItemActions className="flex-wrap">
                 {a.payment && data.canResolve ? (
-                  <Button size="sm" variant="outline" onClick={() => setRefunding(a.payment)}>
+                  <Button size="sm" variant="outline" onClick={() => setRefunding(a.payment && a.amount !== null && a.kind === "overpaid_closed" ? { ...a.payment, suggested: a.amount } : a.payment)}>
                     Rembourser
                   </Button>
                 ) : null}

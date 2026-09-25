@@ -12,7 +12,7 @@
  */
 
 import { v } from "convex/values";
-import { action, internalMutation, internalQuery, mutation, query } from "./_generated/server";
+import { action, internalAction, internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { writeAudit } from "./lib/audit";
@@ -20,9 +20,9 @@ import { raiseAlert } from "./lib/intents";
 import { conflict, invalid, notFound } from "./lib/errors";
 import { requirePermission, type ReadCtx } from "./lib/guards";
 import { logEvent } from "./lib/log";
-import { createProvider, PROVIDER_LABEL } from "./lib/providers/registry";
+import { createProvider, isLocalBackend, PROVIDER_LABEL } from "./lib/providers/registry";
 import { ProviderError, type OnlinePaymentProvider } from "./lib/providers/types";
-import { lastFour, openSecret, sealSecret, secretBoxConfigured, type SecretField } from "./lib/secretBox";
+import { currentKeyVersion, lastFour, openSecret, sealedVersion, sealSecret, secretBoxConfigured, type SecretField } from "./lib/secretBox";
 import { settingsOf } from "./lib/service";
 import { generateToken } from "./lib/tokens";
 
@@ -237,7 +237,8 @@ export const testConnection = action({
       const { balanceAccess } = await provider.testConnection();
       result = { ok: true, balanceAccess, error: null };
     } catch (error) {
-      const code = error instanceof ProviderError ? error.code : "unreachable";
+      // Le code de Wave quand il en donne un (portefeuille bloqué…), sinon notre catégorie.
+      const code = error instanceof ProviderError ? (error.providerCode ?? error.code) : "unreachable";
       logEvent("warn", "payment.provider_test_failed", { operation: "payment.provider.test", status: error instanceof ProviderError ? (error.status ?? 0) : 0 });
       result = { ok: false, balanceAccess: null, error: code };
     }
@@ -270,6 +271,11 @@ export const activate = mutation({
     if (!account) throw conflict("Configurez d'abord le compte Wave.");
     if (!account.secrets.apiKey || !account.secrets.webhookSecret) throw conflict("Il manque la clé d'API ou le secret du webhook.");
     if (account.lastConnectionOk !== true) throw conflict("Testez d'abord la connexion : la clé doit répondre.");
+    // Wave renvoie le client vers SITE_URL, et refuse une adresse qui n'est pas en https : sans elle,
+    // chaque paiement échouerait à la création.
+    if (!isLocalBackend() && !/^https:\/\//.test(process.env.SITE_URL ?? "")) {
+      throw conflict("L'adresse publique du site (SITE_URL, en https) n'est pas réglée sur ce déploiement : le paiement en ligne ne peut pas encore être proposé.");
+    }
     if (account.lastTestEventAt === undefined) {
       throw conflict("Envoyez l'événement de test depuis le portail Wave : il prouve que Wave joint Joliba avec le bon secret.");
     }
@@ -398,5 +404,79 @@ export const noteSignatureFailure = internalMutation({
         dedupeKey: `signature:${account._id}:${window.windowStart}`,
       });
     }
+  },
+});
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * Rotation de la clé maîtresse (DEPLOYMENT.md, D-117)
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+type SealedSecrets = Doc<"paymentProviderAccounts">["secrets"];
+const SECRET_FIELDS = ["apiKey", "webhookSecret", "webhookSecretPrevious", "requestSigningSecret"] as const;
+
+/** Les comptes dont un secret est encore chiffré sous une autre version que la clé en cours. */
+export const accountsToReseal = internalQuery({
+  args: {},
+  handler: async (ctx): Promise<Id<"paymentProviderAccounts">[]> => {
+    const version = currentKeyVersion();
+    if (version === null) return [];
+    const out: Id<"paymentProviderAccounts">[] = [];
+    for (const account of await ctx.db.query("paymentProviderAccounts").collect()) {
+      if (SECRET_FIELDS.some((f) => account.secrets[f] !== undefined && sealedVersion(account.secrets[f]!) !== version)) out.push(account._id);
+    }
+    return out;
+  },
+});
+
+/** Écrit les secrets ré-encodés, seulement si personne ne les a changés entre-temps. */
+export const writeResealed = internalMutation({
+  args: {
+    accountId: v.id("paymentProviderAccounts"),
+    before: v.object({ apiKey: v.optional(v.string()), webhookSecret: v.optional(v.string()), webhookSecretPrevious: v.optional(v.string()), requestSigningSecret: v.optional(v.string()) }),
+    after: v.object({ apiKey: v.optional(v.string()), webhookSecret: v.optional(v.string()), webhookSecretPrevious: v.optional(v.string()), requestSigningSecret: v.optional(v.string()) }),
+  },
+  handler: async (ctx, args) => {
+    const account = await ctx.db.get(args.accountId);
+    if (!account) return false;
+    if (SECRET_FIELDS.some((f) => account.secrets[f] !== args.before[f])) return false;
+    await ctx.db.patch(account._id, { secrets: args.after, updatedAt: Date.now() });
+    return true;
+  },
+});
+
+/**
+ * Ré-encode sous la clé maîtresse EN COURS tout secret chiffré sous l'ancienne. À lancer après une
+ * rotation (`npx convex run paymentAccounts:resealAll`) ; tourne aussi chaque nuit, sans effet
+ * quand tout est à jour. Tant qu'il n'a pas tourné, `PAYMENT_SECRETS_KEY_PREVIOUS` doit rester.
+ * Un secret illisible est laissé tel quel et compté : le restaurant devra le recoller.
+ */
+export const resealAll = internalAction({
+  args: {},
+  handler: async (ctx): Promise<{ resealed: number; unreadable: number }> => {
+    const version = currentKeyVersion();
+    if (version === null) return { resealed: 0, unreadable: 0 };
+    const ids: Id<"paymentProviderAccounts">[] = await ctx.runQuery(internal.paymentAccounts.accountsToReseal, {});
+    let resealed = 0;
+    let unreadable = 0;
+    for (const accountId of ids) {
+      const sealed = await ctx.runQuery(internal.paymentAccounts.sealedSecrets, { accountId });
+      if (!sealed) continue;
+      const before: SealedSecrets = { ...sealed.secrets };
+      const after: SealedSecrets = { ...sealed.secrets };
+      for (const field of SECRET_FIELDS) {
+        const value = before[field];
+        if (value === undefined || sealedVersion(value) === version) continue;
+        // L'ancien secret du webhook a été chiffré sous le champ « webhookSecret » (déplacé tel quel).
+        const as: SecretField = field === "webhookSecretPrevious" ? "webhookSecret" : field;
+        try {
+          after[field] = await sealSecret(await openSecret(value, { accountId, field: as }), { accountId, field: as });
+        } catch {
+          unreadable += 1;
+          logEvent("error", "payment.reseal_unreadable", { operation: "payment.reseal" });
+        }
+      }
+      if (await ctx.runMutation(internal.paymentAccounts.writeResealed, { accountId, before, after })) resealed += 1;
+    }
+    return { resealed, unreadable };
   },
 });

@@ -47,7 +47,8 @@ export async function signatureHeader(secret: string, timestamp: number, body: s
   return `t=${timestamp},v1=${await waveSignature(secret, timestamp, body)}`;
 }
 
-export type SignatureCheck = { ok: true } | { ok: false; reason: "missing_signature" | "bad_signature" | "stale" };
+/** `secretIndex` : lequel des secrets a signé (0 = le secret en cours, 1 = l'ancien, en rotation). */
+export type SignatureCheck = { ok: true; secretIndex: number } | { ok: false; reason: "missing_signature" | "bad_signature" | "stale" };
 
 /**
  * Vérifie un webhook. La comparaison passe par `subtle.verify` : temps constant, sans la réécrire
@@ -58,11 +59,11 @@ export async function verifyWaveSignature(input: { header: string | null | undef
   if (!parsed) return { ok: false, reason: "missing_signature" };
   if (Math.abs(input.now - parsed.timestamp * 1000) > WAVE_SIGNATURE_TOLERANCE_MS) return { ok: false, reason: "stale" };
   const data = new TextEncoder().encode(`${parsed.timestamp}${input.body}`);
-  for (const secret of input.secrets) {
+  for (const [secretIndex, secret] of input.secrets.entries()) {
     if (!secret) continue;
     const key = await hmacKey(secret, "verify");
     for (const signature of parsed.signatures) {
-      if (await crypto.subtle.verify("HMAC", key, hexToBytes(signature), data)) return { ok: true };
+      if (await crypto.subtle.verify("HMAC", key, hexToBytes(signature), data)) return { ok: true, secretIndex };
     }
   }
   return { ok: false, reason: "bad_signature" };

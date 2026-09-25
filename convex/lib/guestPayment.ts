@@ -6,9 +6,9 @@
  * une photo du QR ne révèle pas l'addition.
  */
 
-import type { Doc } from "../_generated/dataModel";
+import type { Doc, Id } from "../_generated/dataModel";
 import { activeAccountOf } from "../paymentAccounts";
-import { loadSessionBilling } from "./billing";
+import { lineGross, loadSessionBilling, takeShare, type Share } from "./billing";
 import type { ReadCtx } from "./guards";
 import { isOpenIntent, openIntentsOfCheck } from "./intents";
 import { isOpenSession } from "./service";
@@ -57,15 +57,31 @@ export async function guestPaymentView(
   const remainderDue = rest && rest.balance.due > 0 ? rest.balance.due : null;
   const restIntents = rest?.check ? await openIntentsOfCheck(ctx, rest.check._id) : [];
   const remainderBusy = restIntents.some((i) => i.guestSessionId !== guest._id);
-  const comped = new Set((rest?.adjustments ?? []).filter((a) => a.type === "comp").map((a) => a.orderItemId));
-  let myItems = 0;
-  for (const line of rest?.lines ?? []) {
-    if (comped.has(line.orderItemId) || line.amount <= 0) continue;
-    const item = billing.items.find((i) => i._id === line.orderItemId);
-    if (item && item.assignedGuestSessionIds.length === 1 && item.assignedGuestSessionIds[0] === guest._id) myItems += line.amount;
-  }
+  // Le même calcul que le serveur quand il détache « mes articles » : ce que l'écran propose, le
+  // serveur l'accepte. Rien si le reste est déjà réglé en partie au-delà (D-076), ou si un autre
+  // payeur règle le reste de la table.
+  const { shares } = myRemainderShares(billing, guest._id);
+  const moved = shares.reduce((sum, x) => sum + x.share.amount, 0);
+  let myItems = remainderBusy || restIntents.length > 0 || !rest || rest.balance.due - moved < 0 ? 0 : moved;
   // Une addition « Convive N » déjà détachée pour lui et encore due.
   const open = mine.find((i) => isOpenIntent(i) && i.target === "my_items");
   if (open) myItems += billing.checks.find((c) => c.check?._id === open.checkId)?.balance.due ?? 0;
   return { currency: session.currency, remainderDue, myItemsDue: myItems > 0 ? myItems : null, remainderBusy, current };
+}
+
+/** Les lignes du reste de la table qui n'appartiennent qu'à ce convive, et encore dues. */
+export function myRemainderShares(billing: Awaited<ReturnType<typeof loadSessionBilling>>, guestId: Id<"guestSessions">) {
+  const rest = billing.checks.find((c) => c.kind === "remainder");
+  if (!rest) return { rest: null, shares: [] as { item: Doc<"orderItems">; share: Share }[] };
+  const comped = new Set(rest.adjustments.filter((a) => a.type === "comp").map((a) => a.orderItemId));
+  const shares: { item: Doc<"orderItems">; share: Share }[] = [];
+  for (const line of rest.lines) {
+    if (comped.has(line.orderItemId) || line.amount <= 0 || line.quantity <= 0) continue;
+    const item = billing.items.find((i) => i._id === line.orderItemId);
+    if (!item || item.assignedGuestSessionIds.length !== 1 || item.assignedGuestSessionIds[0] !== guestId) continue;
+    const share = takeShare({ quantity: item.quantity, gross: lineGross(item) }, billing.taken.get(item._id) ?? [], line.quantity);
+    if ("error" in share) continue;
+    shares.push({ item, share });
+  }
+  return { rest, shares };
 }

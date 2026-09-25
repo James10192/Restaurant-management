@@ -3,7 +3,9 @@
  *
  *  - toutes les 2 minutes, le rattrapage : les paiements en ligne en attente sont revérifiés
  *    chez le fournisseur (un webhook peut se perdre), les remboursements en suspens rejoués ;
- *  - chaque matin à 06:00 UTC, le rapprochement avec le relevé du fournisseur : J-1, puis J-2.
+ *  - chaque matin à 06:00 UTC, le rapprochement avec le relevé du fournisseur : J-1, puis J-2 ;
+ *  - chaque nuit, le ré-encodage des clés Wave sous la clé maîtresse en cours (sans effet hors
+ *    rotation).
  */
 
 import { cronJobs } from "convex/server";
@@ -13,5 +15,7 @@ const crons = cronJobs();
 
 crons.interval("paiements en ligne : rattrapage", { minutes: 2 }, internal.onlinePayments.sweep, {});
 crons.daily("paiements en ligne : rapprochement", { hourUTC: 6, minuteUTC: 0 }, internal.onlinePayments.reconcileAll, {});
+
+crons.daily("paiements en ligne : re-encodage des secrets", { hourUTC: 3, minuteUTC: 17 }, internal.paymentAccounts.resealAll, {});
 
 export default crons;

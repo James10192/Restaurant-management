@@ -32,6 +32,34 @@ http.route({
 const MAX_WEBHOOK_BODY = 64 * 1024;
 
 /**
+ * Lit le corps en s'arrêtant à la limite, même sans `content-length` : un envoi sans fin ne doit
+ * pas être lu en entier avant d'être refusé. `null` : trop long.
+ */
+async function readLimited(request: Request, max: number): Promise<string | null> {
+  if (!request.body) return "";
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > max) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+  const all = new Uint8Array(size);
+  let offset = 0;
+  for (const c of chunks) {
+    all.set(c, offset);
+    offset += c.byteLength;
+  }
+  return new TextDecoder().decode(all);
+}
+
+/**
  * Le webhook Wave — D-118. Répond vite (Wave attend moins de 5 s) et sans appel sortant : tout le
  * traitement tient dans UNE mutation. L'ordre compte :
  *  1. le compte, par l'adresse (aléatoire) — inconnue : 404, rien d'écrit ;
@@ -51,21 +79,28 @@ http.route({
     if (!account) return new Response(null, { status: 404 });
     const length = Number(request.headers.get("content-length") ?? "0");
     if (length > MAX_WEBHOOK_BODY) return new Response(null, { status: 413 });
-    const body = await request.text();
-    if (body.length > MAX_WEBHOOK_BODY) return new Response(null, { status: 413 });
-    const secrets: string[] = [];
+    const body = await readLimited(request, MAX_WEBHOOK_BODY);
+    if (body === null) return new Response(null, { status: 413 });
+    // Chaque secret s'ouvre seul : un ANCIEN secret illisible (clé maîtresse retirée) ne doit pas
+    // faire refuser les webhooks signés par le secret en cours.
+    let current: string | null = null;
     try {
-      if (account.webhookSecret) secrets.push(await openSecret(account.webhookSecret, { accountId: account.accountId, field: "webhookSecret" }));
-      if (account.webhookSecretPrevious) {
-        // L'ancien secret a été chiffré sous le champ « webhookSecret » : il y a été déplacé tel quel.
-        secrets.push(await openSecret(account.webhookSecretPrevious, { accountId: account.accountId, field: "webhookSecret" }));
-      }
+      if (account.webhookSecret) current = await openSecret(account.webhookSecret, { accountId: account.accountId, field: "webhookSecret" });
     } catch {
       logEvent("error", "payment.webhook_secret_unreadable", { operation: "payment.webhook" });
       return new Response(null, { status: 503 });
     }
-    if (secrets.length === 0) return new Response(null, { status: 401 });
-    const check = await verifyWaveSignature({ header: request.headers.get("wave-signature"), body, secrets, now: Date.now() });
+    let previous: string | null = null;
+    if (account.webhookSecretPrevious) {
+      try {
+        // L'ancien secret a été chiffré sous le champ « webhookSecret » : il y a été déplacé tel quel.
+        previous = await openSecret(account.webhookSecretPrevious, { accountId: account.accountId, field: "webhookSecret" });
+      } catch {
+        logEvent("warn", "payment.webhook_previous_secret_unreadable", { operation: "payment.webhook" });
+      }
+    }
+    if (current === null && previous === null) return new Response(null, { status: 401 });
+    const check = await verifyWaveSignature({ header: request.headers.get("wave-signature"), body, secrets: [current ?? "", previous ?? ""], now: Date.now() });
     if (!check.ok) {
       if (check.reason !== "stale") await ctx.runMutation(internal.paymentAccounts.noteSignatureFailure, { accountId: account.accountId });
       logEvent("warn", "payment.webhook_rejected", { operation: "payment.webhook", code: check.reason });
@@ -80,6 +115,9 @@ http.route({
       kind: event.kind,
       session: event.session,
       bodyHash: await sha256Hex(body),
+      // Seul le secret EN COURS prouve un compte : un événement de test signé de l'ancien, pendant
+      // une rotation, ne réactive rien.
+      signedByCurrent: check.secretIndex === 0,
     });
     return new Response(null, { status: 200 });
   }),

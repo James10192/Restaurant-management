@@ -30,6 +30,11 @@ export type ReturnState = "retour" | "erreur" | null;
 
 /** Au-delà, sans confirmation de Wave, on dit quoi faire (D-120). */
 const CONFIRM_PATIENCE_MS = 2 * 60 * 1000;
+/**
+ * Espacement des relectures automatiques : six en deux minutes, sous la limite du serveur (dix
+ * par dix minutes) — il en reste pour « J'ai payé : vérifier ».
+ */
+const AUTO_CHECK_EVERY_MS = 20_000;
 
 export default function GuestPayment({
   open,
@@ -62,6 +67,8 @@ export default function GuestPayment({
   const [now, setNow] = useState(() => Date.now());
   // Tirée à l'ouverture du tiroir : un double appui rejoue la même clé (PAYMENTS §4).
   const key = useRef(randomKey());
+  const openRef = useRef(open);
+  openRef.current = open;
   useEffect(() => {
     if (open) key.current = randomKey();
   }, [open]);
@@ -76,13 +83,14 @@ export default function GuestPayment({
       const res = await callTable({ action: "checkPayment", guestKey });
       if (res.ok && res.value.status === "paid") setMessage(null);
       else if (res.ok && res.value.status === "pending") setMessage({ tone: "info", text: t.notYet });
+      else if (res.ok && res.value.status === "rate_limited") setMessage({ tone: "error", text: t.rateLimited });
       onChanged();
     } finally {
       setBusy(null);
     }
   };
 
-  // Au retour de Wave : relire une fois, puis toutes les 10 s pendant la patience (D-120).
+  // Au retour de Wave : relire une fois, puis toutes les 20 s pendant la patience (D-120).
   useEffect(() => {
     if (checkingSince === null || !open) return;
     if (paid) {
@@ -93,7 +101,7 @@ export default function GuestPayment({
     const timer = window.setInterval(() => {
       setNow(Date.now());
       if (Date.now() - checkingSince < CONFIRM_PATIENCE_MS) void check();
-    }, 10_000);
+    }, AUTO_CHECK_EVERY_MS);
     return () => window.clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [checkingSince, open, paid]);
@@ -118,7 +126,10 @@ export default function GuestPayment({
       }
       if (r.ok && r.status === "pending") {
         setMessage({ tone: "info", text: t.opening });
-        window.setTimeout(() => void start(), 2000);
+        // Une autre tentative crée la session : on la reprend dans un instant — tiroir encore ouvert.
+        window.setTimeout(() => {
+          if (openRef.current) void start();
+        }, 2000);
         return;
       }
       if (!r.ok) {
@@ -142,6 +153,13 @@ export default function GuestPayment({
 
   const amountOf = (x: PaymentTarget) => (x === "my_items" ? payment?.myItemsDue : payment?.remainderDue) ?? null;
   const selected = amountOf(target);
+  // Le choix fait n'est plus possible (ses articles viennent d'être réglés) : l'autre, s'il existe.
+  useEffect(() => {
+    if (amountOf(target) !== null) return;
+    const other: PaymentTarget = target === "my_items" ? "remainder" : "my_items";
+    if (amountOf(other) !== null) setTarget(other);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [payment?.myItemsDue, payment?.remainderDue, target]);
   const waited = checkingSince !== null && now - checkingSince >= CONFIRM_PATIENCE_MS;
 
   return (
@@ -152,9 +170,7 @@ export default function GuestPayment({
           <DrawerDescription>{t.description}</DrawerDescription>
         </DrawerHeader>
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 pb-2">
-          {payment === null && codeEntry ? (
-            codeEntry
-          ) : paid ? (
+          {paid ? (
             <Alert role="status">
               <CheckCircle2Icon />
               <AlertTitle>{t.paid}</AlertTitle>
@@ -162,6 +178,9 @@ export default function GuestPayment({
                 {money(current!.amount)} · {t.paidText}
               </AlertDescription>
             </Alert>
+          ) : null}
+          {payment === null && codeEntry ? (
+            codeEntry
           ) : pending && current ? (
             <Alert role="status">
               {busy === "check" || checkingSince !== null ? <Spinner /> : <RefreshCwIcon />}
@@ -196,7 +215,7 @@ export default function GuestPayment({
                 })}
               </RadioGroup>
             </FieldSet>
-          ) : (
+          ) : paid ? null : (
             <p className="py-2 text-muted-foreground">{t.nothingDue}</p>
           )}
           {current && !pending && !paid && (current.status === "expired" || current.status === "failed" || current.status === "cancelled") && checkingSince !== null ? (
@@ -233,7 +252,7 @@ export default function GuestPayment({
                 {t.check}
               </Button>
             </>
-          ) : !paid && selected !== null && payment ? (
+          ) : selected !== null && payment ? (
             <Button
               type="button"
               size="lg"

@@ -307,7 +307,9 @@ export async function closingState(ctx: ReadCtx, billing: SessionBilling): Promi
         .query("refunds")
         .withIndex("by_payment", (q) => q.eq("paymentId", p._id))
         .collect();
-      refunded += rows.filter((r) => r.status === "succeeded").reduce((s, r) => s + r.amount, 0);
+      // Un remboursement demandé à Wave compte dès la demande, comme dans le plafond R19 (D-123) :
+      // la table n'attend pas la réponse pour se clôturer. S'il échoue, une alerte critique le dit.
+      refunded += rows.filter((r) => r.status === "succeeded" || r.status === "pending").reduce((s, r) => s + r.amount, 0);
     }
     overpaid += Math.max(0, -c.balance.due - refunded);
   }

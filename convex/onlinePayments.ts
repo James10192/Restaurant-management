@@ -23,12 +23,13 @@ import { v } from "convex/values";
 import { action, internalAction, internalMutation, internalQuery, mutation, query, type ActionCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
-import { formatAmount, lineGross, loadSessionBilling, takeShare, type Share } from "./lib/billing";
+import { formatAmount, loadSessionBilling } from "./lib/billing";
+import { myRemainderShares } from "./lib/guestPayment";
 import { getInVenue } from "./lib/catalogAccess";
 import { invalid } from "./lib/errors";
 import type { MutationCtx, ReadCtx } from "./lib/guards";
 import { guestPresence, resolveGuestTable } from "./lib/guestTable";
-import { expireOpenIntentsOf, isOpenIntent, openIntentsOfCheck, raiseAlert, undoCreatedCheck } from "./lib/intents";
+import { expireOpenIntentsOf, isOpenIntent, openIntentsOfCheck, raiseAlert, resolveOverpaidIfCovered, undoCreatedCheck } from "./lib/intents";
 import { logEvent } from "./lib/log";
 import { ProviderError, type ProviderSession, type ProviderTransaction } from "./lib/providers/types";
 import { rateLimiter } from "./lib/rateLimits";
@@ -50,6 +51,13 @@ export const INIT_LEASE_MS = 60_000;
 const CHECK_DELAYS_MS = [90_000, 2 * 60_000, 5 * 60_000, 15 * 60_000, 35 * 60_000];
 /** Au-delà de l'expiration, sans réponse de Wave : quelqu'un doit regarder. */
 const UNREACHABLE_ALERT_AFTER_MS = 15 * 60 * 1000;
+/**
+ * Une session Wave expirée depuis plus que cette marge ne peut plus être payée : l'intention se
+ * ferme ici même si Wave ne répond pas, pour ne pas geler la table (D-130).
+ */
+const EXPIRED_MARGIN_MS = 5 * 60 * 1000;
+/** Une annulation que Wave ne confirme pas dans ce délai se ferme ici (D-130). */
+const CANCEL_UNCONFIRMED_MS = 2 * 60 * 1000;
 
 const KEY = /^[A-Za-z0-9_-]{16,64}$/;
 const target = v.union(v.literal("remainder"), v.literal("my_items"));
@@ -107,23 +115,6 @@ function describe(intent: Doc<"paymentIntents">): GuestPayResult {
   return { ok: false, reason: "provider_unavailable" };
 }
 
-/** Les lignes du reste de la table qui n'appartiennent qu'à ce convive, et encore dues. */
-function myRemainderShares(billing: Awaited<ReturnType<typeof loadSessionBilling>>, guestId: Id<"guestSessions">) {
-  const rest = billing.checks.find((c) => c.kind === "remainder");
-  if (!rest) return { rest: null, shares: [] as { item: Doc<"orderItems">; share: Share }[] };
-  const comped = new Set(rest.adjustments.filter((a) => a.type === "comp").map((a) => a.orderItemId));
-  const shares: { item: Doc<"orderItems">; share: Share }[] = [];
-  for (const line of rest.lines) {
-    if (comped.has(line.orderItemId) || line.amount <= 0 || line.quantity <= 0) continue;
-    const item = billing.items.find((i) => i._id === line.orderItemId);
-    if (!item || item.assignedGuestSessionIds.length !== 1 || item.assignedGuestSessionIds[0] !== guestId) continue;
-    const share = takeShare({ quantity: item.quantity, gross: lineGross(item) }, billing.taken.get(item._id) ?? [], line.quantity);
-    if ("error" in share) continue;
-    shares.push({ item, share });
-  }
-  return { rest, shares };
-}
-
 export const reserveForGuest = internalMutation({
   args: { ...guestArgs, target, idempotencyKey: v.string() },
   handler: async (ctx, args): Promise<Reserved> => {
@@ -147,7 +138,8 @@ export const reserveForGuest = internalMutation({
       .withIndex("by_venue_idempotency", (q) => q.eq("venueId", resolved.venue._id).eq("idempotencyKey", args.idempotencyKey))
       .unique();
     if (replay) {
-      if (replay.guestSessionId !== guest._id) return done({ ok: false, reason: "key_reused" });
+      // Même clé, autre convive ou autre choix : ce n'est pas le même geste.
+      if (replay.guestSessionId !== guest._id || replay.target !== args.target) return done({ ok: false, reason: "key_reused" });
       return reuse(ctx, replay, account._id, resolved.venue.slug);
     }
 
@@ -161,10 +153,18 @@ export const reserveForGuest = internalMutation({
     if (mine[0]) return reuse(ctx, mine[0], account._id, resolved.venue.slug);
 
     if (!isOpenSession(session)) return done({ ok: false, reason: "table_not_open" });
-    if (!(await rateLimiter.limit(ctx, "guestPayPerGuest", { key: guest._id })).ok) return done({ ok: false, reason: "rate_limited" });
-    if (!(await rateLimiter.limit(ctx, "guestPay", { key: resolved.code._id })).ok) return done({ ok: false, reason: "rate_limited" });
 
     const billing = await loadSessionBilling(ctx, session);
+    // Ce qui ne peut pas aboutir se dit AVANT de consommer une limite : trois appuis pendant qu'un
+    // autre convive paie ne doivent pas bloquer ce téléphone dix minutes.
+    const restNow = billing.checks.find((c) => c.kind === "remainder");
+    if (!restNow || restNow.balance.due <= 0) return done({ ok: false, reason: "nothing_due" });
+    if (restNow.check && (await openIntentsOfCheck(ctx, restNow.check._id)).length > 0) return done({ ok: false, reason: "in_progress_elsewhere" });
+    // Chaque création appelle Wave : par convive, par QR, et par établissement (D-119).
+    if (!(await rateLimiter.limit(ctx, "guestPayPerGuest", { key: guest._id })).ok) return done({ ok: false, reason: "rate_limited" });
+    if (!(await rateLimiter.limit(ctx, "guestPay", { key: resolved.code._id })).ok) return done({ ok: false, reason: "rate_limited" });
+    if (!(await rateLimiter.limit(ctx, "guestPayVenue", { key: resolved.venue._id })).ok) return done({ ok: false, reason: "rate_limited" });
+
     let check: Doc<"checks">;
     let amount: number;
     let createdCheck = false;
@@ -334,35 +334,42 @@ export const initFailed = internalMutation({
 /** Au retour de Wave (ou quand le client relit) : revérifier SON intention, sans rien croire. */
 export const guestCheck = action({
   args: guestArgs,
-  handler: async (ctx, args): Promise<{ status: "none" | "pending" | "paid" | "closed" }> => {
+  handler: async (ctx, args): Promise<{ status: "none" | "pending" | "paid" | "closed" | "rate_limited" }> => {
     // garde : déléguée à `claimGuestCheck`, qui revérifie le laissez-passer et la limite de débit ;
     // sans intention de CE convive, rien n'est relu ni renvoyé.
-    const intentId: Id<"paymentIntents"> | null = await ctx.runMutation(internal.onlinePayments.claimGuestCheck, args);
-    if (!intentId) return { status: "none" };
-    await verifyOne(ctx, intentId);
-    const status = await ctx.runQuery(internal.onlinePayments.intentStatus, { intentId });
+    const claim: { kind: "none" } | { kind: "rate_limited" } | { kind: "intent"; intentId: Id<"paymentIntents"> } = await ctx.runMutation(
+      internal.onlinePayments.claimGuestCheck,
+      args,
+    );
+    // Trop de relectures : dit comme tel, sinon le téléphone croirait qu'il n'y a rien à vérifier.
+    if (claim.kind !== "intent") return { status: claim.kind };
+    await verifyOne(ctx, claim.intentId);
+    const status = await ctx.runQuery(internal.onlinePayments.intentStatus, { intentId: claim.intentId });
     return { status: status === "succeeded" ? "paid" : status === "processing" || status === "initializing" ? "pending" : "closed" };
   },
 });
 
 export const claimGuestCheck = internalMutation({
   args: guestArgs,
-  handler: async (ctx, args): Promise<Id<"paymentIntents"> | null> => {
+  handler: async (ctx, args): Promise<{ kind: "none" } | { kind: "rate_limited" } | { kind: "intent"; intentId: Id<"paymentIntents"> }> => {
     const resolved = await resolveGuestTable(ctx, args.pass, args.venueSlug);
-    if (!resolved) return null;
+    if (!resolved) return { kind: "none" };
     const { guest } = await guestPresence(ctx, resolved.table, args.guestKey);
-    if (!guest) return null;
+    if (!guest) return { kind: "none" };
+    // La dernière intention OUVERTE de ce convive, création comprise : `verifyOne` sait attendre la
+    // fin d'un bail, puis chercher chez Wave par notre référence.
     const latest = (
       await ctx.db
         .query("paymentIntents")
         .withIndex("by_guest_status", (q) => q.eq("guestSessionId", guest._id))
         .collect()
     )
-      .filter((i) => i.status === "processing")
+      .filter((i) => isOpenIntent(i))
       .sort((a, b) => b.createdAt - a.createdAt)[0];
-    if (!latest) return null;
-    if (!(await rateLimiter.limit(ctx, "guestPayCheck", { key: guest._id })).ok) return null;
-    return latest._id;
+    if (!latest) return { kind: "none" };
+    if (!(await rateLimiter.limit(ctx, "guestPayCheck", { key: guest._id })).ok) return { kind: "rate_limited" };
+    if (!(await rateLimiter.limit(ctx, "guestPayCheckVenue", { key: resolved.venue._id })).ok) return { kind: "rate_limited" };
+    return { kind: "intent", intentId: latest._id };
   },
 });
 
@@ -408,6 +415,12 @@ export async function confirmIntent(ctx: MutationCtx, intent: Doc<"paymentIntent
       tableSessionId: session._id,
       dedupeKey: `currency:${c.providerRef}`,
     });
+    // Terminal : sinon l'intention resterait ouverte, relue à chaque balayage, et la table ne se
+    // clôturerait plus. L'alerte critique garde la trace ; l'argent se règle hors de Joliba.
+    if (isOpenIntent(intent)) {
+      await ctx.db.patch(intent._id, { status: "failed", failureReason: "currency_mismatch", nextCheckAt: undefined, initLeaseUntil: undefined, updatedAt: now });
+      await undoCreatedCheck(ctx, intent);
+    }
     return null;
   }
   const amount = c.amount ?? intent.amount;
@@ -516,6 +529,7 @@ export const processWebhookEvent = internalMutation({
     kind: v.union(v.literal("session_completed"), v.literal("payment_failed"), v.literal("test"), v.literal("other")),
     session: v.union(sessionFields, v.null()),
     bodyHash: v.string(),
+    signedByCurrent: v.optional(v.boolean()),
   },
   handler: async (ctx, args): Promise<string> => {
     const account = await ctx.db.get(args.accountId);
@@ -534,8 +548,12 @@ export const processWebhookEvent = internalMutation({
     let result = "ignored";
     let relatedIntentId: Id<"paymentIntents"> | undefined;
     if (args.kind === "test") {
-      await ctx.db.patch(account._id, { lastTestEventAt: now, updatedAt: now });
-      result = "test";
+      if (args.signedByCurrent !== false) {
+        await ctx.db.patch(account._id, { lastTestEventAt: now, updatedAt: now });
+        result = "test";
+      } else {
+        result = "test_previous_secret";
+      }
     } else if (s && (args.kind === "session_completed" || args.kind === "payment_failed")) {
       // Notre référence d'abord (le webhook peut précéder l'enregistrement de la session), puis la
       // session — TOUJOURS dans ce compte : un secret d'un autre restaurant ne désigne rien ici.
@@ -641,6 +659,22 @@ export const applyVerification = internalMutation({
       }
       return;
     }
+    // Wave ne répond pas. Une annulation qui traîne, ou une session forcément expirée chez Wave :
+    // on ferme ici plutôt que de geler la table (D-130).
+    const cancelStale = intent.cancelRequestedAt !== undefined && now - intent.cancelRequestedAt >= CANCEL_UNCONFIRMED_MS;
+    if (cancelStale || now > intent.expiresAt + EXPIRED_MARGIN_MS) {
+      await closeLocally(ctx, intent, "provider_unreachable");
+      await raiseAlert(ctx, {
+        venueId: intent.venueId,
+        kind: "provider_unreachable",
+        severity: "warning",
+        message: `Wave ne répond pas : le paiement en ligne de ${formatAmount(intent.amount, intent.currency)} a été fermé ici. Si le client a payé quand même, le paiement sera enregistré et signalé.`,
+        intentId: intent._id,
+        tableSessionId: intent.tableSessionId,
+        dedupeKey: `unreachable:${intent._id}`,
+      });
+      return;
+    }
     await ctx.db.patch(intent._id, { lastCheckedAt: now, checkAttempts: intent.checkAttempts + 1, nextCheckAt: now + nextDelay(intent.checkAttempts + 1), updatedAt: now });
     if (now > intent.expiresAt + UNREACHABLE_ALERT_AFTER_MS) {
       await raiseAlert(ctx, {
@@ -655,6 +689,24 @@ export const applyVerification = internalMutation({
     }
   },
 });
+
+/**
+ * Fermer une intention ICI, sans réponse du fournisseur (D-130). Sans risque pour l'argent : si le
+ * client a quand même payé, le webhook ou le rapprochement enregistre le paiement (D-115), et le
+ * trop-perçu éventuel est signalé. Ce qui est évité : une table qu'on ne peut plus clôturer parce
+ * que Wave est en panne.
+ */
+async function closeLocally(ctx: MutationCtx, intent: Doc<"paymentIntents">, reason: string): Promise<void> {
+  const now = Date.now();
+  await ctx.db.patch(intent._id, {
+    status: intent.cancelRequestedAt !== undefined ? "cancelled" : "expired",
+    failureReason: reason,
+    nextCheckAt: undefined,
+    initLeaseUntil: undefined,
+    updatedAt: now,
+  });
+  await undoCreatedCheck(ctx, intent);
+}
 
 /** Relire une intention chez le fournisseur et appliquer la réponse. Jamais d'exception. */
 async function verifyOne(ctx: ActionCtx, intentId: Id<"paymentIntents">): Promise<void> {
@@ -684,12 +736,7 @@ async function verifyOne(ctx: ActionCtx, intentId: Id<"paymentIntents">): Promis
   }
 }
 
-export const verifyIntent = internalAction({
-  args: { intentId: v.id("paymentIntents") },
-  handler: async (ctx, args) => verifyOne(ctx, args.intentId),
-});
-
-/** Programmé par `expireOpenIntentsOf` : fermer chez Wave, puis relire. */
+/** Programmé par `expireOpenIntentsOf` et par l'annulation : fermer chez Wave, puis relire. */
 export const expireIntent = internalAction({
   args: { intentId: v.id("paymentIntents") },
   handler: async (ctx, args) => verifyOne(ctx, args.intentId),
@@ -706,7 +753,6 @@ export const cancel = mutation({
     if (intent.cancelRequestedAt === undefined) {
       const now = Date.now();
       await ctx.db.patch(intent._id, { cancelRequestedAt: now, cancelRequestedByMemberId: member._id, failureReason: "staff_cancel", updatedAt: now });
-      await ctx.scheduler.runAfter(0, internal.onlinePayments.expireIntent, { intentId: intent._id });
       await writeAudit(ctx, {
         organizationId: actor.organization._id,
         venueId: actor.venue._id,
@@ -716,6 +762,15 @@ export const cancel = mutation({
         resourceId: intent._id,
         before: { amount: intent.amount, status: intent.status },
       });
+      // Aucune session chez Wave (création échouée, bail échu) : le client n'a aucun lien pour payer.
+      // On ferme ici, sans attendre un Wave peut-être injoignable (D-130).
+      if (!intent.providerRef && (intent.initLeaseUntil ?? 0) <= now) {
+        await closeLocally(ctx, (await ctx.db.get(intent._id))!, "staff_cancel");
+        return { status: "cancelled" as const };
+      }
+      await ctx.scheduler.runAfter(0, internal.onlinePayments.expireIntent, { intentId: intent._id });
+      // Si Wave ne confirme pas, on relit après le délai : l'annulation se ferme alors ici (D-130).
+      await ctx.scheduler.runAfter(CANCEL_UNCONFIRMED_MS + 5_000, internal.onlinePayments.expireIntent, { intentId: intent._id });
     }
     return { status: "cancelling" as const };
   },
@@ -822,10 +877,8 @@ export const completeRefund = internalMutation({
     await ctx.db.patch(payment._id, { status: total >= payment.amount ? "refunded" : "partially_refunded" });
     const sale = (await ctx.db.query("bills").withIndex("by_check", (q) => q.eq("checkId", payment.checkId)).collect()).find((b) => b.kind === "sale");
     if (sale) await issueCreditNote(ctx, venue, sale, refund.amount, refund.reason);
-    // Un trop-perçu rendu n'est plus à rendre.
-    for (const alert of await ctx.db.query("paymentAlerts").withIndex("by_venue_dedupe", (q) => q.eq("venueId", refund.venueId).eq("dedupeKey", `overpaid:${payment._id}`)).collect()) {
-      if (alert.resolvedAt === undefined) await ctx.db.patch(alert._id, { resolvedAt: now, resolution: "refunded" });
-    }
+    // Un trop-perçu rendu n'est plus à rendre — s'il l'est en entier.
+    await resolveOverpaidIfCovered(ctx, payment);
     await writeAudit(ctx, {
       organizationId: venue.organizationId,
       venueId: venue._id,
@@ -852,25 +905,49 @@ function dayWindow(day: string): { from: number; to: number } {
   return { from, to: from + 24 * 60 * 60 * 1000 };
 }
 
+/** Jours qu'une lecture ratée (Wave injoignable) rattrape encore, au-delà de J-1 et J-2. */
+const RECONCILE_RETRY_DAYS = 7;
+
+/**
+ * Tout compte qui a une clé, ACTIF OU NON : recoller un secret ou changer l'adresse du webhook
+ * repasse le compte en brouillon, mais les paiements déjà faits doivent encore être rapprochés.
+ * Avec, les jours récents dont la lecture a échoué, à rattraper.
+ */
 export const accountsToReconcile = internalQuery({
-  args: {},
-  handler: async (ctx) => {
-    const rows = await ctx.db
-      .query("paymentProviderAccounts")
-      .withIndex("by_status", (q) => q.eq("status", "active"))
-      .collect();
-    return rows.map((a) => ({ accountId: a._id, balanceAccess: a.balanceAccess === true }));
+  args: { now: v.number() },
+  handler: async (ctx, args) => {
+    const since = utcDay(args.now - RECONCILE_RETRY_DAYS * 86_400_000);
+    const out = [];
+    for (const a of await ctx.db.query("paymentProviderAccounts").collect()) {
+      if (!a.secrets.apiKey) continue;
+      const failedDays = (
+        await ctx.db
+          .query("providerReconciliations")
+          .withIndex("by_account_day", (q) => q.eq("providerAccountId", a._id).gte("dayUtc", since))
+          .collect()
+      )
+        .filter((r) => r.status === "failed")
+        .map((r) => r.dayUtc);
+      out.push({ accountId: a._id, balanceAccess: a.balanceAccess === true, failedDays });
+    }
+    return out;
   },
 });
 
-/** Chaque matin à 06:00 UTC : J-1 (première passe) et J-2 (seconde passe), le plus ancien d'abord. */
+/**
+ * Chaque matin à 06:00 UTC : J-1 (première passe) PUIS J-2 (seconde passe). Cet ordre compte : un
+ * paiement enregistré ici le jour J mais classé J+1 par Wave est retrouvé par la première passe de
+ * J+1 avant que la seconde passe de J ne le déclare absent. Puis les jours récents restés en échec.
+ */
 export const reconcileAll = internalAction({
   args: { now: v.optional(v.number()) },
   handler: async (ctx, args) => {
     const now = args.now ?? Date.now();
-    const days = [utcDay(now - 2 * 86_400_000), utcDay(now - 86_400_000)];
-    for (const { accountId, balanceAccess } of await ctx.runQuery(internal.onlinePayments.accountsToReconcile, {})) {
-      for (const day of days) await reconcileOne(ctx, accountId, day, balanceAccess);
+    const days = [utcDay(now - 86_400_000), utcDay(now - 2 * 86_400_000)];
+    for (const { accountId, balanceAccess, failedDays } of await ctx.runQuery(internal.onlinePayments.accountsToReconcile, { now })) {
+      for (const day of [...days, ...failedDays.filter((d) => !days.includes(d)).sort().reverse()]) {
+        await reconcileOne(ctx, accountId, day, balanceAccess);
+      }
     }
   },
 });
@@ -922,9 +999,16 @@ export const applyReconciliation = internalMutation({
       .query("providerReconciliations")
       .withIndex("by_account_day", (q) => q.eq("providerAccountId", account._id).eq("dayUtc", args.day))
       .unique();
-    const passes = (existing?.passes ?? 0) + 1;
+    // Seule une lecture RÉUSSIE du relevé compte comme une passe : sinon une lecture ratée, puis
+    // une réussie, suffiraient à déclarer absent un paiement pas encore classé.
+    const passes = (existing?.passes ?? 0) + (args.outcome.kind === "done" ? 1 : 0);
     const base = { venueId: account.venueId, providerAccountId: account._id, dayUtc: args.day, passes, lastRunAt: now };
     const zero = { matched: 0, missingHere: 0, missingAtProvider: 0, amountMismatch: 0, fees: 0, checkoutTotal: 0 };
+    if (args.outcome.kind !== "done" && existing?.status === "done") {
+      // Une lecture ratée n'efface pas ce qu'une précédente a établi.
+      await ctx.db.patch(existing._id, { lastRunAt: now });
+      return;
+    }
     if (args.outcome.kind !== "done") {
       const row = { ...base, ...zero, status: args.outcome.kind === "unavailable" ? ("unavailable" as const) : ("failed" as const), failureCode: args.outcome.kind === "failed" ? args.outcome.code.slice(0, 40) : "no_balance_access" };
       if (existing) await ctx.db.patch(existing._id, row);

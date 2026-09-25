@@ -58,6 +58,15 @@ function masterKeys(): { current: MasterKey | null; previous: MasterKey | null }
 }
 
 /** Le déploiement sait-il chiffrer ? Sans clé, l'écran de réglage le dit au lieu d'échouer. */
+/** La version de la clé maîtresse en cours, ou `null` si aucune n'est réglée. */
+export function currentKeyVersion(): number | null {
+  try {
+    return masterKeys().current?.version ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export function secretBoxConfigured(): boolean {
   try {
     return masterKeys().current !== null;

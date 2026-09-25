@@ -26,7 +26,7 @@ describe("la signature Wave (vecteur officiel)", () => {
 
   test("webhook authentique : accepté", async () => {
     const header = `t=${DOC_TIMESTAMP},v1=${DOC_SIGNATURE}`;
-    expect(await verifyWaveSignature({ header, body: DOC_BODY, secrets: [DOC_SECRET], now: AT_DOC })).toEqual({ ok: true });
+    expect(await verifyWaveSignature({ header, body: DOC_BODY, secrets: [DOC_SECRET], now: AT_DOC })).toEqual({ ok: true, secretIndex: 0 });
   });
 
   test("webhook falsifié : un octet du corps changé, un autre secret, pas d'en-tête — refusé", async () => {
@@ -48,12 +48,12 @@ describe("la signature Wave (vecteur officiel)", () => {
   test("rotation : plusieurs v1, plusieurs secrets — un seul valable suffit", async () => {
     const header = `t=${DOC_TIMESTAMP},v1=${"0".repeat(64)},v1=${DOC_SIGNATURE}`;
     expect(parseSignatureHeader(header)!.signatures).toHaveLength(2);
-    expect(await verifyWaveSignature({ header, body: DOC_BODY, secrets: ["wave_sn_WHS_nouveau_secret_pas_encore_utilise", DOC_SECRET], now: AT_DOC })).toEqual({ ok: true });
+    expect(await verifyWaveSignature({ header, body: DOC_BODY, secrets: ["wave_sn_WHS_nouveau_secret_pas_encore_utilise", DOC_SECRET], now: AT_DOC })).toEqual({ ok: true, secretIndex: 1 });
   });
 
   test("ce que nous signons se vérifie (faux serveur, requêtes signées)", async () => {
     const header = await signatureHeader("secret-du-faux-wave-000000", 1_700_000_000, "{}");
-    expect(await verifyWaveSignature({ header, body: "{}", secrets: ["secret-du-faux-wave-000000"], now: 1_700_000_000_000 })).toEqual({ ok: true });
+    expect(await verifyWaveSignature({ header, body: "{}", secrets: ["secret-du-faux-wave-000000"], now: 1_700_000_000_000 })).toEqual({ ok: true, secretIndex: 0 });
   });
 });
 

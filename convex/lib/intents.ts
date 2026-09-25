@@ -100,6 +100,31 @@ export async function undoCreatedCheck(ctx: MutationCtx, intent: Doc<"paymentInt
   await ctx.db.patch(check._id, { status: "voided" });
 }
 
+/**
+ * Un trop-perçu n'est traité que lorsqu'on a rendu AU MOINS ce trop-perçu (remboursements
+ * confirmés sur l'addition depuis l'alerte). Un remboursement de 1 F ne referme pas une alerte de
+ * 5 000 ; un remboursement en attente chez Wave non plus.
+ */
+export async function resolveOverpaidIfCovered(ctx: MutationCtx, payment: Doc<"payments">, memberId?: Id<"organizationMembers">): Promise<void> {
+  const alert = await ctx.db
+    .query("paymentAlerts")
+    .withIndex("by_venue_dedupe", (q) => q.eq("venueId", payment.venueId).eq("dedupeKey", `overpaid:${payment._id}`))
+    .first();
+  if (!alert || alert.resolvedAt !== undefined) return;
+  const payments = await ctx.db
+    .query("payments")
+    .withIndex("by_check", (q) => q.eq("checkId", payment.checkId))
+    .collect();
+  let refunded = 0;
+  for (const p of payments) {
+    for (const r of await ctx.db.query("refunds").withIndex("by_payment", (q) => q.eq("paymentId", p._id)).collect()) {
+      if (r.status === "succeeded" && r.createdAt >= alert.createdAt) refunded += r.amount;
+    }
+  }
+  if (refunded < (alert.amount ?? 0)) return;
+  await ctx.db.patch(alert._id, { resolvedAt: Date.now(), ...(memberId ? { resolvedByMemberId: memberId } : {}), resolution: "refunded" });
+}
+
 /** Une alerte, dédoublonnée : la même cause ne crie qu'une fois tant qu'elle n'est pas traitée. */
 export async function raiseAlert(
   ctx: MutationCtx,
