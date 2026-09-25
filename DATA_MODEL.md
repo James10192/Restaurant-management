@@ -227,13 +227,13 @@ lecture d'un nom d'établissement.
 | `tax` | `pricesIncludeTax`, `rates[]` (`{code,label,percent,appliesTo}`), `serviceChargePercent?` (**non appliqué en T3** : aucun écran ne le règle, et l'addition ne l'ajoute pas) |
 | `payments` | `enabledMethods[]` et `onlineProviders[]` (paiement en ligne, T5), `amountStep?` (pas d'arrondi des parts), `cashMode?` (`central`/`per_waiter`, défaut `central`), `mobileMoneyWallets?[]` (portefeuilles de l'établissement, réglés par lui) |
 | `tipping` | `enabled`, `mode` (`free`/`percentages`), `suggestions[]` |
-| `branding` | `logoStorageId?`, `coverStorageId?`, `primaryColor`, `theme` |
+| `branding` | `primaryColor?` (saisie du restaurant), `resolvedPrimary?` (couleur affichée, calculée à l'enregistrement pour tenir 4,5:1, D-150), `logo?` (`{storageId,width,height}`, 256 px ≤ 20 Ko, D-153), `coverStorageId?` (réservé, D-155), `theme?` (hérité, jamais lu, retiré par migration, D-151). Sans couleur : celle de Joliba |
 | `fiscal` | `regime`, `taxId?`, `fneEnabled`, `receiptFooter?` *(D-020)* |
 | `notifications` | canaux actifs par événement et par rôle |
 | `serviceRequestTypes` | types activés + délai anti-spam |
 | `tagCatalog` | étiquettes de l'établissement |
 
-**Index** : `by_venue ["venueId"]`
+**Index** : `by_venue ["venueId"]`, `by_logo ["branding.logo.storageId"]` (un logo n'a qu'un propriétaire, toutes organisations confondues : son remplacement efface le fichier)
 **Permissions** : `venue.manage` ; le bloc `service` exige `venue.settings.service`.
 
 ### `trustedDevices`

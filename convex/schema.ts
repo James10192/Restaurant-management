@@ -323,11 +323,23 @@ export default defineSchema({
       mode: v.union(v.literal("free"), v.literal("percentages")),
       suggestions: v.array(v.number()),
     }),
+    /**
+     * L'apparence de la carte client (T7.a). Une couleur et un logo, rien d'autre : pas de
+     * gabarit, pas de police, pas de mode sombre par restaurant (D-149).
+     */
     branding: v.object({
-      logoStorageId: v.optional(v.id("_storage")),
+      /**
+       * La couleur SAISIE par le restaurant, et celle qu'on affiche, calculée à l'enregistrement
+       * par `resolveBrandColor` (D-150). Absentes toutes deux : la couleur Joliba (D-151).
+       */
+      primaryColor: v.optional(v.string()),
+      resolvedPrimary: v.optional(v.string()),
+      /** Réduit dans le navigateur à 256 px, ≤ 20 Ko, PNG ou WebP (D-153). */
+      logo: v.optional(v.object({ storageId: v.id("_storage"), width: v.number(), height: v.number() })),
+      /** Réservé à la couverture (D-155), pas encore écrit. */
       coverStorageId: v.optional(v.id("_storage")),
-      primaryColor: v.string(),
-      theme: v.union(v.literal("light"), v.literal("dark"), v.literal("system")),
+      /** Hérité, jamais lu ; retiré par `migrations:resetSeededBranding` (D-151). */
+      theme: v.optional(v.union(v.literal("light"), v.literal("dark"), v.literal("system"))),
     }),
     /** Reste inactif tant que la spécification FNE n'est pas en main (A7, D-020). */
     fiscal: v.object({
@@ -389,7 +401,11 @@ export default defineSchema({
       }),
     ),
     tagCatalog: v.array(v.object({ key: v.string(), label: v.string() })),
-  }).index("by_venue", ["venueId"]),
+  })
+    .index("by_venue", ["venueId"])
+    // Un logo n'appartient qu'à un établissement, TOUTES organisations confondues : son
+    // remplacement efface le fichier (D-154), il ne doit pas pouvoir effacer celui d'un autre.
+    .index("by_logo", ["branding.logo.storageId"]),
 
   /** Une tablette de cuisine n'est pas une personne : elle s'enrôle, elle ne se connecte pas. */
   /**

@@ -1,5 +1,6 @@
 import { createFileRoute, notFound, useNavigate } from "@tanstack/react-router";
 import { localTime } from "../../convex/lib/availability";
+import { brandThemeCss } from "../../convex/lib/brand";
 import type { PublicVenue } from "../../convex/lib/guestMenu";
 import { isIndexable } from "../../convex/lib/indexability";
 import { VENUE_TYPE_LABELS } from "../../convex/lib/validators";
@@ -49,6 +50,8 @@ export const Route = createFileRoute("/menu/$venueSlug")({
         { property: "og:description", content: description },
       ],
       links: [{ rel: "canonical", href: `${loaderData.origin}/menu/${params.venueSlug}` }],
+      // La couleur du restaurant, déjà rendue lisible à l'enregistrement (D-152). Aucun script.
+      styles: venue.brand.primary ? [{ children: brandThemeCss(venue.brand.primary) }] : [],
       scripts: loaderData.indexable ? [{ type: "application/ld+json", children: jsonLd(venue, loaderData.menus, `${loaderData.origin}/menu/${params.venueSlug}`) }] : [],
     };
   },

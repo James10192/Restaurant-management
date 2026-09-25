@@ -26,7 +26,8 @@ export function defaultVenueSettings(venueId: Id<"venues">): VenueSettingsInput 
     },
     tax: { pricesIncludeTax: true, rates: [] },
     tipping: { enabled: false, mode: "free", suggestions: [] },
-    branding: { primaryColor: "#0B6478", theme: "light" },
+    // Aucune couleur choisie : la carte porte celle de Joliba (D-151).
+    branding: {},
     fiscal: { regime: "non_renseigne", fneEnabled: false },
     payments: { enabledMethods: ["cash"], onlineProviders: [] },
     notifications: [],

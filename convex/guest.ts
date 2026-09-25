@@ -71,7 +71,7 @@ export const tableMenu = query({
     if (!resolved) return null;
     const { venue, table } = resolved;
     return {
-      venue: publicVenue(venue),
+      venue: await publicVenue(ctx, venue),
       table: { number: table.number, label: table.label ?? null },
       menus: await loadPublishedMenus(ctx, venue._id),
       live: await loadLiveAvailability(ctx, venue._id),
@@ -96,7 +96,7 @@ export const publicMenu = query({
     const menus = await loadPublishedMenus(ctx, venue._id);
     if (menus.length === 0) return null;
     return {
-      venue: publicVenue(venue),
+      venue: await publicVenue(ctx, venue),
       menus,
       live: await loadLiveAvailability(ctx, venue._id),
       // Les mêmes faits que le plan du site et l'écran de réglages : une seule porte de qualité.
