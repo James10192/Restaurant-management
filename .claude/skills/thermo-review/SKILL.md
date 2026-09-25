@@ -234,8 +234,13 @@ request). Il refuse, contre la base :
 
 - un fichier que le diff fait passer au-delà de **1000 lignes**, ou qu'il agrandit alors qu'il y
   était déjà ;
-- une fonction, un composant, une méthode ou un `handler` Convex que le diff **crée ou allonge**
-  au-delà de **80 lignes**.
+- une fonction, un composant, une méthode, un `handler` Convex ou un cas de test (`test`, `it`)
+  que le diff **crée ou allonge** au-delà de **80 lignes**. Un `describe` n'est pas mesuré : ce
+  n'est qu'un conteneur, et le compter interdirait d'ajouter un test de régression.
+
+Déplacer n'est pas créer : une fonction qui quitte son fichier pour un autre, sans s'allonger et
+sous le même nom complet, passe. Une fonction neuve qui porte le nom d'une autre restée en place
+ne passe pas.
 
 Le seuil est différentiel : la dette existante est connue (`MenuView`, `Onboarding`, les gros
 écrans de gestion), ce contrôle empêche qu'elle grossisse. Le remède est gratuit : une fonction
@@ -288,9 +293,11 @@ importent **exige** :
 - **l'attribution** de tout écart de script, fichier par fichier, contre le build de la base. Vécu
   en T7.a : l'écart de script mesuré n'était pas expliqué ; l'attribution a trouvé que le calcul
   OKLCH, dans un module partagé entre le `head()` des pages client et l'écran Apparence, était
-  entré dans le paquet commun. Le test `tests/scripts/guest-bundle-boundary.test.ts` en garde la
-  frontière. **Un import dans
-  `head()` ou dans une route client est un import pour chaque client.**
+  entré dans le paquet commun. `scripts/check-guest-bundle.mjs`, lancé par la CI après le build,
+  en garde la frontière sur l'artefact : aucun fichier que les pages client chargent d'office ne
+  contient le calcul, quel que soit l'import qui l'y aurait amené. Ce qui arrive plus tard par
+  import dynamique relève de la mesure. **Un import dans le `head()`, le `loader` ou le
+  `validateSearch` de n'importe quelle route est un import pour chaque client.**
 
 Pour tout écran : **une capture réelle** (`E2E_SCREENSHOTS`), pas une maquette ; les six états
 (chargement, vide, erreur, partiel, hors ligne, succès) ; 390 px de large sans défilement
@@ -373,7 +380,8 @@ contourné :
 | `check:money` | les invariants de montant (exposant, division sans perte, chiffres de liste = `formatMoney`) |
 | `check:schema` | index en double, limites Convex, recopie d'organisation, table non documentée |
 | `check:permissions` | une permission présente dans le code OU dans la doc, pas dans les deux |
-| `check:sizes` | un fichier au-delà de 1000 lignes, une fonction créée ou allongée au-delà de 80 |
+| `check:sizes` | un fichier au-delà de 1000 lignes, une fonction ou un cas de test créé ou allongé au-delà de 80 |
+| CI « Guest bundle boundary » (`check-guest-bundle.mjs`, après le build) | le calcul de couleur OKLCH dans un fichier que les pages client chargent d'office |
 | CI « Generated Convex files are committed » | `convex/_generated` non régénéré |
 | `pnpm test:e2e` | les parcours T0 à T7 |
 
@@ -385,7 +393,7 @@ Défauts récurrents, chacun déjà survenu. Chaque ligne est un `BLOCK`.
 |---|---|
 | « reçu » ou « facture » dans l'interface avant certification | D-024 : c'est un **ticket** (`bills` dans le code) |
 | Un montant affiché sans `formatMoney` | la liste de la carte client seule a `formatListDigits` |
-| Une requête Convex dont le résultat doit **suivre l'heure** et qui lit `Date.now()` | une requête ne se recalcule qu'à la prochaine écriture, pas quand l'heure passe : son résultat reste figé. Deux formes sûres : renvoyer les faits et laisser le rendu calculer (`guestMenu.ts`, la disponibilité), ou recevoir l'heure de l'écran, arrondie (D-162). Lire `Date.now()` pour dater un résultat qu'une écriture rafraîchira reste permis — douze requêtes le font |
+| Une requête Convex dont le résultat doit **suivre l'heure** et qui lit `Date.now()` | une requête ne se recalcule qu'à la prochaine écriture, pas quand l'heure passe : son résultat reste figé. Deux formes sûres : renvoyer les faits et laisser le rendu calculer (`guestMenu.ts`, la disponibilité), ou recevoir l'heure de l'écran, arrondie (D-162). Lire `Date.now()` pour dater un résultat qu'une écriture rafraîchira reste permis, et plusieurs requêtes le font |
 | Un geste de service qui ne passe pas par la file hors ligne | ADR 0006, D-164 |
 | Une requête avant la session établie | `useAuthStatus().isAuthenticated`, sinon « session expirée » |
 | Un état de parcours en `useState` qui doit survivre à un changement d'organisation ou à un rechargement | l'adresse (`validateSearch`) |

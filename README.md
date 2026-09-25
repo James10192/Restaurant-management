@@ -117,6 +117,7 @@ pnpm check:money         # le franc CFA n'a pas de sous-unité
 pnpm check:sizes         # contre origin/main : aucun fichier > 1000 lignes, aucune fonction allongée > 80
 pnpm test                # isolation multi-tenant, verrous, portée (convex-test)
 pnpm check               # tout ce qui précède
+pnpm check:guest-bundle  # après pnpm build : le calcul de couleur hors des pages client
 
 pnpm test:e2e            # parcours T0 à T7 dans un navigateur — voir e2e/README.md
 

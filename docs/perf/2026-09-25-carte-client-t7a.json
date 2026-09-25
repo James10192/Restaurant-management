@@ -113,7 +113,7 @@
         "money (formatListDigits, currencySymbol)": 0.1,
         "table-ordering, input-otp": 0.2
       },
-      "why_the_measure_says_147": "measure-guest compte les octets transférés (brotli) jusqu'à load + 1 s, et la mesure UI.7 (143) venait d'un autre jeu de démonstration : la liste des morceaux arrivés avant cette borne n'est pas la même d'un jeu à l'autre. À jeu égal, l'écart imputable à cette tranche est de 1,2 Ko."
+      "why_the_measure_says_147": "Déduit, pas remesuré : measure-guest compte les octets transférés (brotli) jusqu'à load + 1 s, et la mesure UI.7 (143) venait d'un autre jeu de démonstration, donc d'une autre liste de morceaux arrivés avant cette borne. Mesuré, lui : à jeu égal, l'écart imputable à cette tranche est de 1,2 Ko."
     }
   }
 }

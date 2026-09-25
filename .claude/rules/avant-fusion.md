@@ -8,8 +8,9 @@ Dès qu'un travail qui touche du code (`convex/`, `src/`, `scripts/`, `e2e/`, `t
 ## La règle
 
 1. **`pnpm check` est vert**, et la CI de la pull request aussi. Il comprend désormais
-   `check:sizes` : aucun fichier au-delà de 1000 lignes, aucune fonction créée ou allongée
-   au-delà de 80, contre la base.
+   `check:sizes` : aucun fichier au-delà de 1000 lignes, aucune fonction ni aucun cas de test
+   créé ou allongé au-delà de 80, contre la base. Après `pnpm build`,
+   `node scripts/check-guest-bundle.mjs` : le calcul de couleur hors des pages client.
 2. **Les parcours de bout en bout touchés passent** (`pnpm test:e2e`, voir `e2e/README.md`),
    et un parcours nouveau accompagne une fonctionnalité nouvelle.
 3. **La revue thermo-nucléaire rend `PASS`** — le skill `/thermo-review`, en sous-agent, sur

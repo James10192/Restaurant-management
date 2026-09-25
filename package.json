@@ -18,6 +18,7 @@
     "check": "pnpm typecheck && pnpm check:permissions && pnpm check:schema && pnpm check:guards && pnpm check:money && pnpm check:sizes && pnpm test",
     "check:guards": "node scripts/check-guards.mjs",
     "check:sizes": "node scripts/check-sizes.mjs",
+    "check:guest-bundle": "node scripts/check-guest-bundle.mjs",
     "test:e2e": "playwright test"
   },
   "devDependencies": {

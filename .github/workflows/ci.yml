@@ -98,6 +98,11 @@ jobs:
           VITE_CONVEX_URL: http://127.0.0.1:3210
           VITE_CONVEX_SITE_URL: http://127.0.0.1:3211
 
+      # Sur le build lui-même : aucun fichier que les pages client chargent d'office ne contient le
+      # calcul de couleur OKLCH (D-166), quel que soit l'import qui l'y aurait amené.
+      - name: Guest bundle boundary
+        run: pnpm check:guest-bundle
+
       # Parcours critique dans un vrai navigateur : connexion par code, ouverture d'un
       # établissement, invitation, cloisonnement du collègue. Voir e2e/README.md.
       - name: Install Playwright browser

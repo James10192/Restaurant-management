@@ -85,13 +85,31 @@ describe("scripts/check-sizes.mjs", () => {
     expect(result.stderr).toContain("test(un cas trop long) : créée à 92 lignes");
   });
 
-  test("refuse un fichier qui franchit 1000 lignes, laisse passer une fonction courte ajoutée à côté d'un homonyme long", () => {
-    const { dir } = repo({ "src/a.ts": fn("longue", 90), "src/b.ts": "export const x = 1;\n" });
+  test("refuse un fichier qui franchit 1000 lignes", () => {
+    const { dir } = repo({ "src/b.ts": "export const x = 1;\n" });
     write(dir, { "src/b.ts": Array.from({ length: 1001 }, (_, i) => `export const x${i} = ${i};`).join("\n") + "\n" });
     const result = check(dir);
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("src/b.ts : 1 → 1001 lignes");
-    expect(result.stderr).not.toContain("longue");
+  });
+
+  test("une fonction longue restée en place ne couvre pas une nouvelle du même nom ailleurs", () => {
+    // Le cas Convex : `create.handler` existe déjà, long, dans orders.ts ; tips.ts en crée un autre.
+    const { dir } = repo({ "src/orders.ts": fn("handler", 150) + "export const y = 0;\n" });
+    write(dir, { "src/orders.ts": fn("handler", 150) + "export const y = 1;\n", "src/tips.ts": fn("handler", 140) });
+    const result = check(dir);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("src/tips.ts:1 handler : créée à 140 lignes");
+  });
+
+  test("un test ajouté dans un describe déjà long passe : describe n'est qu'un conteneur", () => {
+    const tests = (n: number) => Array.from({ length: n }, (_, i) => `  test("cas ${i}", () => {\n    expect(${i}).toBe(${i});\n  });`).join("\n");
+    const suite = (n: number) => `import { describe, expect, test } from "vitest";\ndescribe("la file", () => {\n${tests(n)}\n});\n`;
+    const { dir } = repo({ "tests/a.test.ts": suite(30) });
+    write(dir, { "tests/a.test.ts": suite(31) });
+    const result = check(dir);
+    expect(result.stderr).toBe("");
+    expect(result.status).toBe(0);
   });
 
   test("sort en erreur, sans rien affirmer, quand la base est introuvable", () => {
