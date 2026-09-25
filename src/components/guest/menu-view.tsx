@@ -324,6 +324,15 @@ function sectionAnchor(menu: GuestMenu, section: { id: string }) {
 /** Le début de la carte : la barre collante et tout ce qui suit. */
 export const MENU_ANCHOR = "carte";
 
+/**
+ * La hauteur de la barre collante, arrondie au-dessus : une section atteinte par une pastille
+ * s'arrête sous la barre, et la pastille allumée est celle de la section qu'on lit. UNE valeur
+ * pour les deux, sinon elles divergent.
+ */
+function navHeight(twoRows: boolean): number {
+  return twoRows ? 144 : 64;
+}
+
 /** « Entrées, Grillades & Plats » : de quoi reconnaître une carte avant de l'ouvrir. */
 function summary(names: string[]) {
   const shown = names.slice(0, 3);
@@ -378,7 +387,7 @@ function MenuToolbar(props: {
         if (visible) setActive(`#${visible.target.id}`);
       },
       // Sous la barre collante, dont la hauteur dépend du nombre d'étages.
-      { rootMargin: `${twoRows ? "-140px" : "-72px"} 0px -60% 0px` },
+      { rootMargin: `-${navHeight(twoRows)}px 0px -60% 0px` },
     );
     targets.forEach((el) => observer.observe(el));
     return () => observer.disconnect();
@@ -534,7 +543,7 @@ function MenuBlock(props: {
         // Le rang dans la carte publiée, et non dans la liste filtrée : il ne bouge pas quand on cherche.
         const rank = String(menu.sections.findIndex((s) => s.id === section.id) + 1).padStart(2, "0");
         return (
-          <section key={section.id} id={anchor} className={cn("pt-8", props.twoRowNav ? "scroll-mt-36" : "scroll-mt-16")} aria-labelledby={`${anchor}-t`}>
+          <section key={section.id} id={anchor} className="pt-8" style={{ scrollMarginTop: navHeight(props.twoRowNav === true) }} aria-labelledby={`${anchor}-t`}>
             <div className="flex items-baseline gap-3 border-b-2 border-foreground pb-2">
               <span aria-hidden="true" className="text-sm font-semibold text-primary tabular-nums">
                 {rank}

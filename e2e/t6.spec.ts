@@ -102,8 +102,10 @@ test("le gérant voit le service en direct, puis comprend sa journée", async ({
   await expect(page.locator("[data-top-products]").getByText(/Alloco/)).toBeVisible();
   const delays = page.locator("[data-delays]");
   await expect(delays.getByText(/Prêt → servi/)).toBeVisible();
-  // Un délai se lit avec son effectif (D-143).
-  await expect(delays.locator("[data-slot=item]").filter({ hasText: "Commencé → prêt" }).getByText(/sur \d+ bons?/)).toBeVisible();
+  // Un délai se lit avec son effectif (D-143). « Commencer » puis « Prêt » à quelques secondes
+  // d'écart ne mesurent aucune préparation (D-162) : c'est le passage au service qui se lit ici.
+  await expect(delays.locator("[data-slot=item]").filter({ hasText: "Prêt → servi" }).getByText(/sur \d+ bons?/)).toBeVisible();
+  await expect(delays.locator("[data-slot=item]").filter({ hasText: "Commencé → prêt" }).getByText("Pas encore mesuré")).toBeVisible();
   await expect(page.getByRole("heading", { name: "L'argent tombe-t-il juste ?" })).toBeVisible();
   await shot(page, "t6-04-donnees");
   await page.getByRole("radio", { name: "7 jours" }).click();

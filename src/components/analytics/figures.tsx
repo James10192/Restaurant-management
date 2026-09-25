@@ -30,8 +30,10 @@ export function delayText(d: { median: number | null; count: number }, unit: str
   return `${formatDelay(d.median)} · sur ${d.count} ${unit}${d.count > 1 ? "s" : ""}`;
 }
 
-/** L'écart à l'habitude, dit en mots, sans couleur criarde : « +12 % par rapport à d'habitude ». */
-/** « +12 % par rapport à d'habitude », ou à la période précédente (`against`). */
+/**
+ * L'écart à l'habitude, dit en mots, sans couleur criarde : « +12 % par rapport à d'habitude »,
+ * ou à la période précédente (`against`).
+ */
 export function versusUsual(now: number, usual: number, against = "d'habitude"): string {
   if (usual === 0) return now === 0 ? `comme ${against}` : `${against} : rien`;
   const pct = Math.round(((now - usual) / usual) * 100);

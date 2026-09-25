@@ -135,10 +135,13 @@ la nuit, dans la timezone de l'établissement, et il est **recalculable** : une 
 
 > **Comment c'est fait (T6, D-139 à D-141).** Convex ne planifie qu'en UTC : une tâche **horaire**
 > (`analytics:closeDays`) clôt, pour chaque établissement, le jour de service J-1 une heure après la
-> fin de sa fenêtre, puis recalcule J-2 une fois le lendemain — ce qui rattrape les corrections
-> tardives sans crochet dans chaque mutation. Chaque jour part dans sa propre transaction. Un seul
-> calcul (`computeServiceDay`) sert le rapport, « aujourd'hui » et `dailyMetrics` ; les délais y
-> sont des histogrammes, pour que la médiane d'un mois soit exacte.
+> fin de sa fenêtre, puis recalcule J-2 une fois le lendemain. Une correction qui touche un jour
+> DÉJÀ écrit (remboursement confirmé, paiement annulé, caisse comptée, offert, remise, commande ou
+> annulation sur une table d'un jour clos) le fait recalculer aussitôt (`refreshClosedDay`,
+> D-162). Chaque jour part dans sa propre transaction, et garde sa fenêtre : quand l'heure de
+> début change, le jour suivant part de la fin du précédent. Le rapport et les chiffres lisent les
+> mêmes chargeurs (`loadDay*`) ; les délais sont des histogrammes, pour que la médiane d'un mois
+> soit exacte.
 
 ---
 

@@ -253,6 +253,11 @@ pourquoi.
   du gérant ; l'accueil aiguille selon les droits *(D-146)* ; les réglages rangés sous
   « Réglages ».
 
+- **T6.d — corrections des revues** (thermo-review et revue adverse) : aucun montant pendant un
+  comptage à l'aveugle quel que soit le jour, comparaisons honnêtes (dernière demi-heure écoulée,
+  périodes finies), chargeurs partagés avec le rapport, fenêtres chaînées, corrections tardives
+  recalculées *(D-162)*.
+
 **Écarts assumés** *(D-144)* : ni tunnel client (aucun scan daté), ni « souvent pris ensemble »
 (D-104 re-reporté), ni taux d'occupation, ni indicateurs par employé, ni export, ni consolidé de
 groupe (T8), ni notifications d'anomalies (T9). Les anomalies se calculent à la lecture, sans table
@@ -269,6 +274,11 @@ assisté par IA avec validation humaine obligatoire · centre d'aide et signalem
 première commande de test sans nous.
 
 **Porte de sortie** : trois restaurants s'installent sans assistance, mesuré.
+
+**T7.a — Apparence** *(D-149 à D-160)* : la carte client prend la couleur et le logo du
+restaurant — couleur résolue côté serveur pour rester lisible (4,5:1 sur trois paires), logo léger
+sans SVG, aperçu qui rend la vraie carte à 390 px. Ni gabarits, ni polices, ni mode sombre par
+restaurant ; la couverture attend que la carte revienne dans son budget.
 
 > Cette tranche décide du coût d'acquisition. Tant qu'elle n'est pas faite, chaque client coûte une
 > installation accompagnée.

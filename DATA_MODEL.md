@@ -1031,8 +1031,12 @@ table), `collected` (Encaissé : paiements moins remboursements au jour du mouve
 `tables`, `exceptions`.
 **Index** : `by_venue_date ["venueId","businessDate"]`
 **Cycle** : écrite par la tâche horaire une heure après la fin du jour (J-1), recalculée une fois le
-lendemain (J-2) pour les corrections tardives ; une version de calcul nouvelle reconstruit
-l'historique (D-141). Même calcul que le rapport et « aujourd'hui » (D-139).
+lendemain (J-2), et aussitôt qu'une correction touche un jour déjà écrit (D-162). La fenêtre
+écrite (`from`, `to`) fait foi : un changement d'heure de début ne redécoupe pas le passé, et le
+jour suivant part de la fin du précédent. Une version de calcul nouvelle : J-1 et J-2 se
+recalculent seuls, le reste par `analytics:rebuild`, et une période qui mêle deux versions le dit
+(D-141). Mêmes chargeurs que le rapport (D-139). `exceptions.cashShort` / `cashOver` : manquants
+et excédents au **premier** comptage, séparés.
 
 ### `auditLogs`
 **Objectif.** Qui a fait quoi, quand, et sur quoi.

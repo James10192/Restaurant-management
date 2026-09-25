@@ -62,36 +62,38 @@ import { authClient } from "~/lib/auth-client";
  * `settings` : ce qu'on règle une fois, rangé sous « Réglages », replié. La navigation du service
  * reste sous neuf entrées (INFORMATION_ARCHITECTURE §1.2).
  */
-type NavItem = { to: string; label: string; icon: LucideIcon; show: boolean; exact?: boolean; settings?: boolean };
+type NavItem = { to: string; label: string; icon: LucideIcon; show: boolean; exact?: boolean; settings?: boolean; description?: string };
 
 export function useNavItems(): NavItem[] {
   const w = useWorkspace();
   return [
     { to: "/app", label: "Accueil", icon: House, show: true, exact: true },
-    { to: "/app/service", label: "Service", icon: ConciergeBell, show: w.canInVenue("table.read") },
-    { to: "/app/cuisine", label: "Cuisine", icon: ChefHat, show: w.canInVenue("kitchen.ticket.update") },
+    { to: "/app/service", label: "Service", icon: ConciergeBell, show: w.canInVenue("table.read"), description: "Les tables, ce qui attend d'être servi, les demandes des clients." },
+    { to: "/app/cuisine", label: "Cuisine", icon: ChefHat, show: w.canInVenue("kitchen.ticket.update"), description: "Les bons de votre poste, dans l'ordre où les préparer." },
     {
       to: "/app/service/caisse",
       label: "Caisse",
       icon: Wallet,
       show: w.canInVenue("table.read") && (w.canInVenue("payment.collect") || w.canInVenue("cash_register.open") || w.canInVenue("cash_register.close")),
+      description: "Ouvrir, encaisser, compter, clôturer.",
     },
-    { to: "/app/rapport", label: "Fin de service", icon: ClipboardList, show: w.canInVenue("report.service_day.read") },
-    { to: "/app/analytics", label: "Données", icon: ChartColumn, show: w.canInVenue("analytics.read") },
-    { to: "/app/feedback", label: "Avis des clients", icon: MessageSquare, show: w.canInVenue("feedback.read") },
+    { to: "/app/rapport", label: "Fin de service", icon: ClipboardList, show: w.canInVenue("report.service_day.read"), description: "Ce qui est entré, par quel moyen, par qui — et la journée comparée à ses semblables." },
+    { to: "/app/analytics", label: "Données", icon: ChartColumn, show: w.canInVenue("analytics.read"), description: "Ce qui se vend, quand vous êtes chargé, où le service coince." },
+    { to: "/app/feedback", label: "Avis des clients", icon: MessageSquare, show: w.canInVenue("feedback.read"), description: "Ce que vos clients ont dit après leur repas." },
     {
       to: "/app/menu",
       label: "Carte",
       icon: UtensilsCrossed,
       show: w.canInVenue("menu.read") || w.canInVenue("menu.availability.toggle"),
+      description: "Les plats, les prix, ce qui est disponible ce soir.",
     },
-    { to: "/app/floor", label: "Plan de salle", icon: LayoutGrid, show: w.canInVenue("table.read") },
-    { to: "/app/team", label: "Équipe", icon: Users, show: w.canInVenue("team.read") || w.canInOrganization("team.read"), settings: true },
-    { to: "/app/roles", label: "Rôles", icon: ShieldCheck, show: w.canInOrganization("permissions.manage"), settings: true },
-    { to: "/app/settings/stations", label: "Postes de préparation", icon: Flame, show: w.canInVenue("kitchen.manage"), settings: true },
-    { to: "/app/settings/payments", label: "Encaissement", icon: Banknote, show: w.canInVenue("venue.settings.service"), settings: true },
-    { to: "/app/settings/devices", label: "Appareils", icon: TabletSmartphone, show: w.canInVenue("device.manage") || w.canInVenue("venue.settings.service"), settings: true },
-    { to: "/app/settings/venue", label: "Établissement", icon: Settings, show: w.canInVenue("venue.manage"), settings: true },
+    { to: "/app/floor", label: "Plan de salle", icon: LayoutGrid, show: w.canInVenue("table.read"), description: "Les salles, les tables et leurs QR codes." },
+    { to: "/app/team", label: "Équipe", icon: Users, show: w.canInVenue("team.read") || w.canInOrganization("team.read"), settings: true, description: "Qui a accès à quoi, et où. Inviter un collègue, ajuster ses rôles." },
+    { to: "/app/roles", label: "Rôles", icon: ShieldCheck, show: w.canInOrganization("permissions.manage"), settings: true, description: "Composer les rôles qui correspondent à votre organisation." },
+    { to: "/app/settings/stations", label: "Postes de préparation", icon: Flame, show: w.canInVenue("kitchen.manage"), settings: true, description: "Cuisine, bar, grill : où part chaque plat, et quand un bon est en retard." },
+    { to: "/app/settings/payments", label: "Encaissement", icon: Banknote, show: w.canInVenue("venue.settings.service"), settings: true, description: "Caisse, moyens de paiement, début de la journée." },
+    { to: "/app/settings/devices", label: "Appareils", icon: TabletSmartphone, show: w.canInVenue("device.manage") || w.canInVenue("venue.settings.service"), settings: true, description: "Les tablettes partagées et leurs codes PIN." },
+    { to: "/app/settings/venue", label: "Établissement", icon: Settings, show: w.canInVenue("venue.manage"), settings: true, description: "Nom, adresse, téléphone : ce que vos clients verront." },
   ].filter((item) => item.show);
 }
 
@@ -104,7 +106,7 @@ export function AppSidebar() {
   const workspace = useWorkspace();
   const items = useNavItems();
   const { pathname } = useLocation();
-  const { setOpenMobile } = useSidebar();
+  const { setOpenMobile, state, setOpen } = useSidebar();
   // L'entrée la plus précise l'emporte : « Caisse » (/app/service/caisse) n'allume pas « Service ».
   const matches = (i: NavItem) => (i.exact ? pathname === i.to : pathname === i.to || pathname.startsWith(`${i.to}/`));
   const best = items.filter(matches).sort((x, y) => y.to.length - x.to.length)[0];
@@ -131,7 +133,17 @@ export function AppSidebar() {
                     <Collapsible asChild open={settingsOpen} onOpenChange={setSettingsOpen} className="group/settings">
                       <SidebarMenuItem>
                         <CollapsibleTrigger asChild>
-                          <SidebarMenuButton tooltip="Réglages" isActive={!settingsOpen && best?.settings === true}>
+                          <SidebarMenuButton
+                            tooltip="Réglages"
+                            isActive={!settingsOpen && best?.settings === true}
+                            // Réduite en icônes, la barre cache les sous-entrées : on la déplie.
+                            onClick={(e) => {
+                              if (state !== "collapsed") return;
+                              e.preventDefault();
+                              setOpen(true);
+                              setSettingsOpen(true);
+                            }}
+                          >
                             <SlidersHorizontal />
                             <span>Réglages</span>
                             <ChevronRight className="ml-auto transition-transform group-data-[state=open]/settings:rotate-90" />

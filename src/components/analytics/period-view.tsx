@@ -137,18 +137,18 @@ function Summary({ data, money }: { data: Period; money: (n: number) => string }
   const inProgress = data.from <= data.today && data.today <= data.to;
   return (
     <div className="flex flex-col gap-2">
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-      <Figure label="Commandes" value={String(data.orders.count)} hint={vs(data.orders.count, prev?.orders)} />
-      {data.money ? (
-        <>
-          <Figure label="Ventes" value={money(data.money.sales)} hint={vs(data.money.sales, prev?.sales)} />
-          <Figure label="Encaissé" value={money(data.money.collected.net)} hint={vs(data.money.collected.net, prev?.collected)} />
-          <Figure label="Ticket moyen par table" value={data.money.averageTicket === null ? "—" : money(data.money.averageTicket)} hint={`sur ${data.tables.count} table${data.tables.count > 1 ? "s" : ""}`} />
-        </>
-      ) : (
-        <Figure label="Tables servies" value={String(data.tables.count)} />
-      )}
-    </div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <Figure label="Commandes" value={String(data.orders.count)} hint={vs(data.orders.count, prev?.orders)} />
+        {data.money ? (
+          <>
+            <Figure label="Ventes" value={money(data.money.sales)} hint={vs(data.money.sales, prev?.sales)} />
+            <Figure label="Encaissé" value={money(data.money.collected.net)} hint={vs(data.money.collected.net, prev?.collected)} />
+            <Figure label="Ticket moyen par table" value={data.money.averageTicket === null ? "—" : money(data.money.averageTicket)} hint={`sur ${data.tables.count} table${data.tables.count > 1 ? "s" : ""}`} />
+          </>
+        ) : (
+          <Figure label="Tables servies" value={String(data.tables.count)} />
+        )}
+      </div>
       {/* Ce qui ne se compare pas le dit (D-142) : un jour entamé contre des jours pleins mentirait. */}
       {data.length === 1 ? (
         <p className="text-sm text-muted-foreground">

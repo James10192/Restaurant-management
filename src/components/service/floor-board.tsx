@@ -128,9 +128,7 @@ export function FloorBoard() {
                   <span className="sr-only sm:not-sr-only">en retard</span>
                 </Badge>
               ) : kitchen && kitchen.length > 0 ? (
-                <Badge variant="secondary" className={COUNT}>
-                  {kitchen.length}
-                </Badge>
+                <QueueBadge count={kitchen.length} age={oldest(kitchen.flatMap((t) => (t.queuedAt ? [t.queuedAt] : [])))} />
               ) : null}
             </TabsTrigger>
           ) : null}
