@@ -62,13 +62,13 @@ test("le gérant voit le service en direct, puis comprend sa journée", async ({
 
   // ── La tour de contrôle : « En cuisine », puis en retard quand l'heure passe le seuil ──
   await page.goto("/app/service");
-  await page.getByRole("tab", { name: /En cuisine/ }).click();
+  await page.getByRole("tab", { name: /[Cc]uisine/ }).click();
   const ticket = page.locator("[data-kitchen-ticket]").filter({ hasText: `Table ${TABLE}` });
   await expect(ticket).toBeVisible();
   await expect(ticket.getByText("En retard")).toHaveCount(0);
   await page.clock.fastForward("25:00");
   await expect(ticket.getByText("En retard")).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByRole("tab", { name: /En cuisine.*en retard/ })).toBeVisible();
+  await expect(page.getByRole("tab", { name: /[Cc]uisine.*en retard/ })).toBeVisible();
   await shot(page, "t6-01-en-cuisine-en-retard");
 
   // ── Prêt, puis servi ──
@@ -83,7 +83,7 @@ test("le gérant voit le service en direct, puis comprend sa journée", async ({
   await shot(page, "t6-02-a-servir");
   await ready.getByRole("button", { name: "Servi" }).click();
   await expect(ready).toHaveCount(0, { timeout: 20_000 });
-  await page.getByRole("tab", { name: /En cuisine/ }).click();
+  await page.getByRole("tab", { name: /[Cc]uisine/ }).click();
   await expect(ticket).toHaveCount(0);
 
   // ── Le rapport ouvre sur la journée ; le jour vit dans l'adresse ──
