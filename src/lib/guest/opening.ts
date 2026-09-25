@@ -29,21 +29,34 @@ export function openingStatus(hours: readonly OpeningHours[], t: { dayOfWeek: nu
   return { open: false, opensAt: null };
 }
 
-const WEEKDAYS = ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"];
+const WEEKDAYS = {
+  fr: ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"],
+  en: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
+};
 
-/** « 23 h », « 11 h 30 », « minuit ». */
-export function hourText(minute: number): string {
+/** « 23 h », « 11 h 30 », « minuit » ; en anglais « 23:00 », « midnight ». */
+export function hourText(minute: number, locale: "fr" | "en" = "fr"): string {
   const m = ((minute % 1440) + 1440) % 1440;
-  if (m === 0) return "minuit";
+  if (m === 0) return locale === "fr" ? "minuit" : "midnight";
   const h = Math.floor(m / 60);
   const mm = m % 60;
+  if (locale === "en") return `${h}:${String(mm).padStart(2, "0")}`;
   return mm === 0 ? `${h} h` : `${h} h ${String(mm).padStart(2, "0")}`;
 }
 
-/** La phrase affichée sous le nom. */
-export function openingText(status: OpeningStatus, dayOfWeek: number): string {
-  if (status.open) return `Ouvert · ferme à ${hourText(status.closesAt)}`;
+/** La phrase affichée sous le nom. Dans sept jours, c'est « lundi prochain », jamais « lundi ». */
+export function openingText(status: OpeningStatus, dayOfWeek: number, locale: "fr" | "en" = "fr"): string {
+  const h = (m: number) => hourText(m, locale);
+  if (locale === "en") {
+    if (status.open) return `Open · closes at ${h(status.closesAt)}`;
+    if (status.opensAt === null) return "Closed";
+    const day = WEEKDAYS.en[(dayOfWeek + status.inDays) % 7];
+    const when = status.inDays === 0 ? "" : status.inDays === 1 ? "tomorrow " : status.inDays === 7 ? `next ${day} ` : `${day} `;
+    return `Closed · opens ${when}at ${h(status.opensAt)}`;
+  }
+  if (status.open) return `Ouvert · ferme à ${h(status.closesAt)}`;
   if (status.opensAt === null) return "Fermé";
-  const when = status.inDays === 0 ? "" : status.inDays === 1 ? "demain " : `${WEEKDAYS[(dayOfWeek + status.inDays) % 7]} `;
-  return `Fermé · ouvre ${when}à ${hourText(status.opensAt)}`;
+  const day = WEEKDAYS.fr[(dayOfWeek + status.inDays) % 7];
+  const when = status.inDays === 0 ? "" : status.inDays === 1 ? "demain " : status.inDays === 7 ? `${day} prochain ` : `${day} `;
+  return `Fermé · ouvre ${when}à ${h(status.opensAt)}`;
 }

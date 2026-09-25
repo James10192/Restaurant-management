@@ -1157,6 +1157,12 @@ export default defineSchema({
     startedAt: v.optional(v.number()),
     readyAt: v.optional(v.number()),
     recalledAt: v.optional(v.number()),
+    /**
+     * Un geste de cuisine (« Commencer », « Prêt ») est arrivé longtemps après avoir été fait :
+     * rejoué par la file hors ligne, il a été daté à la réception. Ses délais ne mesurent rien et
+     * sortent des analyses (D-143, D-163).
+     */
+    timesFromReplay: v.optional(v.boolean()),
     startedByMemberId: v.optional(v.id("organizationMembers")),
     readyByMemberId: v.optional(v.id("organizationMembers")),
     servedAt: v.optional(v.number()),

@@ -198,7 +198,11 @@ function ServiceAlerts() {
           <Wallet />
           <AlertTitle>{staleCash.length === 1 ? "Une caisse d'un jour précédent n'est pas close" : `${staleCash.length} caisses d'un jour précédent ne sont pas closes`}</AlertTitle>
           <AlertDescription>
-            <p>{staleCash.map((c) => c.name).join(", ")} : à compter avant d'encaisser la journée.</p>
+            <p>
+              {staleCash
+                .map((c) => `${c.name}${c.status === "counting" ? " — comptage commencé puis laissé : tous les montants sont masqués tant qu'il n'est pas fini" : c.status === "open" ? " — à compter" : " — comptée, à clôturer"}`)
+                .join(" · ")}
+            </p>
             <Button size="sm" variant="outline" className="mt-2" onClick={scope.nav.cash}>
               Aller à la caisse
             </Button>

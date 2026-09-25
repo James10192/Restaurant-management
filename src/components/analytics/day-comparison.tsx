@@ -27,9 +27,8 @@ export function DayComparison({ venueId, day }: { venueId: Id<"venues">; day: st
   const money = (amount: number) => formatMoney({ amount, currency: data.currency as CurrencyCode });
   const weekdays = WEEKDAYS[weekdayOf(data.day)]!;
   const cmp = data.comparison;
-  // Seules les commandes se comparent en cours de journée, jusqu'à la dernière demi-heure écoulée.
-  const usual = (now: number, ref: { usual: number } | null, format: (n: number) => string, sameHour = false) =>
-    ref ? `${versusUsual(now, ref.usual)} (${format(ref.usual)} les ${weekdays} habituels${sameHour ? " à la même heure" : ""})` : undefined;
+  const usual = (now: number, ref: { usual: number } | null, format: (n: number) => string) =>
+    ref ? `${versusUsual(now, ref.usual)} (${format(ref.usual)} les ${weekdays} habituels)` : undefined;
 
   return (
     <section aria-labelledby="jour-titre" className="flex flex-col gap-3" data-day-comparison>
@@ -37,7 +36,16 @@ export function DayComparison({ venueId, day }: { venueId: Id<"venues">; day: st
         La journée
       </h2>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <Figure label="Commandes" value={String(data.orders.count)} hint={usual(cmp.orders?.now ?? data.orders.count, cmp.orders, String, data.inProgress)} />
+        <Figure
+          label="Commandes"
+          value={String(data.orders.count)}
+          // En cours de journée, on compare jusqu'à la dernière demi-heure écoulée : on dit ce compte-là.
+          hint={
+            data.inProgress && cmp.orders
+              ? `${versusUsual(cmp.orders.now, cmp.orders.usual)} : ${cmp.orders.now} à la dernière demi-heure écoulée, contre ${cmp.orders.usual} les ${weekdays} habituels`
+              : usual(cmp.orders?.now ?? data.orders.count, cmp.orders, String)
+          }
+        />
         {data.money ? (
           <>
             <Figure label="Ventes" value={money(data.money.sales)} hint={data.inProgress ? "comparées une fois la journée finie" : usual(cmp.sales?.now ?? data.money.sales, cmp.sales, money)} />
@@ -58,6 +66,9 @@ export function DayComparison({ venueId, day }: { venueId: Id<"venues">; day: st
         <p className="text-sm text-muted-foreground">
           Pas encore de comparaison : elle commence avec trois {weekdays} ouverts ({cmp.days} pour l'instant).
         </p>
+      ) : null}
+      {data.moneyHidden === "blind" ? (
+        <p className="text-sm text-muted-foreground">Comptage à l'aveugle en cours ({data.countingDrawers.join(", ")}) : les montants reviennent dès que le compté est saisi.</p>
       ) : null}
       {data.moneyHidden === "permission" ? (
         <p className="text-sm text-muted-foreground">Les montants demandent le droit « Voir les données financières ».</p>

@@ -43,6 +43,9 @@ export const GUEST_TEXT = {
     add: "Ajouter",
     dishes: (n: number) => (n === 1 ? "1 plat" : `${n} plats`),
     searchClose: "Fermer la recherche",
+    directions: "Itinéraire",
+    more: "Plus",
+    less: "Moins",
   },
   en: {
     table: "Table",
@@ -78,6 +81,9 @@ export const GUEST_TEXT = {
     add: "Add",
     dishes: (n: number) => (n === 1 ? "1 dish" : `${n} dishes`),
     searchClose: "Close search",
+    directions: "Directions",
+    more: "More",
+    less: "Less",
   },
 } as const;
 

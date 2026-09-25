@@ -194,12 +194,15 @@ describe("les délais, honnêtes (D-143)", () => {
 
   test("des gestes rejoués au retour du réseau, un bon rappelé : aucun délai de cuisine inventé", async () => {
     const v = await venue();
-    // « Commencer » puis « Prêt », rejoués à une seconde d'écart par la file hors ligne.
+    // « Commencer » puis « Prêt », faits pendant une coupure et rejoués à une seconde d'écart par
+    // la file au retour du réseau : leur heure sur l'appareil dit qu'ils ont attendu.
     const a = await tableWithOrder(v);
     const replayed = (await ticketOf(v, a.orderId))._id;
-    await v.owner.as.mutation(api.kitchen.advance, { venueId: v.cocody, ticketId: replayed, action: "start" });
+    const madeAt = Date.now();
+    vi.advanceTimersByTime(10 * 60_000);
+    await v.owner.as.mutation(api.kitchen.advance, { venueId: v.cocody, ticketId: replayed, action: "start", clientCreatedAt: madeAt });
     vi.advanceTimersByTime(1_000);
-    await v.owner.as.mutation(api.kitchen.advance, { venueId: v.cocody, ticketId: replayed, action: "ready" });
+    await v.owner.as.mutation(api.kitchen.advance, { venueId: v.cocody, ticketId: replayed, action: "ready", clientCreatedAt: madeAt + 5 * 60_000 });
     // Rappelé : il garde son premier début et prend un second « prêt ».
     const b = await tableWithOrder(v, v.table2);
     const recalled = (await ticketOf(v, b.orderId))._id;
@@ -212,7 +215,19 @@ describe("les délais, honnêtes (D-143)", () => {
     await v.waiter.as.mutation(api.orders.serveTicket, { venueId: v.cocody, ticketId: recalled });
 
     const day = await v.owner.as.query(api.analytics.period, { venueId: v.cocody, from: DAY, to: DAY });
-    expect([day.delays.prep.count, day.delays.pass.count, day.delays.readyWithoutStart, day.delays.tickets]).toEqual([0, 0, 1, 2]);
+    // Ni préparation, ni attente, ni passage mesurés ; aucun n'est « prêt sans démarrage » pour autant.
+    expect([day.delays.prep.count, day.delays.waitStart.count, day.delays.pass.count, day.delays.readyWithoutStart, day.delays.tickets]).toEqual([0, 1, 0, 0, 2]);
+  });
+
+  test("une préparation rapide, faite en direct, compte : une bière en 20 s n'est pas un bon « prêt sans démarrage »", async () => {
+    const v = await venue();
+    const a = await tableWithOrder(v);
+    const t = (await ticketOf(v, a.orderId))._id;
+    await v.owner.as.mutation(api.kitchen.advance, { venueId: v.cocody, ticketId: t, action: "start", clientCreatedAt: Date.now() });
+    vi.advanceTimersByTime(20_000);
+    await v.owner.as.mutation(api.kitchen.advance, { venueId: v.cocody, ticketId: t, action: "ready", clientCreatedAt: Date.now() });
+    const day = await v.owner.as.query(api.analytics.period, { venueId: v.cocody, from: DAY, to: DAY });
+    expect([day.delays.prep.count, day.delays.waitStart.count, day.delays.readyWithoutStart]).toEqual([1, 1, 0]);
   });
 });
 
@@ -369,9 +384,11 @@ describe("la tour de contrôle (D-133, D-147)", () => {
     // Le serveur n'a ni la clôture de caisse ni la carte : ces alertes ne le concernent pas. Il lit
     // les paiements, donc le nombre d'alertes de paiement ouvertes.
     expect(await v.waiter.as.query(api.tower.alerts, { venueId: v.cocody })).toEqual({ staleCash: [], soldOut: [], paymentAlerts: 0 });
-    // En comptage, quelqu'un s'en occupe déjà : l'alerte se tait.
+    // Un comptage lancé puis laissé tait TOUS les montants : l'alerte reste, et le dit.
     const [drawer] = owner.staleCash;
     await v.cashier.as.mutation(api.cash.startCount, { venueId: v.cocody, sessionId: drawer!._id });
-    expect((await v.owner.as.query(api.tower.alerts, { venueId: v.cocody })).staleCash).toEqual([]);
+    expect((await v.owner.as.query(api.tower.alerts, { venueId: v.cocody })).staleCash.map((c) => c.status)).toEqual(["counting"]);
+    const day = (await v.owner.as.query(api.analytics.day, { venueId: v.cocody }))!;
+    expect([day.moneyHidden, day.countingDrawers]).toEqual(["blind", ["Caisse principale"]]);
   });
 });

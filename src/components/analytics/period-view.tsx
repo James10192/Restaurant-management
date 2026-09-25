@@ -22,11 +22,15 @@ type Period = FunctionReturnType<typeof api.analytics.period>;
 const WEEKDAY_SHORT = ["Dim.", "Lun.", "Mar.", "Mer.", "Jeu.", "Ven.", "Sam."];
 const WEEKDAY_LONG = ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"];
 
-/** Trois périodes toutes faites ; les deux dernières se comparent à la précédente (D-142). */
+/**
+ * Des périodes toutes faites. Celles qui finissent hier sont closes : elles se comparent à la
+ * période précédente de même longueur ; celles qui finissent aujourd'hui, non (D-142).
+ */
 const PRESETS = [
-  { key: "1", label: "Aujourd'hui", days: 1 },
-  { key: "7", label: "7 jours", days: 7 },
-  { key: "28", label: "4 semaines", days: 28 },
+  { key: "1", label: "Aujourd'hui", days: 1, end: 0 },
+  { key: "7", label: "7 jours", days: 7, end: 0 },
+  { key: "7c", label: "7 jours clos", days: 7, end: -1 },
+  { key: "28c", label: "4 semaines closes", days: 28, end: -1 },
 ] as const;
 
 export function PeriodView(props: { venueId: Id<"venues">; from?: string; to?: string; onChange: (from: string, to: string) => void }) {
@@ -35,7 +39,7 @@ export function PeriodView(props: { venueId: Id<"venues">; from?: string; to?: s
   const data = useQuery(api.analytics.period, { venueId: props.venueId, at, ...(props.from ? { from: props.from } : {}), ...(props.to ? { to: props.to } : {}) });
   if (data === undefined) return <LoadingState />;
   const money = (amount: number) => formatMoney({ amount, currency: data.currency as CurrencyCode });
-  const preset = PRESETS.find((p) => data.to === data.today && data.length === p.days)?.key ?? "";
+  const preset = PRESETS.find((p) => data.to === shiftDay(data.today, p.end) && data.length === p.days)?.key ?? "";
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-6" data-analytics>
@@ -51,9 +55,10 @@ export function PeriodView(props: { venueId: Id<"venues">; from?: string; to?: s
             value={preset}
             onValueChange={(key) => {
               const p = PRESETS.find((x) => x.key === key);
-              if (p) props.onChange(shiftDay(data.today, 1 - p.days), data.today);
+              if (p) props.onChange(shiftDay(data.today, p.end + 1 - p.days), shiftDay(data.today, p.end));
             }}
             aria-label="Période"
+            className="flex-wrap"
           >
             {PRESETS.map((p) => (
               <ToggleGroupItem key={p.key} value={p.key}>
@@ -91,7 +96,7 @@ export function PeriodView(props: { venueId: Id<"venues">; from?: string; to?: s
       <Busy data={data} />
       <Service data={data} />
       <Tables data={data} money={money} />
-      {data.money ? <MoneyCheck data={data} m={data.money} money={money} /> : <MoneyHidden hidden={data.moneyHidden} />}
+      {data.money ? <MoneyCheck data={data} m={data.money} money={money} /> : <MoneyHidden hidden={data.moneyHidden} counting={data.countingDrawers} />}
     </div>
   );
 }
@@ -159,7 +164,10 @@ function Summary({ data, money }: { data: Period; money: (n: number) => string }
           .
         </p>
       ) : inProgress ? (
-        <p className="text-sm text-muted-foreground">La comparaison avec la période précédente viendra une fois la période terminée.</p>
+        <p className="text-sm text-muted-foreground">
+          Une période qui contient aujourd'hui ne se compare pas : un jour entamé contre des jours pleins mentirait. Les périodes closes
+          (« 7 jours clos », « 4 semaines closes ») se comparent à la précédente.
+        </p>
       ) : null}
     </div>
   );
@@ -342,12 +350,14 @@ function MoneyCheck({ data, m, money }: { data: Period; m: NonNullable<Period["m
   );
 }
 
-function MoneyHidden({ hidden }: { hidden: Period["moneyHidden"] }) {
+function MoneyHidden({ hidden, counting }: { hidden: Period["moneyHidden"]; counting: string[] }) {
   if (hidden === "blind") {
     return (
       <Alert>
         <Info />
-        <AlertDescription>Une caisse est en cours de comptage : les montants reviennent dès que le compté est saisi.</AlertDescription>
+        <AlertDescription>
+          Comptage à l'aveugle en cours ({counting.join(", ")}) : les montants reviennent dès que le compté est saisi.
+        </AlertDescription>
       </Alert>
     );
   }

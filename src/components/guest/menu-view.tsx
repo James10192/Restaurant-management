@@ -38,7 +38,11 @@ export type MenuViewProps = {
   menus: GuestMenu[];
   live: LiveAvailability;
   renderedAt: number;
-  header: ReactNode;
+  /**
+   * L'en-tête. Sous forme de fonction, il reçoit l'heure qui tourne et la langue de la carte :
+   * « Ouvert · ferme à 23 h » avance avec la page et suit le passage en anglais.
+   */
+  header: ReactNode | ((c: { now: number; t: GuestText; locale: GuestLocale }) => ReactNode);
   footer?: ReactNode;
   selectedProductId: string | null;
   onSelectProduct: (productId: string | null) => void;
@@ -217,7 +221,7 @@ export function MenuView(props: MenuViewProps) {
             <AlertDescription>{t.offline(timeFormat.format(renderedAt))}</AlertDescription>
           </Alert>
         ) : null}
-        {props.header}
+        {typeof props.header === "function" ? props.header({ now, t, locale }) : props.header}
 
         {menus.length === 0 ? (
           <Empty className="mx-auto max-w-[960px] px-4 py-12">
@@ -230,7 +234,7 @@ export function MenuView(props: MenuViewProps) {
             </EmptyHeader>
           </Empty>
         ) : (
-          <div id={MENU_ANCHOR}>
+          <div id="carte">
             <MenuToolbar
               menus={visibleMenus}
               locale={locale}
@@ -275,7 +279,6 @@ export function MenuView(props: MenuViewProps) {
                     locale={locale}
                     t={t}
                     showMenuTitle={menus.length > 1}
-                    twoRowNav={visibleMenus.length > 1}
                     onSelect={props.onSelectProduct}
                     priorityImages={menu === visibleMenus[0]?.menu}
                   />
@@ -322,16 +325,7 @@ function sectionAnchor(menu: GuestMenu, section: { id: string }) {
 }
 
 /** Le début de la carte : la barre collante et tout ce qui suit. */
-export const MENU_ANCHOR = "carte";
 
-/**
- * La hauteur de la barre collante, arrondie au-dessus : une section atteinte par une pastille
- * s'arrête sous la barre, et la pastille allumée est celle de la section qu'on lit. UNE valeur
- * pour les deux, sinon elles divergent.
- */
-function navHeight(twoRows: boolean): number {
-  return twoRows ? 144 : 64;
-}
 
 /** « Entrées, Grillades & Plats » : de quoi reconnaître une carte avant de l'ouvrir. */
 function summary(names: string[]) {
@@ -346,6 +340,20 @@ function summary(names: string[]) {
  * même que le JavaScript soit arrivé, et rien n'est masqué. Plusieurs cartes publiées (le midi,
  * le soir, les boissons) ajoutent un étage d'étiquettes au-dessus.
  */
+/**
+ * Une zone active de 56 px autour d'un contrôle qui en paraît 40 (DESIGN §11 : « une cible peut
+ * être visuellement plus petite que sa zone active ») : 8 px au-dessus et au-dessous.
+ */
+const HIT = "relative after:absolute after:inset-x-0 after:-inset-y-2 after:content-['']";
+
+type ToolbarGroup = { key: string; name: string; summary: string; links: { href: string; name: string }[] };
+
+/**
+ * La barre collante : les cartes (s'il y en a plusieurs), les sections en pastilles, la loupe et la
+ * langue. Sa hauteur réelle, mesurée, est publiée dans `--guest-nav-h` : une section atteinte par
+ * une pastille s'arrête dessous, et la pastille allumée est celle qu'on lit — une seule valeur pour
+ * les deux, recherche ouverte comprise.
+ */
 function MenuToolbar(props: {
   menus: { menu: GuestMenu; sections: SectionView[] }[];
   locale: GuestLocale;
@@ -358,7 +366,7 @@ function MenuToolbar(props: {
   onLocale: () => void;
 }) {
   const { menus, locale, t } = props;
-  const groups = menus.map(({ menu, sections }) => {
+  const groups: ToolbarGroup[] = menus.map(({ menu, sections }) => {
     const names = sections.map((s) => localized(s, locale).name);
     return {
       key: menu.publicationId,
@@ -368,91 +376,24 @@ function MenuToolbar(props: {
     };
   });
   const links = groups.flatMap((g) => g.links);
-  const twoRows = groups.length > 1;
-  const [active, setActive] = useState<string | null>(null);
-  const current = active ?? links[0]?.href ?? null;
+  const bar = useRef<HTMLDivElement>(null);
+  const height = useStickyHeight(bar);
+  const current = useCurrentSection(links.map((l) => l.href), height);
   const currentGroup = groups.find((g) => g.links.some((l) => l.href === current)) ?? groups[0];
-  const pills = useRef<HTMLUListElement>(null);
-  const searchInput = useRef<HTMLInputElement>(null);
   // Ouverte d'office quand une recherche ou un filtre est en cours : on voit ce qui filtre la carte.
   const [searching, setSearching] = useState(props.query !== "" || props.filters.length > 0);
 
-  useEffect(() => {
-    // Suit le défilement sans écouteur de scroll : un observateur ne coûte rien entre deux changements.
-    const targets = links.map((l) => document.querySelector(l.href)).filter((el): el is Element => el !== null);
-    if (targets.length === 0 || typeof IntersectionObserver === "undefined") return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const visible = entries.filter((e) => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
-        if (visible) setActive(`#${visible.target.id}`);
-      },
-      // Sous la barre collante, dont la hauteur dépend du nombre d'étages.
-      { rootMargin: `-${navHeight(twoRows)}px 0px -60% 0px` },
-    );
-    targets.forEach((el) => observer.observe(el));
-    return () => observer.disconnect();
-  }, [links.map((l) => l.href).join("|"), twoRows]);
-
-  useEffect(() => {
-    // La section lue reste visible dans la rangée, sans faire bouger la page.
-    const row = pills.current;
-    const pill = row?.querySelector<HTMLElement>("[aria-current=true]")?.parentElement;
-    if (row && pill) row.scrollTo({ left: pill.offsetLeft - (row.clientWidth - pill.clientWidth) / 2, behavior: "smooth" });
-  }, [current]);
-
-  useEffect(() => {
-    if (searching) searchInput.current?.focus();
-  }, [searching]);
-
   return (
-    <div className="sticky top-0 z-20 border-b bg-background">
+    <div ref={bar} className="sticky top-0 z-20 border-b bg-background">
       <div className="mx-auto max-w-[960px]">
-        {twoRows ? (
-          <ul className="flex gap-2 overflow-x-auto px-4 pt-3 [scrollbar-width:none]">
-            {groups.map((g) => {
-              const on = g === currentGroup;
-              return (
-                <li key={g.key} className="shrink-0">
-                  <a
-                    href={g.links[0]!.href}
-                    aria-current={on ? "true" : undefined}
-                    className={cn(
-                      "flex min-w-36 flex-col rounded-xl border px-4 py-2 transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
-                      on ? "border-primary bg-primary text-primary-foreground" : "bg-card hover:bg-muted",
-                    )}
-                  >
-                    <span className="text-sm font-black tracking-wide uppercase">{g.name}</span>
-                    <span className={cn("max-w-52 truncate text-xs", on ? "text-primary-foreground/80" : "text-muted-foreground")}>{g.summary}</span>
-                  </a>
-                </li>
-              );
-            })}
-          </ul>
-        ) : null}
+        {groups.length > 1 ? <MenuTabs groups={groups} current={currentGroup} /> : null}
         <div className="flex items-center gap-1 py-2 pr-2 pl-4">
           <nav aria-label={t.sections} className="min-w-0 flex-1">
-            {links.length > 1 && currentGroup ? (
-              // Le fondu à droite dit qu'il y a d'autres sections plus loin ; la marge laisse la
-              // dernière pastille sortir du fondu.
-              <ul
-                ref={pills}
-                className="flex gap-2 overflow-x-auto pr-8 [scrollbar-width:none] [mask-image:linear-gradient(to_right,#000_calc(100%-2rem),transparent)]"
-              >
-                {currentGroup.links.map((l) => (
-                  <li key={l.href} className="shrink-0">
-                    <Button asChild variant={current === l.href ? "default" : "outline"} className="h-10 rounded-full px-4 font-semibold">
-                      <a href={l.href} aria-current={current === l.href ? "true" : undefined}>
-                        {l.name}
-                      </a>
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
+            {links.length > 1 && currentGroup ? <SectionPills links={currentGroup.links} current={current} /> : null}
           </nav>
           <Toggle
             size="lg"
-            className="size-10 shrink-0 rounded-full"
+            className={cn("size-10 shrink-0 rounded-full", HIT)}
             pressed={searching}
             onPressedChange={(on) => {
               setSearching(on);
@@ -466,50 +407,138 @@ function MenuToolbar(props: {
             {searching ? <XIcon /> : <SearchIcon />}
           </Toggle>
           {/* En haut, là où on la cherche : un client anglophone ne descend pas jusqu'au pied de page. */}
-          <Button type="button" variant="ghost" className="size-10 shrink-0 rounded-full font-semibold" onClick={props.onLocale} lang={locale === "fr" ? "en" : "fr"} aria-label={t.language}>
+          <Button type="button" variant="ghost" className={cn("size-10 shrink-0 rounded-full font-semibold", HIT)} onClick={props.onLocale} lang={locale === "fr" ? "en" : "fr"} aria-label={t.language}>
             {locale === "fr" ? "EN" : "FR"}
           </Button>
         </div>
-        {searching ? (
-          <div className="flex flex-col gap-2 px-4 pb-3">
-            <label className="sr-only" htmlFor="guest-search">
-              {t.search}
-            </label>
-            <InputGroup className="h-11">
-              <InputGroupInput
-                id="guest-search"
-                ref={searchInput}
-                type="search"
-                value={props.query}
-                onChange={(e) => props.onQuery(e.target.value)}
-                placeholder={t.search}
-                autoComplete="off"
-              />
-              <InputGroupAddon>
-                <SearchIcon />
-              </InputGroupAddon>
-            </InputGroup>
-            {props.availableFilters.length > 0 ? (
-              // Des Toggle indépendants, et non un ToggleGroup : même rendu, même annonce (bouton
-              // « pressé »), mais sans la navigation au clavier du groupe — plusieurs Ko de moins
-              // sur la 4G du client, pour quatre boutons au plus.
-              <div role="group" aria-label={t.filters} className="flex flex-wrap gap-2">
-                {props.availableFilters.map((f) => (
-                  <Toggle
-                    key={f}
-                    variant="outline"
-                    className="rounded-full"
-                    pressed={props.filters.includes(f)}
-                    onPressedChange={(on) => props.onFilters(FILTERS.filter((x) => (x === f ? on : props.filters.includes(x))))}
-                  >
-                    {t[f]}
-                  </Toggle>
-                ))}
-              </div>
-            ) : null}
-          </div>
-        ) : null}
+        {searching ? <SearchPanel t={t} query={props.query} onQuery={props.onQuery} filters={props.filters} availableFilters={props.availableFilters} onFilters={props.onFilters} /> : null}
       </div>
+    </div>
+  );
+}
+
+/** La hauteur de la barre collante, publiée en variable CSS pour le défilement vers une section. */
+function useStickyHeight(bar: React.RefObject<HTMLDivElement | null>): number {
+  const [height, setHeight] = useState(64);
+  useEffect(() => {
+    const el = bar.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      const h = Math.ceil(el.getBoundingClientRect().height);
+      setHeight(h);
+      document.documentElement.style.setProperty("--guest-nav-h", `${h}px`);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [bar]);
+  return height;
+}
+
+/** La section qu'on lit, suivie sans écouteur de scroll : un observateur ne coûte rien entre deux changements. */
+function useCurrentSection(hrefs: string[], navHeight: number): string | null {
+  const [active, setActive] = useState<string | null>(null);
+  const key = hrefs.join("|");
+  useEffect(() => {
+    const targets = hrefs.map((h) => document.querySelector(h)).filter((el): el is Element => el !== null);
+    if (targets.length === 0 || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries.filter((e) => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+        if (visible) setActive(`#${visible.target.id}`);
+      },
+      { rootMargin: `-${navHeight}px 0px -60% 0px` },
+    );
+    targets.forEach((el) => observer.observe(el));
+    return () => observer.disconnect();
+    // `key` résume `hrefs` : un nouveau tableau aux mêmes adresses ne relance pas l'observateur.
+  }, [key, navHeight]);
+  return active ?? hrefs[0] ?? null;
+}
+
+/** L'étage des cartes publiées, quand il y en a plusieurs (le midi, le soir, les boissons). */
+function MenuTabs({ groups, current }: { groups: ToolbarGroup[]; current: ToolbarGroup | undefined }) {
+  return (
+    <ul className="flex gap-2 overflow-x-auto px-4 pt-3 [scrollbar-width:none]">
+      {groups.map((g) => {
+        const on = g === current;
+        return (
+          <li key={g.key} className="shrink-0">
+            <a
+              href={g.links[0]!.href}
+              aria-current={on ? "true" : undefined}
+              className={cn(
+                "flex min-h-14 min-w-36 flex-col justify-center rounded-xl border px-4 py-2 transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+                on ? "border-primary bg-primary text-primary-foreground" : "bg-card hover:bg-muted",
+              )}
+            >
+              <span className="text-sm font-black tracking-wide uppercase">{g.name}</span>
+              <span className={cn("max-w-52 truncate text-xs", on ? "text-primary-foreground/80" : "text-muted-foreground")}>{g.summary}</span>
+            </a>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/** Les sections en pastilles ; la lue reste visible dans la rangée, sans faire bouger la page. */
+function SectionPills({ links, current }: { links: { href: string; name: string }[]; current: string | null }) {
+  const row = useRef<HTMLUListElement>(null);
+  useEffect(() => {
+    const pill = row.current?.querySelector<HTMLElement>("[aria-current=true]")?.parentElement;
+    if (row.current && pill) row.current.scrollTo({ left: pill.offsetLeft - (row.current.clientWidth - pill.clientWidth) / 2, behavior: "smooth" });
+  }, [current]);
+  return (
+    // Le fondu à droite dit qu'il y a d'autres sections plus loin ; la marge laisse la dernière
+    // pastille sortir du fondu. Le rembourrage vertical laisse la place aux zones actives de 56 px.
+    <ul ref={row} className="-my-2 flex gap-2 overflow-x-auto py-2 pr-8 [scrollbar-width:none] [mask-image:linear-gradient(to_right,#000_calc(100%-2rem),transparent)]">
+      {links.map((l) => (
+        <li key={l.href} className="shrink-0">
+          <Button asChild variant={current === l.href ? "default" : "outline"} className={cn("h-10 rounded-full px-4 font-semibold", HIT)}>
+            <a href={l.href} aria-current={current === l.href ? "true" : undefined}>
+              {l.name}
+            </a>
+          </Button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** La recherche et les filtres, derrière la loupe : fermés, ils ne coûtent pas une rangée à la carte. */
+function SearchPanel(props: { t: GuestText; query: string; onQuery: (q: string) => void; filters: Filter[]; availableFilters: Filter[]; onFilters: (f: Filter[]) => void }) {
+  const { t } = props;
+  const input = useRef<HTMLInputElement>(null);
+  useEffect(() => input.current?.focus(), []);
+  return (
+    <div className="flex flex-col gap-2 px-4 pb-3">
+      <label className="sr-only" htmlFor="guest-search">
+        {t.search}
+      </label>
+      <InputGroup className="h-13">
+        <InputGroupInput id="guest-search" ref={input} type="search" value={props.query} onChange={(e) => props.onQuery(e.target.value)} placeholder={t.search} autoComplete="off" />
+        <InputGroupAddon>
+          <SearchIcon />
+        </InputGroupAddon>
+      </InputGroup>
+      {props.availableFilters.length > 0 ? (
+        // Des Toggle indépendants, et non un ToggleGroup : même rendu, même annonce (bouton
+        // « pressé »), mais sans la navigation au clavier du groupe — plusieurs Ko de moins sur la
+        // 4G du client, pour quatre boutons au plus.
+        <div role="group" aria-label={t.filters} className="flex flex-wrap gap-2">
+          {props.availableFilters.map((f) => (
+            <Toggle
+              key={f}
+              variant="outline"
+              className="h-13 rounded-full px-4"
+              pressed={props.filters.includes(f)}
+              onPressedChange={(on) => props.onFilters(FILTERS.filter((x) => (x === f ? on : props.filters.includes(x))))}
+            >
+              {t[f]}
+            </Toggle>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -521,7 +550,6 @@ function MenuBlock(props: {
   locale: GuestLocale;
   t: GuestText;
   showMenuTitle: boolean;
-  twoRowNav: boolean;
   onSelect: (id: string) => void;
   priorityImages: boolean;
 }) {
@@ -543,7 +571,7 @@ function MenuBlock(props: {
         // Le rang dans la carte publiée, et non dans la liste filtrée : il ne bouge pas quand on cherche.
         const rank = String(menu.sections.findIndex((s) => s.id === section.id) + 1).padStart(2, "0");
         return (
-          <section key={section.id} id={anchor} className="pt-8" style={{ scrollMarginTop: navHeight(props.twoRowNav === true) }} aria-labelledby={`${anchor}-t`}>
+          <section key={section.id} id={anchor} className="scroll-mt-(--guest-nav-h,64px) pt-8" aria-labelledby={`${anchor}-t`}>
             <div className="flex items-baseline gap-3 border-b-2 border-foreground pb-2">
               <span aria-hidden="true" className="text-sm font-semibold text-primary tabular-nums">
                 {rank}

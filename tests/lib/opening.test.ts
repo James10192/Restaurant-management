@@ -35,4 +35,12 @@ describe("openingStatus", () => {
     expect(hourText(0)).toBe("minuit");
     expect(hourText(1440)).toBe("minuit");
   });
+  it("dans sept jours, c'est « lundi prochain », jamais « lundi »", () => {
+    const monday = [{ dayOfWeek: 1, opensAtMinute: 660, closesAtMinute: 900 }];
+    expect(openingText(openingStatus(monday, { dayOfWeek: 1, minute: 1000 })!, 1)).toBe("Fermé · ouvre lundi prochain à 11 h");
+  });
+  it("en anglais, avec l'heure sur 24 h", () => {
+    expect(openingText(openingStatus(HOURS, { dayOfWeek: 1, minute: 700 })!, 1, "en")).toBe("Open · closes at 15:00");
+    expect(openingText(openingStatus(HOURS, { dayOfWeek: 1, minute: 1000 })!, 1, "en")).toBe("Closed · opens tomorrow at 11:00");
+  });
 });

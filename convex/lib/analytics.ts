@@ -126,30 +126,31 @@ export function delaySummary(h: Histogram): { median: number | null; p90: number
  * Les délais du service, avec leurs exclusions (D-143)
  * ──────────────────────────────────────────────────────────────────────────── */
 
-type TicketTimes = Pick<Doc<"kitchenTickets">, "queuedAt" | "startedAt" | "readyAt" | "servedAt" | "recalledAt">;
+type TicketTimes = Pick<Doc<"kitchenTickets">, "queuedAt" | "startedAt" | "readyAt" | "servedAt" | "recalledAt" | "timesFromReplay">;
 
 /**
- * Sous ce seuil, une préparation n'a pas eu lieu entre les deux gestes : bon marqué prêt sans
- * avoir été démarré (`startedAt = readyAt`), ou « Commencer » puis « Prêt » rejoués à la suite par
- * la file hors ligne au retour du réseau, datés à la réception (D-143, constante D-148).
+ * Un bon marqué prêt sans avoir été démarré porte `startedAt = readyAt` : sa préparation
+ * mesurerait zéro. On l'exclut des délais de cuisine, et on dit combien il y en a. Une bière
+ * servie en 20 s, elle, est une vraie préparation : seule l'égalité compte.
  */
-export const MIN_PREP_MS = 30_000;
-
-/** Un bon dont le début de préparation n'est pas une vraie mesure. Compté à part, jamais dans les délais de cuisine. */
 export function readyWithoutStart(t: TicketTimes): boolean {
-  return t.readyAt !== undefined && t.startedAt !== undefined && t.readyAt - t.startedAt < MIN_PREP_MS;
+  return t.readyAt !== undefined && t.startedAt !== undefined && t.startedAt === t.readyAt;
+}
+/** Les gestes d'un bon rejoués au retour du réseau sont datés à la réception : ses délais ne mesurent rien (D-163). */
+function replayed(t: TicketTimes): boolean {
+  return t.timesFromReplay === true;
 }
 export function waitBeforeStart(t: TicketTimes): number | null {
-  if (t.queuedAt === undefined || t.startedAt === undefined || readyWithoutStart(t)) return null;
+  if (t.queuedAt === undefined || t.startedAt === undefined || readyWithoutStart(t) || replayed(t)) return null;
   return t.startedAt - t.queuedAt;
 }
 /** Un bon rappelé garde son premier début et prend un second « prêt » : sa préparation et son passage ne mesurent plus rien. */
 export function prepTime(t: TicketTimes): number | null {
-  if (t.startedAt === undefined || t.readyAt === undefined || readyWithoutStart(t) || t.recalledAt !== undefined) return null;
+  if (t.startedAt === undefined || t.readyAt === undefined || readyWithoutStart(t) || replayed(t) || t.recalledAt !== undefined) return null;
   return t.readyAt - t.startedAt;
 }
 export function passTime(t: TicketTimes): number | null {
-  if (t.readyAt === undefined || t.servedAt === undefined || t.recalledAt !== undefined) return null;
+  if (t.readyAt === undefined || t.servedAt === undefined || replayed(t) || t.recalledAt !== undefined) return null;
   return t.servedAt - t.readyAt;
 }
 

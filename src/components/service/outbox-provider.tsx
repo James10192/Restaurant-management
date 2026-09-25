@@ -28,7 +28,8 @@ const SEND_TIMEOUT_MS = 15_000;
 /** Une erreur qui n'est ni un refus métier ni une coupure : on retente, mais pas sans fin. */
 const UNKNOWN_ERROR_ATTEMPTS = 5;
 /** Les gestes datés : le serveur refuse ce qui a plus de 3 minutes sans décision humaine (D-062). */
-const DATED = new Set(["orders:submit", "orders:fireCourse"]);
+// Les gestes de cuisine aussi : un geste rejoué au retour du réseau se reconnaît à son heure (D-163).
+const DATED = new Set(["orders:submit", "orders:fireCourse", "kitchen:advance"]);
 
 type OutboxContextValue = {
   entries: OutboxEntry[];

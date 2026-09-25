@@ -22,6 +22,8 @@ export function VenueHero(props: {
   status?: { open: boolean; text: string } | null;
   description?: string | null;
   street?: string | null;
+  /** « Plus » / « Moins », dans la langue de la carte. */
+  labels?: { more: string; less: string };
   children?: ReactNode;
 }) {
   const words = props.name.trim().split(/\s+/);
@@ -50,7 +52,7 @@ export function VenueHero(props: {
             <span className={props.status.open ? "text-foreground" : "text-muted-foreground"}>{props.status.text}</span>
           </p>
         ) : null}
-        {props.description ? <Description text={props.description} /> : null}
+        {props.description ? <Description text={props.description} labels={props.labels ?? { more: "Plus", less: "Moins" }} /> : null}
         {props.street ? <p className="mt-1.5 text-sm text-muted-foreground">{props.street}</p> : null}
         {props.children}
       </div>
@@ -59,7 +61,7 @@ export function VenueHero(props: {
 }
 
 /** Deux lignes, puis « Plus » : le texte entier reste dans le document (référencement, lecteurs d'écran). */
-function Description({ text }: { text: string }) {
+function Description({ text, labels }: { text: string; labels: { more: string; less: string } }) {
   const [expanded, setExpanded] = useState(false);
   const long = text.length > DESCRIPTION_CLAMP;
   return (
@@ -73,9 +75,10 @@ function Description({ text }: { text: string }) {
           aria-expanded={expanded}
           aria-controls="venue-description"
           onClick={() => setExpanded((v) => !v)}
-          className="mt-0.5 -ml-1 rounded px-1 py-1 text-sm font-semibold text-foreground underline underline-offset-4 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          // Petit à l'œil, 56 px sous le doigt (DESIGN §11) : la zone active déborde du texte.
+          className="relative mt-0.5 -ml-1 rounded px-1 py-1 text-sm font-semibold text-foreground underline underline-offset-4 outline-none after:absolute after:-inset-x-2 after:-inset-y-3.5 after:content-[''] focus-visible:ring-[3px] focus-visible:ring-ring/50"
         >
-          {expanded ? "Moins" : "Plus"}
+          {expanded ? labels.less : labels.more}
         </button>
       ) : null}
     </div>

@@ -113,8 +113,6 @@ function PublicMenu() {
   const navigate = useNavigate({ from: Route.fullPath });
   useServiceWorker();
   const { venue } = data;
-  const local = localTime(data.renderedAt, venue.timezone);
-  const status = openingStatus(venue.openingHours ?? [], local);
   // Le quartier et la ville au-dessus du nom ; la rue et le repère sous la présentation.
   const place = [venue.address?.district, venue.address?.city].filter(Boolean).join(", ");
   const street = [venue.address?.line1, venue.address?.landmark].filter(Boolean).join(", ");
@@ -128,36 +126,43 @@ function PublicMenu() {
       renderedAt={data.renderedAt}
       selectedProductId={plat ?? null}
       onSelectProduct={(id) => void navigate({ search: id ? { plat: id } : {}, replace: !id, resetScroll: false })}
-      header={
-        <VenueHero
-          eyebrow={place || VENUE_TYPE_LABELS[venue.venueType]}
-          name={venue.name}
-          status={status ? { open: status.open, text: openingText(status, local.dayOfWeek) } : null}
-          description={venue.description}
-          street={street || null}
-        >
-          {venue.phone || directions ? (
-            <div className="mt-4 flex flex-wrap gap-2">
-              {venue.phone ? (
-                <Button asChild variant="outline" className="h-11 rounded-full px-5">
-                  <a href={`tel:${venue.phone.replace(/\s+/g, "")}`}>
-                    <PhoneIcon data-icon="inline-start" />
-                    Appeler
-                  </a>
-                </Button>
-              ) : null}
-              {directions ? (
-                <Button asChild variant="outline" className="h-11 rounded-full px-5">
-                  <a href={directions} target="_blank" rel="noopener noreferrer">
-                    <NavigationIcon data-icon="inline-start" />
-                    Itinéraire
-                  </a>
-                </Button>
-              ) : null}
-            </div>
-          ) : null}
-        </VenueHero>
-      }
+      // L'heure qui tourne et la langue de la carte : le statut avance avec la page, même relue
+      // hors ligne le lendemain depuis le cache.
+      header={({ now, t, locale }) => {
+        const local = localTime(now, venue.timezone);
+        const status = openingStatus(venue.openingHours ?? [], local);
+        return (
+          <VenueHero
+            eyebrow={place || VENUE_TYPE_LABELS[venue.venueType]}
+            name={venue.name}
+            status={status ? { open: status.open, text: openingText(status, local.dayOfWeek, locale) } : null}
+            description={venue.description}
+            street={street || null}
+            labels={{ more: t.more, less: t.less }}
+          >
+            {venue.phone || directions ? (
+              <div className="mt-4 flex flex-wrap gap-2">
+                {venue.phone ? (
+                  <Button asChild variant="outline" className="h-13 rounded-full px-5 text-base">
+                    <a href={`tel:${venue.phone.replace(/\s+/g, "")}`}>
+                      <PhoneIcon data-icon="inline-start" />
+                      {t.call}
+                    </a>
+                  </Button>
+                ) : null}
+                {directions ? (
+                  <Button asChild variant="outline" className="h-13 rounded-full px-5 text-base">
+                    <a href={directions} target="_blank" rel="noopener noreferrer">
+                      <NavigationIcon data-icon="inline-start" />
+                      {t.directions}
+                    </a>
+                  </Button>
+                ) : null}
+              </div>
+            ) : null}
+          </VenueHero>
+        );
+      }}
       footer={
         <Button asChild variant="link" size="sm" className="px-0 text-muted-foreground">
           <a href="/" rel="nofollow">

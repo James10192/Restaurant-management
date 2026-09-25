@@ -10,9 +10,10 @@
 import { v } from "convex/values";
 import { query } from "./_generated/server";
 import { clockOf, countsInFigures, serviceDayOf } from "./lib/analytics";
-import { dayWindow } from "./lib/serviceDay";
+import { OPEN_CASH } from "./lib/billing";
+import { dayWindow, drawerName } from "./lib/serviceDay";
 import { requireServiceActor } from "./lib/serviceActor";
-import { memberName, settingsOf } from "./lib/service";
+import { settingsOf } from "./lib/service";
 
 export const alerts = query({
   /** `at` : l'heure de l'écran, à la minute — une tablette allumée toute la nuit voit la caisse d'hier (D-048). */
@@ -29,16 +30,17 @@ export const alerts = query({
       const settings = await settingsOf(ctx, venue._id);
       const now = clockOf(args.at, Date.now(), 5 * 60_000);
       const { from } = await dayWindow(ctx, venue, serviceDayOf(now, venue, settings), settings);
-      // Seulement une caisse OUVERTE : en comptage, quelqu'un s'en occupe déjà.
-      const rows = await ctx.db
-        .query("cashRegisterSessions")
-        .withIndex("by_venue_status", (q) => q.eq("venueId", venue._id).eq("status", "open"))
-        .collect();
-      for (const s of rows) {
-        if (s.openedAt >= from || !countsInFigures(s.isSimulation, venue)) continue;
-        const register = s.cashRegisterId ? await ctx.db.get(s.cashRegisterId) : null;
-        const holder = await memberName(ctx, s.holderMemberId);
-        staleCash.push({ _id: s._id, name: holder ? `Pochette de ${holder}` : (register?.name ?? "Caisse"), openedAt: s.openedAt });
+      // Toute caisse d'un jour précédent qui n'est pas clôturée : ouverte, comptée sans être close,
+      // ou dont le comptage a été lancé puis laissé — celle-là tait TOUS les montants (D-138).
+      for (const status of OPEN_CASH) {
+        const rows = await ctx.db
+          .query("cashRegisterSessions")
+          .withIndex("by_venue_status", (q) => q.eq("venueId", venue._id).eq("status", status))
+          .collect();
+        for (const s of rows) {
+          if (s.openedAt >= from || !countsInFigures(s.isSimulation, venue)) continue;
+          staleCash.push({ _id: s._id, name: await drawerName(ctx, s), openedAt: s.openedAt, status: s.status });
+        }
       }
     }
 

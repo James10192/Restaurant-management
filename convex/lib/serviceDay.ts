@@ -35,7 +35,7 @@ import { lineGross, loadSessionBilling, serviceDayWindow } from "./billing";
 import { discrepancyOf } from "./cashCount";
 import type { DayMetrics } from "./dayMetrics";
 import type { ReadCtx } from "./guards";
-import { settingsOf } from "./service";
+import { memberName, settingsOf } from "./service";
 
 /**
  * Change quand la définition d'un chiffre change. La clôture recalcule alors J-1 et J-2 ; le
@@ -96,15 +96,27 @@ export type DayWindow = { from: number; to: number; startHour: number };
 export async function refreshClosedDay(ctx: MutationCtx, venueId: Id<"venues">, at: number): Promise<void> {
   const venue = await ctx.db.get(venueId);
   if (!venue) return;
-  const guess = serviceDayOf(at, venue, await settingsOf(ctx, venueId));
+  const settings = await settingsOf(ctx, venueId);
+  const today = serviceDayOf(Date.now(), venue, settings);
+  // Le chemin chaud du produit : une commande sur une table de ce soir ne lit aucune ligne de chiffres.
+  if (at >= serviceDayWindow(today, venue.timezone, startHourOf(settings)).from) return;
+  const guess = serviceDayOf(at, venue, settings);
   for (const day of [shiftDay(guess, -1), guess, shiftDay(guess, 1)]) {
+    if (day >= today) continue;
     const row = await storedDay(ctx, venueId, day);
-    if (row && row.from <= at && at < row.to) {
-      await ctx.scheduler.runAfter(0, internal.analytics.computeDay, { venueId, day });
-      return;
-    }
+    if (!row || at < row.from || at >= row.to) continue;
+    // Une fois par mutation : annuler une commande de dix lignes ne recalcule pas dix fois le jour.
+    const done = refreshed.get(ctx) ?? new Set<string>();
+    refreshed.set(ctx, done);
+    if (done.has(`${venueId}:${day}`)) return;
+    done.add(`${venueId}:${day}`);
+    await ctx.scheduler.runAfter(0, internal.analytics.computeDay, { venueId, day });
+    return;
   }
 }
+
+/** Les jours déjà reprogrammés par la mutation en cours (une entrée par transaction, libérée avec elle). */
+const refreshed = new WeakMap<MutationCtx, Set<string>>();
 
 export async function storedDay(ctx: ReadCtx, venueId: Id<"venues">, day: string): Promise<Doc<"dailyMetrics"> | null> {
   return ctx.db
@@ -401,8 +413,22 @@ export async function blindCountingSessions(ctx: ReadCtx, venue: Venue): Promise
  * pendant un comptage à l'aveugle, AUCUN montant ne sort, quel que soit le jour affiché — une
  * caisse ouverte hier et comptée ce matin se trahirait par les ventes d'hier.
  */
-export async function moneyAccess(ctx: ReadCtx, venue: Venue, allowed: boolean): Promise<{ money: boolean; hidden: "permission" | "blind" | null }> {
-  if (!allowed) return { money: false, hidden: "permission" };
-  if ((await blindCountingSessions(ctx, venue)).length > 0) return { money: false, hidden: "blind" };
-  return { money: true, hidden: null };
+export async function moneyAccess(
+  ctx: ReadCtx,
+  venue: Venue,
+  allowed: boolean,
+): Promise<{ money: boolean; hidden: "permission" | "blind" | null; counting: string[] }> {
+  if (!allowed) return { money: false, hidden: "permission", counting: [] };
+  const blind = await blindCountingSessions(ctx, venue);
+  // Nommer la caisse : un comptage oublié tait tous les montants, il faut pouvoir le retrouver.
+  if (blind.length > 0) return { money: false, hidden: "blind", counting: await Promise.all(blind.map((s) => drawerName(ctx, s))) };
+  return { money: true, hidden: null, counting: [] };
+}
+
+/** « Pochette d'Awa », « Caisse principale » : le nom sous lequel l'équipe connaît une caisse. */
+export async function drawerName(ctx: ReadCtx, s: Doc<"cashRegisterSessions">): Promise<string> {
+  const holder = await memberName(ctx, s.holderMemberId);
+  if (holder) return `Pochette de ${holder}`;
+  const register = s.cashRegisterId ? await ctx.db.get(s.cashRegisterId) : null;
+  return register?.name ?? "Caisse";
 }

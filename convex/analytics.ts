@@ -92,7 +92,9 @@ export const day = query({
     const venue = actor.venue;
     const settings = await settingsOf(ctx, venue._id);
     const now = clock(args.at);
-    const today = serviceDayOf(now, venue, settings);
+    // L'heure de l'écran est arrondie à la demi-heure inférieure : au passage du jour, elle dirait
+    // encore la veille. Le plus récent des deux « aujourd'hui » l'emporte.
+    const today = [serviceDayOf(now, venue, settings), serviceDayOf(Date.now(), venue, settings)].sort().at(-1)!;
     const target = args.day ?? today;
     if (!DAY.test(target)) throw invalid("Jour invalide.");
     // Un jour à venir (adresse tapée, heure de début déplacée) n'a rien à comparer : pas une erreur.
@@ -126,6 +128,7 @@ export const day = query({
       orders: { count: m.orders.count },
       tables: { count: m.sales.tables, withCovers: m.sales.tablesWithCovers, covers: m.sales.covers },
       moneyHidden: access.hidden,
+      countingDrawers: access.counting,
       money: access.money ? { sales: m.sales.amount, averageTicket: m.sales.tables > 0 ? Math.round(m.sales.amount / m.sales.tables) : null } : null,
       comparison: {
         /** Combien de jours comparables ont servi ; en dessous de 3, rien ne se compare (D-142). */
@@ -236,7 +239,8 @@ async function aggregate(ctx: QueryCtx, venue: Doc<"venues">, settings: Doc<"ven
     add(agg, row.businessDate, row);
     seen.add(row.businessDate);
   }
-  if (from <= today && today <= to) {
+  // Un « aujourd'hui » déjà écrit (heure de début avancée entre-temps) ne se compte pas deux fois.
+  if (from <= today && today <= to && !seen.has(today)) {
     add(agg, today, await computeServiceDay(ctx, venue, await dayWindow(ctx, venue, today, settings)), false);
     seen.add(today);
   }
@@ -316,6 +320,7 @@ export const period = query({
       weekdays: agg.weekdays.map((w, weekday) => ({ weekday, days: w.days, averageOrders: w.days > 0 ? w.orders.map((n) => n / w.days) : null })),
       days: agg.days.map((d) => ({ day: d.day, orders: d.orders, sales: access.money ? d.sales : null, collected: access.money ? d.collected : null })),
       moneyHidden: access.hidden,
+      countingDrawers: access.counting,
       money: access.money
         ? {
             sales: agg.sales,
