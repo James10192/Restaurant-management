@@ -88,7 +88,7 @@ test("encaisser en deux fois, ticket, clôture de caisse juste ; puis un écart 
   await page.getByRole("radio", { name: /Une caisse centrale/ }).click();
   await page.getByLabel("Ajouter un portefeuille").fill("Wave");
   await page.getByRole("button", { name: "Ajouter" }).first().click();
-  await page.getByRole("button", { name: "Enregistrer" }).click();
+  await page.getByRole("button", { name: "Enregistrer", exact: true }).click();
   await expect(page.getByText("Réglages d'encaissement enregistrés.")).toBeVisible();
   await shot(page, "t3-01-reglages");
 
@@ -235,7 +235,7 @@ test("pochettes sur la tablette partagée : Awa encaisse sous PIN, ne compte pas
   // Chaque serveur encaisse dans sa pochette. (Le premier parcours a déjà ajouté Wave.)
   await page.goto("/app/settings/payments");
   await page.getByRole("radio", { name: /Chaque serveur a sa pochette/ }).click();
-  await page.getByRole("button", { name: "Enregistrer" }).click();
+  await page.getByRole("button", { name: "Enregistrer", exact: true }).click();
   await expect(page.getByText("Réglages d'encaissement enregistrés.")).toBeVisible();
 
   // Awa, chef de rang sans compte : un PIN sur la tablette partagée.

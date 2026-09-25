@@ -98,7 +98,7 @@ test("régler par Wave depuis la table : rien de perdu, rien en double, tout au 
   await expect(card).toBeVisible();
   await card.getByLabel("1. Clé d'API").fill(`wave_ci_prod_cle_e2e_${run}`);
   await card.getByLabel("3. Secret du webhook").fill("wave_ci_prod_WHS_secret_e2e_demo");
-  await card.getByRole("button", { name: "Enregistrer" }).click();
+  await card.getByRole("button", { name: "Enregistrer les clés" }).click();
   await expect(staff.getByText("Enregistré et chiffré.")).toBeVisible();
   // Rien de ce qui a été collé ne se relit : seuls les quatre derniers caractères.
   await expect(card.getByLabel("1. Clé d'API")).toHaveValue("");

@@ -185,7 +185,7 @@ export function WaveSettings({ venueId }: { venueId: Id<"venues"> }) {
           }
         >
           <KeyRound />
-          Enregistrer
+          Enregistrer les clés
         </PendingButton>
 
         {account ? (
