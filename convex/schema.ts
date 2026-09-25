@@ -32,6 +32,7 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import { dayMetricsFields } from "./lib/dayMetrics";
+import { onboardingStep } from "./lib/onboarding";
 import { venueType } from "./lib/validators";
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -238,7 +239,13 @@ export default defineSchema({
       v.literal("archived"),
     ),
     publicMenuEnabled: v.boolean(),
-    onboardingCompletedSteps: v.array(v.string()),
+    /**
+     * Ce que la mise en service ne peut pas dériver des données (D-176) : les modes de service
+     * confirmés, et les étapes sautées. Le reste se lit sur la carte, les tables, l'équipe.
+     */
+    onboarding: v.optional(v.object({ confirmed: v.array(onboardingStep), skipped: v.array(onboardingStep) })),
+    /** Remplacé par `onboarding` ; jamais rempli. Retiré par `migrations:dropOnboardingCompletedSteps`. */
+    onboardingCompletedSteps: v.optional(v.array(v.string())),
     /**
      * Coordonnées publiques. Requises par la page de menu public et son JSON-LD
      * `Restaurant` : sans elles, la porte de sortie de T1 est inatteignable et la

@@ -17,6 +17,7 @@ import { Input } from "~/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "~/components/ui/native-select";
 import { Button } from "~/components/ui/button";
 import { AppearanceEditor } from "~/components/venue/appearance";
+import { ProgressBoard } from "~/components/onboarding/progress-board";
 import { describeError } from "~/lib/errors";
 
 export const Route = createFileRoute("/_auth/app/onboarding")({
@@ -24,12 +25,28 @@ export const Route = createFileRoute("/_auth/app/onboarding")({
   // serait perdu (et un rechargement ramènerait au formulaire déjà envoyé).
   validateSearch: (search: Record<string, unknown>): { etape?: "marque" } => (search.etape === "marque" ? { etape: "marque" } : {}),
   head: () => ({ meta: [{ title: "Ouvrir mon établissement — Joliba" }] }),
-  component: Onboarding,
+  component: OnboardingPage,
 });
 
 type Errors = Partial<Record<"person" | "organization" | "venue", string>>;
 
-function Onboarding() {
+/**
+ * Sans organisation : le formulaire de création. Avec : le tableau de mise en service (§5.1).
+ * Pendant l'envoi, la nouvelle organisation arrive avant la navigation vers la marque : on garde
+ * le formulaire à l'écran.
+ */
+function OnboardingPage() {
+  const w = useWorkspace();
+  const { etape } = Route.useSearch();
+  const [creating, setCreating] = useState(false);
+  // Sans organisation (adresse gardée en favori, retour arrière), l'étape n'a pas de sens : le formulaire.
+  if (etape === "marque" && w.status !== "no-organization") return <BrandStep />;
+  if (!creating && w.status === "ready" && w.venue) return <ProgressBoard venueId={w.venue._id} />;
+  if (!creating && w.status === "loading") return <LoadingState />;
+  return <Onboarding onCreating={setCreating} />;
+}
+
+function Onboarding({ onCreating }: { onCreating: (creating: boolean) => void }) {
   const create = useMutation(api.organizations.create);
   const updateProfile = useMutation(api.users.updateProfile);
   const me = useQuery(api.users.me, {});
@@ -46,7 +63,6 @@ function Onboarding() {
   const [errors, setErrors] = useState<Errors>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const { etape } = Route.useSearch();
 
   const country = COUNTRIES[countryCode];
   const venueName = sameName ? organization : venue;
@@ -60,6 +76,7 @@ function Onboarding() {
     setErrors(next);
     if (Object.keys(next).length > 0) return;
     setSubmitting(true);
+    onCreating(true);
     setFormError(null);
     try {
       if (askName) await updateProfile({ name: person });
@@ -75,18 +92,16 @@ function Onboarding() {
     } catch (e) {
       setFormError(describeError(e).message);
       setSubmitting(false);
+      onCreating(false);
     }
   }
-
-  // Sans organisation (adresse gardée en favori, retour arrière), l'étape n'a pas de sens : le formulaire.
-  if (etape === "marque" && w.status !== "no-organization") return <BrandStep />;
 
   return (
     <div className="mx-auto flex w-full max-w-xl flex-col gap-6">
       <div className="flex flex-col gap-1">
         <h1 className="text-2xl font-semibold tracking-tight">Ouvrir mon établissement</h1>
         <p className="text-muted-foreground">
-          Deux minutes suffisent. Tout se modifie ensuite, sauf la devise, qui se fige à votre premier encaissement.
+          Deux minutes suffisent. Tout se modifie ensuite, sauf la devise, qui se fige à votre première commande.
         </p>
       </div>
       <Card>
@@ -192,13 +207,13 @@ function BrandStep() {
   );
 }
 
-/** La devise découle du pays et se fige au premier encaissement : on le dit avant de créer. */
+/** La devise découle du pays et se fige à la première commande (R20) : on le dit avant de créer. */
 function CurrencyNotice({ currency }: { currency: string }) {
   return (
     <Alert>
       <Coins />
       <AlertTitle>Devise : {currency === "XOF" ? "franc CFA (XOF)" : "franc CFA (XAF)"}</AlertTitle>
-      <AlertDescription>Elle découle du pays et se fige dès le premier encaissement, pour que vos comptes restent justes.</AlertDescription>
+      <AlertDescription>Elle découle du pays et se fige dès la première commande, pour que vos comptes restent justes.</AlertDescription>
     </Alert>
   );
 }

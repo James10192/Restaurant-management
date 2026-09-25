@@ -6,6 +6,8 @@ import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { useNavItems } from "~/components/app/app-sidebar";
 import { useWorkspace } from "~/components/app/workspace";
+import { stepsCount, useOnboardingProgress } from "~/components/onboarding/progress-board";
+import { Progress } from "~/components/ui/progress";
 import { PendingButton } from "~/components/app/pending-button";
 import { EmptyState } from "~/components/app/states";
 import { Alert, AlertDescription } from "~/components/ui/alert";
@@ -28,6 +30,7 @@ function AppHome() {
   const w = useWorkspace();
   const nav = useNavItems();
   const invitations = useQuery(api.team.myInvitations, {});
+  const setup = useOnboardingProgress(w.venue?._id);
 
   if (w.status === "no-organization") {
     return (
@@ -66,6 +69,7 @@ function AppHome() {
         <h1 className="text-2xl font-semibold tracking-tight">{w.venue.name}</h1>
         {w.venue.status === "setup" ? <Badge variant="secondary">En préparation</Badge> : null}
       </div>
+      {setup && !setup.complete ? <SetupCard doneCount={setup.doneCount} total={setup.total} /> : null}
       {sections.length > 0 ? (
         <ItemGroup className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {sections.map((s) => (
@@ -98,6 +102,25 @@ function AppHome() {
         </Card>
       )}
     </div>
+  );
+}
+
+/** Tant que la mise en service n'est pas finie, elle a sa place en tête de l'accueil. */
+function SetupCard({ doneCount, total }: { doneCount: number; total: number }) {
+  return (
+    <Card data-onboarding-card>
+      <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="flex flex-1 flex-col gap-2">
+          <p className="font-medium">
+            Mise en service : {stepsCount(doneCount, total)}
+          </p>
+          <Progress value={(doneCount / total) * 100} aria-label="Avancement de la mise en service" />
+        </div>
+        <Button asChild>
+          <Link to="/app/onboarding">Continuer la mise en service</Link>
+        </Button>
+      </CardContent>
+    </Card>
   );
 }
 

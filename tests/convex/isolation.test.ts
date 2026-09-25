@@ -664,6 +664,20 @@ const CASES: Record<string, (w: Awaited<ReturnType<typeof twoTenants>>) => Promi
       a.owner.as.mutation(api.products.removeImage, { venueId: a.venueId, productId: catalogB.productId, storageId: file }),
     );
   },
+  "onboarding.progress": async ({ a, b }) => {
+    await expectCode(a.owner.as.query(api.onboarding.progress, { venueId: b.venueId }), "NOT_FOUND");
+  },
+  "onboarding.confirmStep": async ({ t, a, b }) => {
+    await expectCode(a.owner.as.mutation(api.onboarding.confirmStep, { venueId: b.venueId, step: "service" }), "NOT_FOUND");
+    expect((await t.run((ctx) => ctx.db.get(b.venueId)))?.onboarding?.confirmed).toEqual([]);
+  },
+  "onboarding.skipStep": async ({ t, a, b }) => {
+    await expectCode(a.owner.as.mutation(api.onboarding.skipStep, { venueId: b.venueId, step: "qr", skipped: true }), "NOT_FOUND");
+    expect((await t.run((ctx) => ctx.db.get(b.venueId)))?.onboarding?.skipped).toEqual([]);
+  },
+  "onboarding.requestHelp": async ({ a, b }) => {
+    await expectCode(a.owner.as.mutation(api.onboarding.requestHelp, { venueId: b.venueId }), "NOT_FOUND");
+  },
   "branding.get": async ({ a, b }) => {
     await expectCode(a.owner.as.query(api.branding.get, { venueId: b.venueId }), "NOT_FOUND");
   },

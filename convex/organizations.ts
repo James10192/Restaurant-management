@@ -123,7 +123,7 @@ export async function createVenueRecords(
     venueType: args.venueType,
     status: "setup",
     publicMenuEnabled: false,
-    onboardingCompletedSteps: [],
+    onboarding: { confirmed: [], skipped: [] },
     ...(city ? { address: { city, countryCode: args.countryCode } } : {}),
     isSimulation: false,
   });

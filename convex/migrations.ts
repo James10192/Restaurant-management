@@ -58,3 +58,24 @@ export const resetSeededBranding = internalMutation({
     return { updated };
   },
 });
+
+/**
+ * `onboardingCompletedSteps` n'a jamais été rempli (initialisé à `[]`, jamais lu) : la mise en
+ * service se dérive des données et ne stocke plus que `onboarding` (D-176). Le champ est retiré.
+ *
+ *     npx convex run migrations:dropOnboardingCompletedSteps
+ *
+ * Idempotente. Une fois lancée partout, le champ peut quitter le schéma.
+ */
+export const dropOnboardingCompletedSteps = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    let updated = 0;
+    for await (const venue of ctx.db.query("venues")) {
+      if (venue.onboardingCompletedSteps === undefined) continue;
+      await ctx.db.patch(venue._id, { onboardingCompletedSteps: undefined });
+      updated++;
+    }
+    return { updated };
+  },
+});
