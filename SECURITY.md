@@ -205,6 +205,13 @@ montant est toujours re-vérifié auprès du fournisseur, jamais cru sur parole.
 **Vérification** : test contractuel avec une signature valide, une invalide, une rejouée, une
 périmée.
 
+> **En T5** *(D-118)* : chaque établissement a sa propre adresse de webhook, un chemin aléatoire
+> (`/webhooks/wave/<chemin>`) que le gérant peut changer. Une adresse inconnue répond 404 sans rien
+> écrire ; le secret d'un restaurant ne désigne rien chez un autre. Les échecs de signature sont
+> comptés : cinq dans l'heure lèvent une alerte au gérant (secret mal collé, ou quelqu'un qui
+> essaie). Ces cas sont dans `tests/convex/onlinePayments.test.ts`, et `e2e/t5.spec.ts` envoie un
+> corps altéré sous une signature valide : refusé.
+
 ### M10 — Double paiement et double commande
 
 **Mitigations** : clé d'idempotence sur toute mutation financière et de production ; une seconde
@@ -275,6 +282,19 @@ humaine** *(D-014)* ; le prompt système n'est jamais renvoyé ; aucun secret n'
 existeront) sont **hachées** en base, affichées une seule fois, révocables, limitées en portée, et
 journalisées à l'usage ; analyse de secrets dans l'intégration continue ; les rapports de bogue
 filtrent le contexte **avant** l'envoi, puis à nouveau côté serveur.
+
+> **Clés Wave des restaurants, en T5** *(D-116, D-117, D-127)* : la clé d'API et le secret du
+> webhook sont chiffrés en AES-256-GCM (IV aléatoire par valeur, données associées liant le chiffré
+> au compte, au champ et à la version de clé) sous une clé maîtresse posée dans l'environnement
+> Convex, `PAYMENT_SECRETS_KEY`. Aucune requête ne les rend : l'écran montre les quatre derniers
+> caractères. Ils ne sont déchiffrés que dans des actions, au moment d'appeler Wave ou de vérifier
+> une signature, et jamais journalisés (ni clé, ni secret, ni en-tête de signature, ni corps).
+>
+> **Ce que ce chiffrement ne protège pas**, dit honnêtement : quelqu'un qui détient à la fois une
+> copie de la base et les variables d'environnement du déploiement lit les clés ; un administrateur
+> du déploiement Convex a les deux. Il protège contre une fuite de la base seule (export, sauvegarde
+> égarée, lecture par le tableau de bord). La vraie parade à une fuite reste côté Wave : la clé se
+> révoque et se recrée dans le portail, et Joliba accepte la nouvelle sans interruption.
 
 ### M18 — Usurpation par le support
 
@@ -365,3 +385,6 @@ Publié sur `/securite` et dans un fichier `security.txt`.
    non faits en T1, écrits ci-dessus avec leur raison.
 5. **Le code PIN de service** (A1), s'il est retenu, demandera son propre modèle de menaces :
    partage entre employés, observation par-dessus l'épaule, appareil volé.
+6. **L'essai réel avec une vraie clé Wave** (100 FCFA payés puis remboursés, D-128) n'a pas eu
+   lieu : il demande un compte Wave Business. `scripts/wave-probe.mjs` le guide. Tant qu'il n'a pas
+   eu lieu, la forme des réponses réelles de Wave n'est connue que par sa documentation.

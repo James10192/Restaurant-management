@@ -80,9 +80,10 @@ graph TB
 
 - **Aucun secret côté navigateur.** Clés PSP, clés de modèles IA, clés e-mail : uniquement dans des
   *actions* Convex ou des fonctions serveur. Le client n'appelle jamais un tiers directement.
-- **Les webhooks n'entrent pas par Convex directement** mais par une fonction serveur qui vérifie la
-  signature, puis appelle une mutation **idempotente**. La vérification de signature exige le corps
-  brut : c'est ce qui décide de ce point d'entrée.
+- **Les webhooks entrent par une route HTTP de Convex** (`convex/http.ts`), révisé en T5 *(D-118)* :
+  une action HTTP Convex reçoit le corps **brut**, ce qui suffit à vérifier la signature, puis
+  appelle une mutation **idempotente**. Passer par une fonction serveur ajoutait un saut et un
+  second endroit où garder le secret du webhook, sans rien vérifier de plus.
 - **Le temps réel n'est pas une option** : les écrans d'exploitation sont des abonnements Convex, pas
   des interrogations périodiques.
 

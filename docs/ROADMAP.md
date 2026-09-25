@@ -211,6 +211,23 @@ le rapprochement du lendemain est automatique.
 **Porte de sortie** : la batterie de tests du §12 de `PAYMENTS.md` passe, webhook rejoué et
 falsifié compris.
 
+**Lots** :
+
+| Lot | Contenu | État |
+|---|---|---|
+| T5.a | Arbitrages adverses : un seul rail réel (Wave Côte d'Ivoire), qui paie et quoi, montant figé, comptes et secrets chiffrés, webhooks dans Convex, session Wave sans doublon, rattrapage, rapprochement, remboursements, faux serveur Wave, pourboires *(D-109 à D-129)* | fait (2026-09-25) |
+| T5.b | Moteur : comptes Wave par établissement, adaptateur Wave, intentions, webhooks signés, confirmation idempotente, gardes d'une intention ouverte, rattrapage toutes les 2 min, rapprochement quotidien, remboursement par Wave, alertes | fait (2026-09-25) |
+| T5.c | Écrans (composants shadcn uniquement) : « Régler » à la table et retour de Wave, paiements en ligne sur l'addition avec l'état du relevé, alertes à la caisse, réglage du compte Wave. Bout en bout `e2e/t5.spec.ts` contre un faux Wave, revue adverse, documentation, script d'essai réel `scripts/wave-probe.mjs` | fait (2026-09-25) |
+
+- Écarts assumés à la fin de T5 : **un seul rail en ligne** (Wave Côte d'Ivoire), l'agrégateur
+  multi-rails reste à brancher *(D-109)* ; l'espèce ne passe pas derrière le contrat, le comptoir
+  garde `applyPayment` *(D-110)* ; remboursement par Wave en totalité seulement, le partiel se
+  fait en espèces *(D-123)* ; **pas de pourboires** *(D-129)* ; pas de « Montrer le QR Wave »
+  depuis la tablette du serveur *(D-112)* ; l'indicateur dit « vu au relevé / à venir / absent »
+  plutôt que « versé » : l'argent Wave arrive directement au restaurant *(D-122)*. La porte de
+  sortie est tenue contre un faux Wave ; **l'essai réel à 100 FCFA** (D-128) attend un compte Wave
+  Business, et chaque réponse réelle qui contredit une décision la rouvre.
+
 ### T6 — Le gérant comprend
 
 Tour de contrôle `/app/live` · tableau de bord du jour avec alertes avant chiffres · analytique

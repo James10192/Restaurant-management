@@ -10,13 +10,21 @@ PIN sur une tablette partagée, faire compter la pochette par un responsable, et
 impayé) et `t4.spec.ts` (le client commande lui-même : quatre téléphones à une table, trois admis
 par le code et un par le serveur, envois simultanés dont une réponse coupée puis rejouée et un double
 appui, une commande par convive, un plat prêt lu par le seul téléphone concerné, un cinquième
-téléphone sans code tenu à l'écart) s'exécutent dans un vrai navigateur, contre le build de production et un
+téléphone sans code tenu à l'écart) et `t5.spec.ts` (le paiement en ligne : le gérant branche Wave et
+le prouve par un événement de test signé, deux convives règlent depuis la table — ses articles pour
+l'un, le reste pour l'autre — en passant par la page de paiement Wave, un double appui ne crée
+qu'une session, le serveur voit l'addition soldée sans recharger, un webhook rejoué ne double rien,
+un corps altéré est refusé, et le rapprochement du lendemain retrouve les deux paiements) s'exécutent dans un vrai navigateur, contre le build de production et un
 backend Convex **local** (sans compte). Aucun service extérieur n'est appelé : les e-mails, codes
-de connexion compris, sont recueillis par un faux serveur de courrier.
+de connexion compris, sont recueillis par un faux serveur de courrier, et Wave est joué par un faux
+serveur Wave (`e2e/wave-sink.mjs`) auquel parle le vrai adaptateur de Joliba (D-125).
 
 ```bash
 # 1. Faux serveur de courrier (écoute sur 127.0.0.1:4010)
 node e2e/mail-sink.mjs /tmp/joliba-mails.jsonl &
+
+#    … et faux Wave (écoute sur 127.0.0.1:4020)
+node e2e/wave-sink.mjs &
 
 # 2. Backend Convex local, puis ses variables d'environnement de test (les secrets déjà posés
 #    sont gardés : les régénérer rendrait illisible la clé de connexion déjà enregistrée)
@@ -31,15 +39,17 @@ PORT=3000 node .output/server/index.mjs &
 MAIL_SINK=/tmp/joliba-mails.jsonl pnpm test:e2e
 ```
 
-`t2.spec.ts`, `t3.spec.ts` et `t4.spec.ts` sèment eux-mêmes un établissement de démonstration (`scripts/seed-demo.mjs`) et y
+`t2.spec.ts` à `t5.spec.ts` sèment eux-mêmes un établissement de démonstration (`scripts/seed-demo.mjs`) et y
 rattachent le compte de test par `devSeed:joinDemo`, qui ne fonctionne que sur un backend local
-(`JOLIBA_DEMO_SEED=1`, posé par `scripts/e2e-env.sh`).
+(`JOLIBA_DEMO_SEED=1`, posé par `scripts/e2e-env.sh`). `t5.spec.ts` sort en plus ce restaurant du
+mode simulation (`devSeed:leaveSimulation`) : une tablée de simulation ne paie jamais en ligne.
 
 Variables utiles : `E2E_SCREENSHOTS=<dossier>` enregistre une capture à chaque étape ;
 `PLAYWRIGHT_CHROMIUM_PATH` désigne un Chromium déjà installé.
 
-`scripts/e2e-env.sh` pose `RESEND_API_URL` sur le déploiement : **ne jamais** l'exécuter contre un
-déploiement réel, les e-mails partiraient vers le faux serveur.
+`scripts/e2e-env.sh` pose `RESEND_API_URL`, `JOLIBA_FAKE_PAYMENTS` et `WAVE_API_URL` sur le
+déploiement : **ne jamais** l'exécuter contre un déploiement réel, les e-mails partiraient vers le
+faux serveur. (Les deux variables de paiement, elles, sont ignorées hors d'un backend local.)
 
 ## Mesurer la carte client
 

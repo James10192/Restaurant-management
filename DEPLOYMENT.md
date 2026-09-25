@@ -38,6 +38,23 @@ sera lu trop tard.
 | `SITE_URL` | application web | Origine publique (`https://…`, sans barre finale). Sert l'adresse canonique, les données structurées, `robots.txt` et le plan du site. À défaut, l'origine de la requête — acceptable en local, pas en production derrière un proxy. |
 | `JOLIBA_DEMO_SEED` | déploiement Convex | **Jamais en production.** `1` autorise le restaurant de démonstration (`scripts/seed-demo.mjs`) ; seul `scripts/e2e-env.sh` la pose, sur un backend local anonyme. |
 
+### Variables du paiement en ligne (T5)
+
+| Variable | Où | Rôle |
+|---|---|---|
+| `PAYMENT_SECRETS_KEY` | déploiement **Convex** | Clé maîtresse qui chiffre les clés Wave des restaurants (AES-256-GCM, D-117) : 32 octets aléatoires en base64 (`openssl rand -base64 32`), **différente par environnement**. Absente : l'écran de réglage le dit, et aucune clé Wave ne s'enregistre. **La perdre, c'est perdre toutes les clés enregistrées** : chaque restaurant devra recoller les siennes. |
+| `PAYMENT_SECRETS_KEY_VERSION` | déploiement Convex | Numéro de la clé maîtresse en cours (1 par défaut). |
+| `PAYMENT_SECRETS_KEY_PREVIOUS` | déploiement Convex | Pendant une rotation seulement : l'ancienne clé, qui ouvre encore ce qu'elle a chiffré. Rotation : poser l'ancienne ici, la nouvelle dans `PAYMENT_SECRETS_KEY`, incrémenter la version ; tout nouvel enregistrement chiffre sous la nouvelle. L'ancienne ne se retire qu'une fois chaque restaurant ayant réenregistré ses clés. |
+| `SITE_URL` | déploiement **Convex** aussi | L'adresse où Wave renvoie le client après paiement (`/r/<établissement>/table?paiement=retour`). Même valeur que côté application web. |
+| `JOLIBA_FAKE_PAYMENTS`, `WAVE_API_URL` | déploiement Convex | **Jamais en production.** Font parler l'adaptateur Wave au faux Wave de `e2e/wave-sink.mjs`. Ignorées hors d'un backend local (`CONVEX_CLOUD_URL` sur localhost) : même posées par erreur en production, Joliba parle au vrai Wave. |
+
+Deux tâches planifiées tournent d'elles-mêmes (`convex/crons.ts`) : le rattrapage des paiements en
+attente toutes les 2 minutes, et le rapprochement avec le relevé Wave chaque jour à 06:00 UTC.
+
+**À dire à chaque restaurant qui branche Wave** : dans le portail Wave Business, **ne pas activer la
+liste blanche d'adresses IP** sur la clé d'API. Elle ne se désactive plus ensuite, et Convex n'a pas
+d'adresse sortante fixe : la clé cesserait de fonctionner. L'écran de réglage le rappelle.
+
 Les fichiers de `/assets/` sont précompressés au build (gzip, brotli) et servis avec un cache d'un
 an, `immutable` ; `/sw.js` est servi `no-cache`, sinon une correction du service worker n'atteint
 jamais les téléphones (D-054).
@@ -216,3 +233,6 @@ qu'on ne sait pas encore, et quand on redonnera des nouvelles.
 - [ ] `PIN_PEPPER`, `OPERATOR_JWT_PRIVATE_KEY`, `OPERATOR_JWKS` posés en production, distincts de tous les autres environnements
 - [ ] Carte client mesurée sur un vrai Android d'entrée de gamme en 4G bridée (DESIGN §12, point 6)
 - [ ] Limitation de débit par IP sur `/r/*/t/*` en bordure (SECURITY M3)
+- [ ] `PAYMENT_SECRETS_KEY` posée en production, distincte de tous les autres environnements, et gardée en lieu sûr hors du déploiement
+- [ ] `JOLIBA_FAKE_PAYMENTS` et `WAVE_API_URL` **absentes** de la production
+- [ ] Essai réel Wave à 100 FCFA, payé puis remboursé, avec `scripts/wave-probe.mjs` (D-128)

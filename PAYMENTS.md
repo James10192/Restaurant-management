@@ -123,6 +123,16 @@ export interface PaymentProvider {
 - Un fournisseur sans environnement de test documenté impose d'écrire un **faux fournisseur conforme
   au contrat**, sinon rien n'est testable.
 
+> **État en T5** *(D-109, D-110, D-111, D-125)* : le contrat livré est
+> `OnlinePaymentProvider` (`convex/lib/providers/types.ts`), plus étroit que l'esquisse ci-dessus.
+> `createProvider(compte, secrets)` (`convex/lib/providers/registry.ts`) rend un adaptateur **par
+> compte**, avec `initialize`, `findByReference`, `verify`, `expire`, `refund`,
+> `transactionsOfDay` et `testConnection`. La signature des webhooks se vérifie hors de
+> l'adaptateur (`convex/lib/waveSignature.ts`), sur le corps brut. Un seul adaptateur réel :
+> Wave Côte d'Ivoire (`convex/lib/providers/wave.ts`). Le faux fournisseur n'est **pas** un
+> adaptateur : c'est un faux serveur Wave (`tests/convex/fakeWave.ts` pour Vitest,
+> `e2e/wave-sink.mjs` pour le navigateur), et c'est le vrai adaptateur qui lui parle.
+
 ### `CashProvider` : l'espèce comme vrai fournisseur
 
 Contre-intuitif et pourtant décisif. L'espèce implémente le même contrat : `initialize` ouvre une
@@ -136,6 +146,11 @@ implémentation n'est pas une abstraction, c'est une promesse.
 > **État en T3** *(D-078)* : l'abstraction est reportée à T5, précisément pour cette raison — tant
 > qu'aucun fournisseur en ligne n'existe, elle n'aurait qu'une implémentation. Les moyens manuels
 > passent tous par `applyPayment` (`convex/payments.ts`), qui deviendra la jonction.
+>
+> **État en T5** *(D-110)* : l'espèce ne passe toujours pas derrière le contrat. Le comptoir garde
+> `applyPayment`, le paiement en ligne passe par `confirmIntent` (`convex/onlinePayments.ts`), et
+> les deux écrivent par le même cœur, `insertPayment`. Une seule façon d'enregistrer un paiement,
+> deux façons d'y arriver.
 
 ### Ordre d'intégration recommandé *(D-025)*
 
@@ -210,6 +225,18 @@ webhook, remboursement, envoi de commande, rejeu d'une file hors ligne, appel à
 **Qui la génère** : le client, à l'ouverture du formulaire — pas au clic. Une clé générée au clic
 change à chaque clic et ne protège de rien.
 
+> **État en T5** *(D-119)* : la table `idempotencyKeys` n'est pas utilisée (elle est marquée
+> obsolète dans le schéma). L'idempotence tient à des index uniques sur les tables d'argent
+> elles-mêmes, ce qui évite une seconde écriture à garder cohérente :
+>
+> | Geste | Ce qui l'empêche de se produire deux fois |
+> |---|---|
+> | Créer une intention | `paymentIntents.by_venue_idempotency` : la clé tirée à l'ouverture du tiroir rend l'intention existante |
+> | Créer la session Wave | Une intention ouverte est réutilisée ; bail de 60 s pendant la création ; avant tout nouvel essai, recherche chez Wave par notre référence (`/checkout/sessions/search`). L'API Checkout n'a pas d'en-tête d'idempotence |
+> | Confirmer un paiement | `payments.by_provider_ref` : une session Wave donne au plus un paiement, quel que soit le chemin (webhook, rattrapage, vérification du client) |
+> | Traiter un webhook | `webhookEvents.by_account_event` : un événement déjà vu répond 200 sans rien refaire |
+> | Rembourser | Un remboursement Wave est total et unique par paiement ; Wave le rend idempotent de son côté |
+
 ### Webhooks
 
 ```
@@ -224,6 +251,14 @@ change à chaque clic et ne protège de rien.
 
 **Point qui échappe souvent** : on répond `200` même à un événement déjà traité. Répondre une erreur
 ferait réessayer le fournisseur indéfiniment pour un événement que nous avons parfaitement traité.
+
+> **État en T5** *(D-118)* : les webhooks arrivent dans Convex, à l'adresse
+> `/webhooks/wave/<chemin>` propre à chaque compte (`convex/http.ts`). Ordre réel : compte trouvé par
+> le chemin (404 sinon) ; corps limité à 64 Kio ; signature `Wave-Signature` vérifiée sur le corps
+> brut, plusieurs `v1` acceptées (rotation), ±5 min (401 sinon, et l'échec est compté : cinq dans
+> l'heure lèvent une alerte au gérant) ; lecture de l'événement (400 si illisible) ; traitement
+> idempotent ; 200. L'ancien secret reste accepté pendant une rotation, jusqu'à ce que le gérant le
+> retire.
 
 ### Les quatre situations réelles à traiter
 
@@ -304,6 +339,12 @@ caisse** et doit apparaître dans la réconciliation : sinon l'argent sort sans 
 > (`refunds.cashRegisterSessionId`) et entre dans l'attendu de cette caisse, plutôt qu'un mouvement
 > séparé : la trace est la même, sans double écriture *(D-083)*.
 
+> **État en T5** *(D-123)* : un paiement Wave se rembourse **par Wave, en totalité seulement**
+> (l'API ne connaît pas le partiel). Le remboursement est écrit `pending` et compte dans le plafond
+> tant que Wave n'a pas répondu ; une réponse d'échec le passe `failed` et libère le plafond. Un
+> remboursement partiel d'un paiement Wave se fait en espèces, avec la trace de caisse ci-dessus.
+> Un paiement en ligne ne s'annule pas : il se rembourse.
+
 ---
 
 ## 8. Pourboires
@@ -316,6 +357,9 @@ Quand un restaurant les active : montant libre ou suggestions en pourcentage, ja
 jamais de case pré-cochée. Le pourboire est stocké **séparément** du montant de l'addition
 (`payments.tipAmount`) — le confondre avec le chiffre d'affaires fausse la comptabilité et la
 répartition.
+
+> **État en T5** *(D-129)* : reportés, écart assumé. `tipAmount` reste 0 et le paiement à table ne
+> propose aucun pourboire. Aucune source légale nouvelle ne justifiait de lever D-027.
 
 ---
 
@@ -383,6 +427,14 @@ transactions. Trois écarts possibles, trois traitements :
 Le restaurateur voit un indicateur simple : **« versé / en attente / en retard »**. Un agrégateur
 qui tarde à reverser est un risque pour son commerce, pas seulement pour nous : il doit le savoir.
 
+> **État en T5** *(D-121, D-122)* : chaque jour à 06:00 UTC, le jour J-1 puis J-2 est rapproché avec
+> le relevé Wave (API Balance, si la clé a le droit « Solde » ; sinon l'écran dit « indisponible »).
+> Avec Wave, l'argent atterrit directement dans le portefeuille Wave Business du restaurant : il n'y
+> a pas de reversement à attendre. L'indicateur dit donc ce qu'il sait vraiment, sur chaque
+> paiement de l'addition : « Vu au relevé Wave », « Relevé à venir », ou « Absent du relevé Wave »,
+> qui lève une alerte. Chaque écart (chez eux et pas chez nous, l'inverse, montants différents)
+> devient une alerte à la caisse, que seul un geste motivé referme.
+
 ---
 
 ## 12. Tests obligatoires *(§97)*
@@ -393,3 +445,13 @@ rejeté · webhook périmé → rejeté · paiement réussi + webhook en retard 
 soldes cohérents · paiement mixte espèces + mobile → solde à zéro · division en 3 avec reste →
 somme exacte, aucun centime perdu · clôture de caisse avec écart → écart journalisé · devise
 incohérente → refus · montant envoyé par le client ≠ montant serveur → le serveur gagne.
+
+> **Où chaque test vit, en T5** : `tests/convex/onlinePayments.test.ts` (Vitest, faux serveur Wave)
+> reprend chaque ligne ci-dessus, dans ses termes, pour le paiement en ligne (double clic, webhook
+> rejoué, falsifié, périmé, webhook en retard, paiement échoué, remboursement au-delà de l'encaissé
+> et partiel, paiement mixte espèces + Wave, devise incohérente, montant du client ignoré), plus les
+> courses qui lui sont propres : réponse de création perdue, intention annulée pendant que le client
+> paie, payé après la clôture, Wave injoignable, rapprochement. `tests/convex/billing.test.ts` couvre
+> le comptoir : division avec reste, paiement mixte, clôture avec écart. `e2e/t5.spec.ts` rejoue
+> dans un vrai navigateur le double appui, le webhook rejoué et le webhook altéré, contre le vrai
+> adaptateur Wave.
