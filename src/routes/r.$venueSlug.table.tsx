@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { QrCodeIcon } from "lucide-react";
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { MenuView, type MenuOrdering } from "~/components/guest/menu-view";
+import { VenueHero } from "~/components/guest/venue-hero";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "~/components/ui/empty";
 import { bindCart, cart } from "~/lib/guest/cart";
 import { loadTableMenu, SLUG_PATTERN } from "~/lib/guest/server";
@@ -93,16 +94,7 @@ function TableMenu() {
       renderedAt={renderedAt}
       selectedProductId={plat ?? null}
       onSelectProduct={(id) => void navigate({ search: id ? { plat: id } : {}, replace: !id, resetScroll: false })}
-      header={
-        <header className="border-b bg-background px-4 pt-5 pb-4">
-          <div className="mx-auto flex max-w-[960px] items-baseline justify-between gap-4">
-            <h1 className="min-w-0 text-2xl font-semibold tracking-tight">{menu.venue.name}</h1>
-            <p className="shrink-0 text-muted-foreground">
-              Table <span className="font-semibold tabular-nums text-foreground">{menu.table.number}</span>
-            </p>
-          </div>
-        </header>
-      }
+      header={<VenueHero compact eyebrow={`Table ${menu.table.number}`} name={menu.venue.name} />}
     />
   );
 }

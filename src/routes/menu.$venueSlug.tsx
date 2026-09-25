@@ -3,8 +3,9 @@ import { localTime } from "../../convex/lib/availability";
 import type { PublicVenue } from "../../convex/lib/guestMenu";
 import { isIndexable } from "../../convex/lib/indexability";
 import { VENUE_TYPE_LABELS } from "../../convex/lib/validators";
-import { MapPinIcon, PhoneIcon, UtensilsCrossedIcon } from "lucide-react";
-import { MenuView } from "~/components/guest/menu-view";
+import { ArrowDownIcon, MapPinIcon, PhoneIcon, UtensilsCrossedIcon } from "lucide-react";
+import { MENU_ANCHOR, MenuView } from "~/components/guest/menu-view";
+import { VenueHero } from "~/components/guest/venue-hero";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "~/components/ui/empty";
@@ -118,7 +119,9 @@ function PublicMenu() {
   useServiceWorker();
   const { venue } = data;
   const open = isOpenNow(venue, data.renderedAt);
-  const address = [venue.address?.line1, venue.address?.landmark, venue.address?.district, venue.address?.city].filter(Boolean).join(", ");
+  // Le quartier et la ville au-dessus du nom ; la rue et le repère sous la présentation.
+  const place = [venue.address?.district, venue.address?.city].filter(Boolean).join(", ");
+  const street = [venue.address?.line1, venue.address?.landmark].filter(Boolean).join(", ");
 
   return (
     <MenuView
@@ -129,30 +132,32 @@ function PublicMenu() {
       selectedProductId={plat ?? null}
       onSelectProduct={(id) => void navigate({ search: id ? { plat: id } : {}, replace: !id, resetScroll: false })}
       header={
-        <header className="border-b bg-background px-4 pt-6 pb-5">
-          <div className="mx-auto max-w-[960px]">
-            <p className="text-sm text-muted-foreground">{VENUE_TYPE_LABELS[venue.venueType]}</p>
-            <h1 className="text-2xl font-semibold tracking-tight">{venue.name}</h1>
-            {address ? (
-              <p className="mt-1 flex items-start gap-1.5 text-sm text-muted-foreground">
-                <MapPinIcon aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
-                <span>{address}</span>
-              </p>
+        <VenueHero eyebrow={place || VENUE_TYPE_LABELS[venue.venueType]} name={venue.name}>
+          {venue.description ? <p className="mt-4 max-w-xl text-base text-muted-foreground">{venue.description}</p> : null}
+          {street ? (
+            <p className="mt-3 flex items-start gap-1.5 text-sm text-muted-foreground">
+              <MapPinIcon aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+              <span>{street}</span>
+            </p>
+          ) : null}
+          <div className="mt-5 flex flex-wrap items-center gap-3">
+            <Button asChild size="lg" className="h-12 rounded-full px-6 font-semibold tracking-wide uppercase">
+              <a href={`#${MENU_ANCHOR}`}>
+                Découvrir la carte
+                <ArrowDownIcon data-icon="inline-end" />
+              </a>
+            </Button>
+            {venue.phone ? (
+              <Button asChild variant="outline" size="lg" className="h-12 rounded-full px-5">
+                <a href={`tel:${venue.phone.replace(/\s+/g, "")}`}>
+                  <PhoneIcon data-icon="inline-start" />
+                  Appeler
+                </a>
+              </Button>
             ) : null}
-            <div className="mt-3 flex flex-wrap items-center gap-3">
-              {open !== null ? <Badge variant={open ? "default" : "secondary"}>{open ? "Ouvert" : "Fermé"}</Badge> : null}
-              {venue.phone ? (
-                <Button asChild size="lg" className="h-11 px-5">
-                  <a href={`tel:${venue.phone.replace(/\s+/g, "")}`}>
-                    <PhoneIcon data-icon="inline-start" />
-                    Appeler
-                  </a>
-                </Button>
-              ) : null}
-            </div>
-            {venue.description ? <p className="mt-4 max-w-2xl text-sm text-muted-foreground">{venue.description}</p> : null}
+            {open !== null ? <Badge variant={open ? "default" : "secondary"}>{open ? "Ouvert" : "Fermé"}</Badge> : null}
           </div>
-        </header>
+        </VenueHero>
       }
       footer={
         <Button asChild variant="link" size="sm" className="px-0 text-muted-foreground">

@@ -14,14 +14,14 @@
  */
 
 import { ClockIcon, InfoIcon, PlusIcon, SearchIcon, UtensilsCrossedIcon, WifiOffIcon } from "lucide-react";
-import { createContext, lazy, Suspense, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, lazy, Suspense, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ALLERGENS } from "../../../convex/lib/allergens";
 import type { GuestMenu, GuestProduct, LiveAvailability, PublicVenue } from "../../../convex/lib/guestMenu";
 import { formatMoney, type CurrencyCode } from "../../../convex/lib/money";
 import { Alert, AlertDescription } from "~/components/ui/alert";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
-import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/ui/card";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "~/components/ui/empty";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "~/components/ui/input-group";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "~/components/ui/item";
@@ -234,7 +234,7 @@ export function MenuView(props: MenuViewProps) {
             </EmptyHeader>
           </Empty>
         ) : (
-          <>
+          <div id={MENU_ANCHOR}>
             <SectionNav menus={visibleMenus} locale={locale} label={t.sections} />
             <div className="mx-auto max-w-[960px] px-4">
               <div className="mt-4 flex flex-col gap-3">
@@ -320,6 +320,7 @@ export function MenuView(props: MenuViewProps) {
                     locale={locale}
                     t={t}
                     showMenuTitle={menus.length > 1}
+                    twoRowNav={visibleMenus.length > 1}
                     onSelect={props.onSelectProduct}
                     priorityImages={menu === visibleMenus[0]?.menu}
                   />
@@ -332,7 +333,7 @@ export function MenuView(props: MenuViewProps) {
               </Alert>
               {props.footer ? <div className="mt-6">{props.footer}</div> : null}
             </div>
-          </>
+          </div>
         )}
 
         {sheetMounted ? (
@@ -365,13 +366,40 @@ function sectionAnchor(menu: GuestMenu, section: { id: string }) {
   return `s-${menu.menu.id.slice(-6)}-${section.id.slice(-8)}`;
 }
 
+/** La cible du bouton « Découvrir la carte » de l'en-tête : la navigation et tout ce qui suit. */
+export const MENU_ANCHOR = "carte";
+
+/** « Entrées, Grillades & Plats » : de quoi reconnaître une carte avant de l'ouvrir. */
+function summary(names: string[]) {
+  const shown = names.slice(0, 3);
+  return shown.length < 2 ? (shown[0] ?? "") : `${shown.slice(0, -1).join(", ")} & ${shown.at(-1)}`;
+}
+
 /**
  * Des liens d'ancre, et non des onglets : ils défilent jusqu'à la section avant même que le
  * JavaScript soit arrivé, et chaque section reste dans la page (rien n'est masqué).
+ *
+ * Deux étages quand l'établissement publie plusieurs cartes (le midi, le soir, les boissons) :
+ * les cartes en grandes étiquettes, puis les sections de celle qu'on lit. Avec une seule carte,
+ * seules les sections.
  */
 function SectionNav({ menus, locale, label }: { menus: { menu: GuestMenu; sections: SectionView[] }[]; locale: GuestLocale; label: string }) {
-  const links = menus.flatMap(({ menu, sections }) => sections.map((s) => ({ href: `#${sectionAnchor(menu, s)}`, name: localized(s, locale).name })));
+  const groups = menus.map(({ menu, sections }) => {
+    const names = sections.map((s) => localized(s, locale).name);
+    return {
+      key: menu.publicationId,
+      name: menu.menu.name,
+      summary: summary(names),
+      links: sections.map((s, i) => ({ href: `#${sectionAnchor(menu, s)}`, name: names[i]! })),
+    };
+  });
+  const links = groups.flatMap((g) => g.links);
+  const twoRows = groups.length > 1;
   const [active, setActive] = useState<string | null>(null);
+  const current = active ?? links[0]?.href ?? null;
+  const currentGroup = groups.find((g) => g.links.some((l) => l.href === current)) ?? groups[0];
+  const pills = useRef<HTMLUListElement>(null);
+
   useEffect(() => {
     // Suit le défilement sans écouteur de scroll : un observateur ne coûte rien entre deux changements.
     const targets = links.map((l) => document.querySelector(l.href)).filter((el): el is Element => el !== null);
@@ -381,25 +409,58 @@ function SectionNav({ menus, locale, label }: { menus: { menu: GuestMenu; sectio
         const visible = entries.filter((e) => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
         if (visible) setActive(`#${visible.target.id}`);
       },
-      { rootMargin: "-64px 0px -70% 0px" },
+      // Sous la barre collante, dont la hauteur dépend du nombre d'étages.
+      { rootMargin: `${twoRows ? "-140px" : "-72px"} 0px -60% 0px` },
     );
     targets.forEach((el) => observer.observe(el));
     return () => observer.disconnect();
-  }, [links.map((l) => l.href).join("|")]);
-  if (links.length < 2) return null;
+  }, [links.map((l) => l.href).join("|"), twoRows]);
+
+  useEffect(() => {
+    // La section lue reste visible dans la rangée, sans faire bouger la page.
+    const row = pills.current;
+    const pill = row?.querySelector<HTMLElement>("[aria-current=true]")?.parentElement;
+    if (row && pill) row.scrollTo({ left: pill.offsetLeft - (row.clientWidth - pill.clientWidth) / 2, behavior: "smooth" });
+  }, [current]);
+
+  if (links.length < 2 || !currentGroup) return null;
   return (
     <nav aria-label={label} className="sticky top-0 z-20 border-b bg-background/95 backdrop-blur">
-      <ul className="mx-auto flex max-w-[960px] gap-1 overflow-x-auto px-2 py-2 [scrollbar-width:none]">
-        {links.map((l) => (
-          <li key={l.href} className="shrink-0">
-            <Button asChild variant={active === l.href ? "secondary" : "ghost"} size="lg">
-              <a href={l.href} aria-current={active === l.href ? "true" : undefined}>
-                {l.name}
-              </a>
-            </Button>
-          </li>
-        ))}
-      </ul>
+      <div className="mx-auto max-w-[960px]">
+        {twoRows ? (
+          <ul className="flex gap-2 overflow-x-auto px-4 pt-3 [scrollbar-width:none]">
+            {groups.map((g) => {
+              const on = g === currentGroup;
+              return (
+                <li key={g.key} className="shrink-0">
+                  <a
+                    href={g.links[0]!.href}
+                    aria-current={on ? "true" : undefined}
+                    className={cn(
+                      "flex min-w-36 flex-col rounded-xl border px-4 py-2 transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+                      on ? "border-primary bg-primary text-primary-foreground" : "bg-card hover:bg-muted",
+                    )}
+                  >
+                    <span className="text-sm font-black tracking-wide uppercase">{g.name}</span>
+                    <span className={cn("max-w-52 truncate text-xs", on ? "text-primary-foreground/80" : "text-muted-foreground")}>{g.summary}</span>
+                  </a>
+                </li>
+              );
+            })}
+          </ul>
+        ) : null}
+        <ul ref={pills} className="flex gap-2 overflow-x-auto px-4 py-2.5 [scrollbar-width:none]">
+          {currentGroup.links.map((l) => (
+            <li key={l.href} className="shrink-0">
+              <Button asChild variant={current === l.href ? "default" : "outline"} className="h-10 rounded-full px-4 font-semibold">
+                <a href={l.href} aria-current={current === l.href ? "true" : undefined}>
+                  {l.name}
+                </a>
+              </Button>
+            </li>
+          ))}
+        </ul>
+      </div>
     </nav>
   );
 }
@@ -411,6 +472,7 @@ function MenuBlock(props: {
   locale: GuestLocale;
   t: GuestText;
   showMenuTitle: boolean;
+  twoRowNav: boolean;
   onSelect: (id: string) => void;
   priorityImages: boolean;
 }) {
@@ -418,8 +480,9 @@ function MenuBlock(props: {
   const schedule = menu.menu.activeSchedule;
   const active = props.index.menuActive(menu);
   return (
-    <section className="mt-8">
-      {props.showMenuTitle ? <h2 className="text-xl font-semibold tracking-tight">{menu.menu.name}</h2> : null}
+    <section className="mt-6">
+      {/* Le nom de la carte est dit par le bandeau de chaque section ; le titre ne sert qu'à la structure. */}
+      {props.showMenuTitle ? <h2 className="sr-only">{menu.menu.name}</h2> : null}
       {schedule && !active ? (
         <Badge variant="secondary" className="mt-2">
           <ClockIcon data-icon="inline-start" />
@@ -438,25 +501,35 @@ function MenuBlock(props: {
             unavailable={props.index.product(menu, section.id, product.id)}
             locale={props.locale}
             t={t}
+            eyebrow={text.name}
             onSelect={props.onSelect}
             // Les premières photos portent l'affichage utile : chargées tout de suite, les autres à l'approche.
             eager={props.priorityImages && sectionIndex === 0 && productIndex < 2}
           />
         );
         return (
-          <section key={section.id} id={anchor} className="scroll-mt-16 pt-6" aria-labelledby={`${anchor}-t`}>
-            <h3 id={`${anchor}-t`} className="text-lg font-semibold tracking-tight">
-              {text.name}
-            </h3>
-            {text.description ? <p className="mt-1 text-sm text-muted-foreground">{text.description}</p> : null}
+          <section key={section.id} id={anchor} className={cn("pt-6", props.twoRowNav ? "scroll-mt-36" : "scroll-mt-20")} aria-labelledby={`${anchor}-t`}>
+            <div className="rounded-2xl bg-primary px-5 py-6 text-primary-foreground">
+              <p className="flex items-baseline gap-3 text-xs font-semibold tracking-[0.18em] uppercase">
+                {/* Le rang dans la carte publiée, et non dans la liste filtrée : il ne bouge pas quand on cherche. */}
+                <span aria-hidden="true" className="text-sm font-black tabular-nums opacity-70">
+                  {String(menu.sections.findIndex((s) => s.id === section.id) + 1).padStart(2, "0")}
+                </span>
+                {props.showMenuTitle ? <span className="opacity-80">{menu.menu.name}</span> : null}
+              </p>
+              <h3 id={`${anchor}-t`} className="mt-2 text-3xl leading-none font-black tracking-tight uppercase [overflow-wrap:anywhere]">
+                {text.name}
+              </h3>
+              {text.description ? <p className="mt-3 max-w-xl text-sm text-primary-foreground/80">{text.description}</p> : null}
+            </div>
             {grid ? (
-              <ul className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+              <ul className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
                 {section.products.map((product, productIndex) => (
                   <li key={product.id}>{card(product, productIndex)}</li>
                 ))}
               </ul>
             ) : (
-              <ItemGroup className="mt-3 gap-2">
+              <ItemGroup className="mt-4 gap-2">
                 {section.products.map((product, productIndex) => (
                   <div key={product.id} role="listitem">
                     {card(product, productIndex)}
@@ -521,6 +594,8 @@ function DishCard(props: {
   unavailable: string | null;
   locale: GuestLocale;
   t: GuestText;
+  /** Le nom de la section, rappelé au-dessus du plat sur les cartes à photo. */
+  eyebrow: string;
   onSelect: (id: string) => void;
   eager: boolean;
 }) {
@@ -545,7 +620,7 @@ function DishCard(props: {
 
   const priceBlock = (
     <>
-      <span className={cn("block font-medium tabular-nums", soldOut && "text-muted-foreground")}>{price.main}</span>
+      <span className={cn("block font-bold text-primary tabular-nums", soldOut && "text-muted-foreground")}>{price.main}</span>
       {price.old ? <span className="block text-xs text-muted-foreground tabular-nums line-through">{price.old}</span> : null}
     </>
   );
@@ -574,7 +649,7 @@ function DishCard(props: {
             </ItemMedia>
           ) : null}
           <ItemContent className="min-w-0">
-            <ItemTitle className={cn("line-clamp-2 text-base", soldOut && "text-muted-foreground")}>{text.name}</ItemTitle>
+            <ItemTitle className={cn("line-clamp-2 text-base font-bold", soldOut && "text-muted-foreground")}>{text.name}</ItemTitle>
             {text.description ? <ItemDescription className="line-clamp-1">{text.description}</ItemDescription> : null}
           </ItemContent>
           <ItemActions className="flex-col items-end gap-1 text-right">
@@ -627,8 +702,9 @@ function DishCard(props: {
           ) : null}
         </span>
         <CardHeader>
-          <CardTitle className={cn(soldOut && "text-muted-foreground")}>{text.name}</CardTitle>
-          <CardAction className="text-right">{priceBlock}</CardAction>
+          <p className={cn("text-xs font-semibold tracking-[0.16em] uppercase", soldOut ? "text-muted-foreground" : "text-primary")}>{props.eyebrow}</p>
+          <CardTitle className={cn("text-xl leading-tight font-black tracking-tight uppercase", soldOut && "text-muted-foreground")}>{text.name}</CardTitle>
+          <div className="text-lg">{priceBlock}</div>
           {text.description ? <CardDescription className="line-clamp-2">{text.description}</CardDescription> : null}
         </CardHeader>
         {marks.length > 0 || addHint ? (
