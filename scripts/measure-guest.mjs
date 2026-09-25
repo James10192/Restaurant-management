@@ -58,7 +58,8 @@ for (let i = 0; i < RUNS; i++) {
   await page.goto(target, { waitUntil: "commit", timeout: 120_000 });
   // Garde-fou : le premier plat, avec son prix, est bien là. Le chiffre retenu est la première
   // peinture (FCP) : le HTML rendu au serveur porte déjà la carte, le premier affichage EST la carte.
-  await page.getByRole("button").filter({ hasText: /CFA|€/ }).first().waitFor({ state: "visible", timeout: 30_000 });
+  // La liste n'affiche que les chiffres du prix (D-166) : on attend la première ligne de plat.
+  await page.locator("#carte li button").filter({ hasText: /\d/ }).first().waitFor({ state: "visible", timeout: 30_000 });
   await page.waitForLoadState("load", { timeout: 120_000 });
   await page.waitForTimeout(1000);
   const metrics = await page.evaluate(() => {

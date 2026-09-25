@@ -14,7 +14,7 @@ import { action, internalMutation, internalQuery, mutation, query } from "./_gen
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { writeAudit } from "./lib/audit";
-import { HEX_PATTERN, hexToRgb, JOLIBA_BRAND, normalizeHex, resolveBrandColor, worstContrast, type BrandColor } from "./lib/brand";
+import { HEX_PATTERN, JOLIBA_BRAND, normalizeHex, resolveBrandColor, type StoredBrandColor } from "./lib/brand";
 import { invalid } from "./lib/errors";
 import { loadLiveAvailability, loadPublishedMenus, publicVenue } from "./lib/guestMenu";
 import { requirePermission, type ReadCtx, type VenueActor } from "./lib/guards";
@@ -40,16 +40,11 @@ export const get = query({
   handler: async (ctx, args) => {
     const actor = await requirePermission(ctx, "venue.manage", { venueId: args.venueId });
     const { branding } = await settingsOf(ctx, actor);
-    // Ce qui est AFFICHÉ, tel qu'enregistré : pas recalculé, pour que l'écran dise la vérité même
-    // si l'algorithme évolue un jour.
-    const color: BrandColor | null =
+    // Ce qui est AFFICHÉ, tel qu'enregistré : jamais recalculé, pour que l'écran, l'aperçu et la
+    // carte en ligne disent la même chose, même si l'algorithme évolue un jour.
+    const color: StoredBrandColor | null =
       branding.primaryColor && branding.resolvedPrimary && HEX_PATTERN.test(branding.resolvedPrimary)
-        ? {
-            input: branding.primaryColor,
-            primary: branding.resolvedPrimary,
-            adjusted: branding.primaryColor !== branding.resolvedPrimary,
-            contrast: Math.floor(worstContrast(hexToRgb(branding.resolvedPrimary)) * 100) / 100,
-          }
+        ? { input: branding.primaryColor, primary: branding.resolvedPrimary, adjusted: branding.primaryColor !== branding.resolvedPrimary }
         : null;
     return {
       slug: actor.venue.slug,

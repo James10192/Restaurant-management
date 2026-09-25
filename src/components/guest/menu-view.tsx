@@ -17,19 +17,20 @@ import { ClockIcon, InfoIcon, PlusIcon, SearchIcon, UtensilsCrossedIcon, WifiOff
 import { createContext, lazy, Suspense, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ALLERGENS } from "../../../convex/lib/allergens";
 import type { GuestMenu, GuestProduct, LiveAvailability, PublicVenue } from "../../../convex/lib/guestMenu";
-import { currencySymbol, formatAmount, formatMoney, type CurrencyCode } from "../../../convex/lib/money";
+import { currencySymbol, type CurrencyCode } from "../../../convex/lib/money";
 import { Alert, AlertDescription } from "~/components/ui/alert";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "~/components/ui/empty";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "~/components/ui/input-group";
 import { Item, ItemActions, ItemContent, ItemGroup, ItemTitle } from "~/components/ui/item";
-import { Skeleton } from "~/components/ui/skeleton";
 import { Toggle } from "~/components/ui/toggle";
 import { availabilityIndex, formatMinute, type AvailabilityIndex } from "~/lib/guest/availability";
 import type { AddResult, DishChoice } from "~/lib/guest/cart";
 import { GUEST_TEXT, localized, type GuestLocale, type GuestText } from "~/lib/guest/i18n";
 import { cn } from "~/lib/utils";
+import { DishSheetSkeleton } from "./dish-sheet-skeleton";
+import { money, priceLabel } from "./price";
 
 /** Devise et heure, lues une fois au plus haut : chaque carte n'a pas à les recevoir. */
 const GuestContext = createContext<{ currency: string; now: number; orderable: boolean }>({ currency: "XOF", now: 0, orderable: false });
@@ -69,10 +70,6 @@ function normalize(text: string) {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
-}
-
-function money(amount: number, currency: string) {
-  return formatMoney({ amount, currency: currency as CurrencyCode });
 }
 
 /** L'heure qui tourne : celle du rendu serveur au premier affichage (pas d'écart d'hydratation), puis la vraie. */
@@ -622,31 +619,6 @@ function MenuBlock(props: {
   );
 }
 
-/**
- * Le prix d'un plat, sous deux formes : complète (`main`, avec la devise) pour la fiche, et sans
- * devise (`list`) pour la liste, où « Prix en F CFA » est écrit une fois au-dessus (D-166).
- */
-function priceLabel(product: GuestProduct, currency: string, t: GuestText, now: number) {
-  const promoActive = product.promoPrice !== undefined && (product.promoEndsAt === undefined || product.promoEndsAt > now);
-  const both = (amount: number) => ({ full: money(amount, currency), bare: bareAmount(amount, currency) });
-  let main: { full: string; bare: string };
-  let old: { full: string; bare: string } | null = null;
-  let prefix = "";
-  if (product.variants.length > 1) {
-    main = both(Math.min(...product.variants.map((v) => v.price)));
-    prefix = `${t.from} `;
-  } else if (product.variants.length === 1) main = both(product.variants[0]!.price);
-  else if (promoActive) {
-    main = both(product.promoPrice!);
-    old = both(product.basePrice);
-  } else main = both(product.basePrice);
-  return { main: prefix + main.full, old: old?.full ?? null, list: prefix + main.bare, oldList: old?.bare ?? null };
-}
-
-function bareAmount(amount: number, currency: string) {
-  return formatAmount({ amount, currency: currency as CurrencyCode });
-}
-
 function dietaryMarks(product: GuestProduct, t: GuestText): string[] {
   const marks: string[] = [];
   if (product.dietary.vegan) marks.push(t.vegan);
@@ -756,28 +728,6 @@ function AddMark({ className }: { className?: string }) {
     <span aria-hidden="true" className={cn("grid size-9 place-items-center rounded-full bg-background text-primary shadow-md ring-1 ring-border", className)}>
       <PlusIcon className="size-5" />
     </span>
-  );
-}
-
-/**
- * Ce que voit le client entre son appui et l'arrivée de la fiche (vaul et le Dialog de Radix,
- * téléchargés à part) : la forme du tiroir, tout de suite. Sur une 4G lente, un appui sans effet
- * visible fait appuyer une deuxième fois (D-166). Rien d'interactif : il ne vit que quelques
- * centaines de millisecondes.
- */
-function DishSheetSkeleton({ t, photo }: { t: GuestText; photo: boolean }) {
-  return (
-    <>
-      <div aria-hidden="true" className="fixed inset-0 z-50 bg-black/10" />
-      <div role="status" aria-busy="true" className="fixed inset-x-0 bottom-0 z-50 mx-auto flex max-h-[80vh] max-w-2xl flex-col rounded-t-xl border-t bg-popover px-4 pb-6">
-        <div className="mx-auto mt-4 h-1 w-[100px] shrink-0 rounded-full bg-muted" />
-        <span className="sr-only">{t.loading}</span>
-        {photo ? <Skeleton className="mt-4 aspect-[4/3] w-full rounded-lg" /> : null}
-        <Skeleton className="mt-4 h-6 w-2/3" />
-        <Skeleton className="mt-3 h-4 w-full" />
-        <Skeleton className="mt-2 h-4 w-4/5" />
-      </div>
-    </>
   );
 }
 

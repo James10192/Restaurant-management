@@ -9,7 +9,7 @@
  * mieux prouver que promettre : que le franc CFA ne se multiplie pas par 100, et
  * qu'une division d'addition ne perd pas une unité.
  */
-import { fromDecimal, scaleFactor, splitEvenly, sum, roundUpToStep, percentOf, formatMoney, formatAmount, currencySymbol, money, add } from "../convex/lib/money.ts";
+import { fromDecimal, scaleFactor, splitEvenly, sum, roundUpToStep, percentOf, formatMoney, formatListDigits, currencySymbol, money, add } from "../convex/lib/money.ts";
 
 let fails = 0;
 const check = (label: string, got: unknown, want: unknown) => {
@@ -48,9 +48,9 @@ console.log("\n— Formatage —");
 console.log("   XOF :", formatMoney(money(35000, "XOF")));
 console.log("   EUR :", formatMoney(money(1250, "EUR"), "fr-FR"));
 // La carte écrit la devise une fois (D-166) : le chiffre seul doit être EXACTEMENT celui de formatMoney.
-check("formatAmount(12 500 XOF) = formatMoney sans la devise", formatMoney(money(12500, "XOF")).startsWith(formatAmount(money(12500, "XOF"))), true);
-check("formatAmount(12 500 XOF) ne multiplie pas par 100", formatAmount(money(12500, "XOF")).replace(/\D/g, ""), "12500");
-check("formatAmount(12,50 EUR) garde les centimes", formatAmount(money(1250, "EUR"), "fr-FR").replace(/\s/g, ""), "12,50");
+check("formatListDigits(12 500 XOF) = formatMoney sans la devise", formatMoney(money(12500, "XOF")).startsWith(formatListDigits(money(12500, "XOF"))), true);
+check("formatListDigits(12 500 XOF) ne multiplie pas par 100", formatListDigits(money(12500, "XOF")).replace(/\D/g, ""), "12500");
+check("formatListDigits(12,50 EUR) garde les centimes", formatListDigits(money(1250, "EUR"), "fr-FR").replace(/\s/g, ""), "12,50");
 check("currencySymbol(XOF) = F CFA (espace fine insécable)", currencySymbol("XOF").replace(/\s/g, " "), "F CFA");
 
 console.log(`\n${fails === 0 ? "✓ TOUS LES CONTRÔLES PASSENT" : `✗ ${fails} ÉCHEC(S)`}`);

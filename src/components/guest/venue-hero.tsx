@@ -44,6 +44,8 @@ export function VenueHero(props: {
                 alt=""
                 crossOrigin="anonymous"
                 decoding="async"
+                // Petit, et jamais devant les photos de plats : c'est elles que le client attend.
+                fetchPriority="low"
                 className="max-h-full max-w-full object-contain"
               />
             </span>

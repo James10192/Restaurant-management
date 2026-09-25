@@ -155,11 +155,12 @@ function moneyParts(m: Money, locale: string): Intl.NumberFormatPart[] {
 }
 
 /**
- * Le montant SANS sa devise : « 12 500 ». Réservé à une liste où la devise est écrite une fois,
- * au-dessus (la carte client, D-166) — jamais sur une pièce, un ticket, un total ou un paiement.
+ * Les CHIFFRES d'un montant, sans sa devise : « 12 500 ». Réservé à la liste de la carte client,
+ * sous la ligne « Prix en F CFA » (D-166) — jamais sur une pièce, un ticket, un total ou un
+ * paiement. Nommé pour ne pas se confondre avec `billing.formatAmount`, qui, lui, écrit la devise.
  * Mêmes chiffres, même séparateur que `formatMoney` : seuls la devise et son espace disparaissent.
  */
-export function formatAmount(m: Money, locale = "fr-CI"): string {
+export function formatListDigits(m: Money, locale = "fr-CI"): string {
   return moneyParts(m, locale)
     .filter((p) => p.type !== "currency")
     .map((p) => p.value)

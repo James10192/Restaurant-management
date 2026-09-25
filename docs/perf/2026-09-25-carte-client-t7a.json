@@ -1,0 +1,98 @@
+{
+  "date": "2026-09-25",
+  "change": "T7.a : carte adoucie (D-166), logo et couleur de marque, vignettes 256 px ≤ 20 Ko, deux chargées d'office",
+  "venue": "démonstration avec logo et couleur #ffd100 (affichée #745e00)",
+  "runs": 5,
+  "profile": {
+    "offline": false,
+    "latency": 300,
+    "downloadThroughput": 200000,
+    "uploadThroughput": 93750,
+    "cpuSlowdown": 6,
+    "viewport": "360x740@2x"
+  },
+  "table": {
+    "path": "/r/<établissement>/t/<jeton>",
+    "summary": {
+      "ttfb": {
+        "median": 388,
+        "p75": 396,
+        "max": 455
+      },
+      "fcp": {
+        "median": 1852,
+        "p75": 1856,
+        "max": 1884
+      },
+      "lcp": {
+        "median": 1852,
+        "p75": 1856,
+        "max": 1884
+      },
+      "domContentLoaded": {
+        "median": 1904,
+        "p75": 1905,
+        "max": 1944
+      },
+      "load": {
+        "median": 2753,
+        "p75": 2779,
+        "max": 2806
+      },
+      "kb": {
+        "document": 88,
+        "script": 148,
+        "stylesheet": 18,
+        "image": 204,
+        "font": 29,
+        "other": 0
+      }
+    }
+  },
+  "public": {
+    "path": "/menu/<établissement>",
+    "summary": {
+      "ttfb": {
+        "median": 24,
+        "p75": 27,
+        "max": 75
+      },
+      "fcp": {
+        "median": 1488,
+        "p75": 1516,
+        "max": 1608
+      },
+      "lcp": {
+        "median": 1488,
+        "p75": 1516,
+        "max": 1608
+      },
+      "domContentLoaded": {
+        "median": 1563,
+        "p75": 1575,
+        "max": 1656
+      },
+      "load": {
+        "median": 2466,
+        "p75": 2474,
+        "max": 2555
+      },
+      "kb": {
+        "document": 84,
+        "script": 154,
+        "stylesheet": 18,
+        "image": 244,
+        "font": 29,
+        "other": 1
+      }
+    }
+  },
+  "compared_to": {
+    "file": "2026-09-25-carte-client-ui7.json",
+    "table_lcp_median": 2156,
+    "document_kb": 93,
+    "script_kb": 143,
+    "image_kb": 378
+  },
+  "notes": "Première image utile (LCP) de la carte de table : 1 852 ms, contre 2 156 en UI.7 ; toujours au-dessus du budget de 1,8 s (DESIGN §5), de 52 ms. Le script transféré passe de 143 à 148 Ko (squelette de fiche, chiffres sans devise) et reste au-dessus du budget de 120 Ko, comme avant cette tranche. Images au-dessus de la ligne de flottaison : 204 Ko, contre 378. Le logo est chargé en priorité basse."
+}

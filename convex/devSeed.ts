@@ -15,6 +15,7 @@
  */
 
 import { v } from "convex/values";
+import { resolveBrandColor } from "./lib/brand";
 import { internalMutation, type MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { invalid } from "./lib/errors";
@@ -149,6 +150,8 @@ async function demoOwner(ctx: MutationCtx): Promise<Id<"users">> {
 export const demoRestaurant = internalMutation({
   args: {
     images: v.array(v.object({ storageId: v.id("_storage"), thumbStorageId: v.id("_storage"), width: v.number(), height: v.number() })),
+    /** Un logo, pour mesurer la carte telle qu'un restaurant qui en a un la sert (D-167). */
+    logo: v.optional(v.object({ storageId: v.id("_storage"), width: v.number(), height: v.number() })),
   },
   handler: async (ctx, args) => {
     assertEnabled();
@@ -183,6 +186,10 @@ export const demoRestaurant = internalMutation({
       openingHours: [0, 1, 2, 3, 4, 5, 6].map((dayOfWeek) => ({ dayOfWeek, opensAtMinute: 11 * 60, closesAtMinute: 23 * 60 + 30 })),
     });
     const venue = (await ctx.db.get(venueId))!;
+    if (args.logo) {
+      const settings = (await ctx.db.query("venueSettings").withIndex("by_venue", (q) => q.eq("venueId", venueId)).unique())!;
+      await ctx.db.patch(settings._id, { branding: { ...settings.branding, logo: args.logo, primaryColor: "#ffd100", resolvedPrimary: resolveBrandColor("#ffd100").primary } });
+    }
 
     const menuId = await ctx.db.insert("menus", { venueId, name: "Carte", slug: "carte", status: "draft", sortOrder: 0 });
     const sides = await ctx.db.insert("modifierGroups", {

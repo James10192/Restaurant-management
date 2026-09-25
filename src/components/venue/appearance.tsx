@@ -3,7 +3,8 @@ import { useAction, useMutation, useQuery } from "convex/react";
 import { CircleAlert, CircleCheck, ExternalLink, ImagePlus, Trash2 } from "lucide-react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
-import { normalizeHex, resolveBrandColor } from "../../../convex/lib/brand";
+import { normalizeHex, resolveBrandColor, type StoredBrandColor } from "../../../convex/lib/brand";
+import type { PublicBrand } from "../../../convex/lib/guestMenu";
 import { PendingButton } from "~/components/app/pending-button";
 import { LoadingState } from "~/components/app/states";
 import { Button } from "~/components/ui/button";
@@ -34,8 +35,13 @@ type Data = NonNullable<ReturnType<typeof useQuery<typeof api.branding.get>>>;
 function Editor({ venueId, data }: { venueId: Id<"venues">; data: Data }) {
   const [input, setInput] = useState(data.color?.input ?? "");
   const hex = normalizeHex(input);
-  // Le même calcul que le serveur, dans le navigateur : l'aperçu suit la saisie sans aller-retour.
-  const resolved = useMemo(() => (hex ? resolveBrandColor(hex) : null), [hex]);
+  // La couleur enregistrée se relit telle qu'enregistrée (D-167) : l'écran, l'aperçu et la carte en
+  // ligne montrent la même. Une NOUVELLE saisie est résolue dans le navigateur, par le même calcul
+  // que le serveur, pour que l'aperçu la suive sans aller-retour.
+  const resolved = useMemo<StoredBrandColor | null>(() => {
+    if (!hex) return null;
+    return hex === data.color?.input ? data.color : resolveBrandColor(hex);
+  }, [hex, data.color]);
   const logo = data.logo?.url ? { url: data.logo.url, width: data.logo.width, height: data.logo.height } : null;
 
   return (
@@ -44,7 +50,7 @@ function Editor({ venueId, data }: { venueId: Id<"venues">; data: Data }) {
         <ColorCard venueId={venueId} data={data} input={input} onInput={setInput} resolved={resolved} />
         <LogoCard venueId={venueId} logo={logo} />
       </div>
-      <PreviewFrame venueId={venueId} primary={input.trim() === "" ? null : (resolved?.primary ?? data.color?.primary ?? null)} logo={logo} publicSlug={data.publicMenuEnabled ? data.slug : null} />
+      <PreviewFrame venueId={venueId} primary={input.trim() === "" ? null : (resolved?.primary ?? data.color?.primary ?? null)} publicSlug={data.publicMenuEnabled ? data.slug : null} />
     </div>
   );
 }
@@ -75,7 +81,7 @@ function ColorCard(props: {
   data: Data;
   input: string;
   onInput: (value: string) => void;
-  resolved: ReturnType<typeof resolveBrandColor> | null;
+  resolved: StoredBrandColor | null;
 }) {
   const { data, input, resolved } = props;
   const setColor = useMutation(api.branding.setColor);
@@ -114,46 +120,9 @@ function ColorCard(props: {
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
-          <Field>
-            <FieldLabel htmlFor="brand-color">Couleur de votre établissement</FieldLabel>
-            <div className="flex items-center gap-3">
-              <input
-                type="color"
-                aria-label="Choisir dans la palette"
-                value={resolved?.input ?? data.jolibaColor}
-                onChange={(e) => props.onInput(e.target.value)}
-                className="h-11 w-14 shrink-0 cursor-pointer rounded-md border bg-background p-1"
-              />
-              <Input
-                id="brand-color"
-                value={input}
-                onChange={(e) => props.onInput(e.target.value)}
-                placeholder={`Aucune : ${data.jolibaColor}`}
-                autoComplete="off"
-                spellCheck={false}
-                aria-invalid={invalid || undefined}
-                aria-describedby="brand-color-help"
-                className="h-11 max-w-44 font-mono"
-              />
-            </div>
-            <FieldDescription id="brand-color-help">Au format #RRVVBB, celui de votre logo ou de votre enseigne. Laissez vide pour la couleur de Joliba.</FieldDescription>
-          </Field>
+          <ColorField data={data} input={input} invalid={invalid} onInput={props.onInput} resolvedInput={resolved?.input ?? null} />
           {invalid ? <Feedback ok={false} text="Ce n'est pas une couleur au format #RRVVBB." /> : null}
-          {resolved ? (
-            <div className="flex flex-col gap-2 rounded-lg border p-3" aria-live="polite">
-              {resolved.adjusted ? (
-                <>
-                  <p className="text-sm">Pour rester lisible sur la carte, votre couleur sera affichée un peu plus sombre.</p>
-                  <div className="flex flex-wrap gap-x-6 gap-y-2">
-                    <Swatch color={resolved.input} label="Choisie" />
-                    <Swatch color={resolved.primary} label="Affichée" />
-                  </div>
-                </>
-              ) : (
-                <Swatch color={resolved.primary} label="Lisible telle quelle" />
-              )}
-            </div>
-          ) : null}
+          {resolved ? <ColorVerdict color={resolved} /> : null}
         </CardContent>
         <CardFooter className="flex-wrap gap-3">
           <PendingButton type="submit" pending={busy} pendingText="Enregistrement…" disabled={!dirty || invalid}>
@@ -179,7 +148,56 @@ function ColorCard(props: {
   );
 }
 
-function LogoCard({ venueId, logo }: { venueId: Id<"venues">; logo: PreviewMessage["logo"] }) {
+/** La saisie : la palette du système et le code hexadécimal, qui se répondent. */
+function ColorField({ data, input, invalid, resolvedInput, onInput }: { data: Data; input: string; invalid: boolean; resolvedInput: string | null; onInput: (value: string) => void }) {
+  return (
+    <Field>
+      <FieldLabel htmlFor="brand-color">Couleur de votre établissement</FieldLabel>
+      <div className="flex items-center gap-3">
+        <input
+          type="color"
+          aria-label="Choisir dans la palette"
+          value={resolvedInput ?? data.jolibaColor}
+          onChange={(e) => onInput(e.target.value)}
+          className="h-11 w-14 shrink-0 cursor-pointer rounded-md border bg-background p-1"
+        />
+        <Input
+          id="brand-color"
+          value={input}
+          onChange={(e) => onInput(e.target.value)}
+          placeholder={`Aucune : ${data.jolibaColor}`}
+          autoComplete="off"
+          spellCheck={false}
+          aria-invalid={invalid || undefined}
+          aria-describedby="brand-color-help"
+          className="h-11 max-w-44 font-mono"
+        />
+      </div>
+      <FieldDescription id="brand-color-help">Au format #RRVVBB, celui de votre logo ou de votre enseigne. Laissez vide pour la couleur de Joliba.</FieldDescription>
+    </Field>
+  );
+}
+
+/** Ce qui sera affiché, et pourquoi quand ce n'est pas la couleur choisie (D-150). */
+function ColorVerdict({ color }: { color: StoredBrandColor }) {
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border p-3" aria-live="polite">
+      {color.adjusted ? (
+        <>
+          <p className="text-sm">Pour rester lisible sur la carte, votre couleur sera affichée un peu plus sombre.</p>
+          <div className="flex flex-wrap gap-x-6 gap-y-2">
+            <Swatch color={color.input} label="Choisie" />
+            <Swatch color={color.primary} label="Affichée" />
+          </div>
+        </>
+      ) : (
+        <Swatch color={color.primary} label="Lisible telle quelle" />
+      )}
+    </div>
+  );
+}
+
+function LogoCard({ venueId, logo }: { venueId: Id<"venues">; logo: PublicBrand["logo"] }) {
   const uploadUrl = useMutation(api.branding.generateLogoUploadUrl);
   const setLogo = useAction(api.branding.setLogo);
   const removeLogo = useMutation(api.branding.removeLogo);
@@ -219,7 +237,7 @@ function LogoCard({ venueId, logo }: { venueId: Id<"venues">; logo: PreviewMessa
     <Card>
       <CardHeader>
         <CardTitle>Logo</CardTitle>
-        <CardDescription>Montré à côté de votre nom, sur une pastille claire. Un PNG sur fond transparent donne le meilleur résultat ; il est réduit avant l'envoi.</CardDescription>
+        <CardDescription>Montré à côté de votre nom, sur une pastille claire. Un PNG sur fond transparent donne le meilleur résultat ; il est réduit avant l'envoi, et <strong className="font-medium text-foreground">en ligne dès qu'il est envoyé</strong>.</CardDescription>
       </CardHeader>
       <CardContent className="flex items-center gap-4">
         <span className="grid size-16 shrink-0 place-items-center overflow-hidden rounded-xl bg-white p-1.5 ring-1 ring-border">
@@ -260,16 +278,16 @@ function LogoCard({ venueId, logo }: { venueId: Id<"venues">; logo: PreviewMessa
 
 /**
  * La vraie carte, dans un cadre de téléphone de 390 px (D-157). Elle reçoit la couleur en cours de
- * saisie par `postMessage`, sur la même origine seulement ; le cadre, lui, n'écoute que sa fenêtre
+ * saisie par `postMessage` (le logo, lui, est en ligne dès l'envoi : le cadre le lit comme la carte), sur la même origine seulement ; le cadre, lui, n'écoute que sa fenêtre
  * parente.
  */
-function PreviewFrame({ venueId, primary, logo, publicSlug }: { venueId: Id<"venues">; primary: string | null; logo: PreviewMessage["logo"]; publicSlug: string | null }) {
+function PreviewFrame({ venueId, primary, publicSlug }: { venueId: Id<"venues">; primary: string | null; publicSlug: string | null }) {
   const frame = useRef<HTMLIFrameElement>(null);
-  const state = useRef<PreviewMessage>({ type: PREVIEW_MESSAGE, primary, logo });
-  state.current = { type: PREVIEW_MESSAGE, primary, logo };
+  const state = useRef<PreviewMessage>({ type: PREVIEW_MESSAGE, primary });
+  state.current = { type: PREVIEW_MESSAGE, primary };
 
   const send = () => frame.current?.contentWindow?.postMessage(state.current, window.location.origin);
-  useEffect(send, [primary, logo?.url]);
+  useEffect(send, [primary]);
   useEffect(() => {
     const ready = (event: MessageEvent) => {
       if (event.origin === window.location.origin && event.source === frame.current?.contentWindow && (event.data as { type?: string })?.type === PREVIEW_READY) send();

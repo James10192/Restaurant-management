@@ -30,6 +30,10 @@ export async function assertFreshUnusedFiles(ctx: ReadCtx, actor: VenueActor, id
       .first();
     if (owner) throw invalid("Ce fichier est déjà le logo d'un établissement.");
   }
+  // Les photos de plats, elles, ne sont cherchées que dans l'organisation : leurs identifiants de
+  // stockage ne sortent jamais du serveur (les cartes publiées portent des adresses), si bien
+  // qu'une autre organisation ne peut pas les désigner. C'est ce secret qui protège ce sens-là ;
+  // le jour où un identifiant sortirait, il faudrait l'index global qu'ont les logos.
   const venues = await ctx.db
     .query("venues")
     .withIndex("by_org", (q) => q.eq("organizationId", actor.organization._id))

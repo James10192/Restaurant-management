@@ -5,6 +5,7 @@ import { CircleAlert, Coins } from "lucide-react";
 import { api } from "../../convex/_generated/api";
 import { COUNTRIES, type CountryCode } from "../../convex/lib/countries";
 import { VENUE_TYPE_LABELS, type VenueType } from "../../convex/lib/validators";
+import { LoadingState, PermissionDeniedState } from "~/components/app/states";
 import { useWorkspace } from "~/components/app/workspace";
 import { FormField } from "~/components/app/form-field";
 import { PendingButton } from "~/components/app/pending-button";
@@ -68,32 +69,16 @@ function Onboarding() {
         venue: { name: venueName, venueType, ...(city.trim() ? { city } : {}) },
       });
       w.selectOrganization(result.organizationId);
-      // Deuxième étape, facultative : la marque (D-159).
+      // Deuxième étape, facultative : la marque (D-159). Le bouton reste verrouillé : un second
+      // appui pendant le chargement de la nouvelle organisation en créerait une deuxième.
       await navigate({ to: "/app/onboarding", search: { etape: "marque" } });
-      setSubmitting(false);
     } catch (e) {
       setFormError(describeError(e).message);
       setSubmitting(false);
     }
   }
 
-  // Le même éditeur que Réglages › Apparence, sur l'établissement qu'on vient d'ouvrir.
-  if (etape === "marque" && w.venue && w.canInVenue("venue.manage")) {
-    return (
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div className="flex flex-col gap-1">
-            <h1 className="text-2xl font-semibold tracking-tight">Votre marque sur la carte</h1>
-            <p className="text-muted-foreground">Facultatif : votre couleur et votre logo. Vous les retrouverez dans Réglages › Apparence.</p>
-          </div>
-          <Button size="lg" onClick={() => void navigate({ to: "/app" })}>
-            Continuer
-          </Button>
-        </div>
-        <AppearanceEditor venueId={w.venue._id} />
-      </div>
-    );
-  }
+  if (etape === "marque") return <BrandStep />;
 
   return (
     <div className="mx-auto flex w-full max-w-xl flex-col gap-6">
@@ -175,6 +160,29 @@ function Onboarding() {
           </CardFooter>
         </form>
       </Card>
+    </div>
+  );
+}
+
+/** L'étape « Votre marque » : le même éditeur que Réglages › Apparence (D-159), facultatif. */
+function BrandStep() {
+  const w = useWorkspace();
+  const navigate = useNavigate();
+  // La nouvelle organisation vient d'être choisie : ses droits arrivent après un aller-retour.
+  if (w.status !== "ready" || !w.venue) return <LoadingState />;
+  if (!w.canInVenue("venue.manage")) return <PermissionDeniedState venue={w.venue.name} permission="Configurer l'établissement" />;
+  return (
+    <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-2xl font-semibold tracking-tight">Votre marque sur la carte</h1>
+          <p className="text-muted-foreground">Facultatif : votre couleur et votre logo. Vous les retrouverez dans Réglages › Apparence.</p>
+        </div>
+        <Button size="lg" onClick={() => void navigate({ to: "/app" })}>
+          Continuer
+        </Button>
+      </div>
+      <AppearanceEditor venueId={w.venue._id} />
     </div>
   );
 }

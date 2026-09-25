@@ -4,7 +4,6 @@ import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { brandThemeCss, HEX_PATTERN } from "../../convex/lib/brand";
-import type { PublicBrand } from "../../convex/lib/guestMenu";
 import { useAuthStatus } from "~/components/app/convex-providers";
 import { MenuView } from "~/components/guest/menu-view";
 import { VenueHero } from "~/components/guest/venue-hero";
@@ -18,7 +17,8 @@ import { PREVIEW_MESSAGE, PREVIEW_READY, type PreviewMessage } from "~/lib/previ
  * mêmes composants que celle du client, sur les cartes en ligne — et non une maquette : ce que
  * l'aperçu montre est ce que le client verra.
  *
- * Il reçoit la couleur et le logo par `postMessage`, AVANT l'enregistrement. Seule la fenêtre
+ * Il reçoit la couleur par `postMessage`, AVANT l'enregistrement ; le logo, en ligne dès son envoi,
+ * arrive par la même requête que la carte. Seule la fenêtre
  * parente, et de la même origine, est écoutée ; la couleur est revalidée avant d'entrer dans le
  * style, comme sur la vraie carte.
  */
@@ -27,18 +27,13 @@ export const Route = createFileRoute("/_auth/apercu/$venueId")({
   component: Preview,
 });
 
-function isLogo(value: unknown): value is NonNullable<PublicBrand["logo"]> {
-  if (typeof value !== "object" || value === null) return false;
-  const logo = value as Record<string, unknown>;
-  return typeof logo.url === "string" && /^(https?:|blob:)/.test(logo.url) && typeof logo.width === "number" && typeof logo.height === "number";
-}
-
 function Preview() {
   const { venueId } = Route.useParams();
   // Comme la coque de l'application : pas de requête avant que la session soit établie.
   const auth = useAuthStatus();
   const data = useQuery(api.branding.previewMenu, auth.isAuthenticated ? { venueId: venueId as Id<"venues"> } : "skip");
-  const [override, setOverride] = useState<{ primary: string | null; logo: PublicBrand["logo"] } | null>(null);
+  // La couleur en cours de saisie ; `undefined` tant que l'écran n'en a envoyé aucune.
+  const [override, setOverride] = useState<string | null | undefined>(undefined);
   const [selected, setSelected] = useState<string | null>(null);
   const [renderedAt] = useState(() => Date.now());
 
@@ -48,7 +43,7 @@ function Preview() {
       const message = event.data as Partial<PreviewMessage> | null;
       if (!message || message.type !== PREVIEW_MESSAGE) return;
       const primary = typeof message.primary === "string" && HEX_PATTERN.test(message.primary) ? message.primary : null;
-      setOverride({ primary, logo: isLogo(message.logo) ? message.logo : null });
+      setOverride(primary);
     };
     window.addEventListener("message", receive);
     if (window.parent !== window) window.parent.postMessage({ type: PREVIEW_READY }, window.location.origin);
@@ -56,7 +51,7 @@ function Preview() {
   }, []);
 
   if (!data) return <main className="min-h-dvh bg-background" aria-busy="true" />;
-  const brand = override ?? data.venue.brand;
+  const brand = { ...data.venue.brand, primary: override === undefined ? data.venue.brand.primary : override };
   const place = [data.venue.address?.district, data.venue.address?.city].filter(Boolean).join(", ");
   return (
     <>

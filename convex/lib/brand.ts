@@ -39,6 +39,9 @@ export type BrandColor = {
   contrast: number;
 };
 
+/** Ce que l'écran relit d'une couleur enregistrée : la saisie, l'affichée, et si elles diffèrent. */
+export type StoredBrandColor = Pick<BrandColor, "input" | "primary" | "adjusted">;
+
 /** `#ABC`, `#aabbcc`, avec ou sans espaces : une forme canonique, ou null si ce n'en est pas une. */
 export function normalizeHex(raw: string): string | null {
   const value = raw.trim().toLowerCase();
