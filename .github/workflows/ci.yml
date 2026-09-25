@@ -38,8 +38,17 @@ jobs:
       # Déploie le schéma et les fonctions sur un backend local, ce qui régénère
       # `convex/_generated`. S'il diffère de ce qui est commité, quelqu'un a modifié le
       # backend sans régénérer : le code compilerait chez lui et nulle part ailleurs.
+      # La configuration d'authentification lit des variables d'environnement (jetons
+      # d'appareil, D-060) : le premier envoi échoue tant qu'elles ne sont pas posées. On
+      # démarre donc le backend, on pose l'environnement, puis on renvoie les fonctions.
+      # Ce backend reste allumé pour le parcours de bout en bout.
       - name: Convex codegen (local backend)
-        run: pnpm exec convex dev --once --typecheck disable
+        run: |
+          pnpm exec convex dev --typecheck disable > "$RUNNER_TEMP/convex.log" 2>&1 &
+          timeout 180 sh -c 'until grep -qE "Convex functions ready|Environment variable" "$0"; do sleep 1; done' "$RUNNER_TEMP/convex.log"
+          sh scripts/e2e-env.sh
+          touch convex/schema.ts
+          timeout 180 sh -c 'until grep -q "Convex functions ready" "$0"; do sleep 1; done' "$RUNNER_TEMP/convex.log" || { cat "$RUNNER_TEMP/convex.log"; exit 1; }
 
       - name: Generated Convex files are committed
         run: git diff --exit-code convex/_generated
@@ -81,12 +90,10 @@ jobs:
       - name: Install Playwright browser
         run: pnpm exec playwright install --with-deps chromium
 
-      - name: End-to-end (T0)
+      - name: End-to-end (T0 à T4)
         run: |
+          # Le backend local et son environnement sont ceux de l'étape de génération.
           node e2e/mail-sink.mjs "$RUNNER_TEMP/mails.jsonl" &
-          pnpm exec convex dev --typecheck disable > "$RUNNER_TEMP/convex.log" 2>&1 &
-          until grep -q "Convex functions ready" "$RUNNER_TEMP/convex.log"; do sleep 1; done
-          sh scripts/e2e-env.sh
           # Contre le BUILD de production, pas le serveur de développement : ce dernier
           # recharge la page quand il optimise ses dépendances, ce qui rend le test aléatoire.
           # `.env.local`, écrit par `convex dev`, fournit les URL du backend local au build.
