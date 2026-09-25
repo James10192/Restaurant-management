@@ -68,22 +68,23 @@ function DevicesPage() {
   if (!venueId || (!canManageDevices && !canSetMode)) {
     return <PermissionDeniedState venue={w.venue?.name} permission="enrôler et révoquer un appareil" />;
   }
+  const mode = canSetMode ? (
+    <section id={MODE_ANCHOR} aria-label="Mode de commande" className="scroll-mt-20">
+      <OrderingModeSection venueId={venueId} canReadVenue={w.canInVenue("venue.read")} />
+    </section>
+  ) : null;
   return (
     <div key={venueId} className="mx-auto flex max-w-3xl flex-col gap-6">
       <div className="flex flex-col gap-1">
         <h1 className="text-2xl font-semibold tracking-tight">Appareils</h1>
         <p className="text-muted-foreground">Les écrans et téléphones de l'établissement, et ce que vos clients peuvent commander.</p>
       </div>
+      {/* L'ordre du DOM, pas `order` : le clavier suit alors ce que l'œil voit. */}
+      {modeFirst ? mode : null}
       {canManageDevices ? (
-        <div className={modeFirst ? "order-last" : undefined}>
-          <DevicesCard venueId={venueId} canReadStations={w.canInVenue("kitchen.read")} canReadTeam={w.canInVenue("team.read")} />
-        </div>
+        <DevicesCard venueId={venueId} canReadStations={w.canInVenue("kitchen.read")} canReadTeam={w.canInVenue("team.read")} />
       ) : null}
-      {canSetMode ? (
-        <section id={MODE_ANCHOR} aria-label="Mode de commande" className="scroll-mt-20">
-          <OrderingModeSection venueId={venueId} canReadVenue={w.canInVenue("venue.read")} />
-        </section>
-      ) : null}
+      {modeFirst ? null : mode}
     </div>
   );
 }
