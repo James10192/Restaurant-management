@@ -1024,13 +1024,13 @@ publique d'une pièce.
 **Déclenchement** : proposé après le paiement, jamais avant — et **jamais avant d'avoir consulté la
 carte** *(PRODUCT.md §7.1.10)*.
 
-**Sections** : une note de 1 à 5, en gros · selon la note : **basse → canal privé vers le
-restaurant** (« qu'est-ce qui n'a pas été ? », thèmes proposés, commentaire libre) ; **haute →
-proposition d'avis public**, avec un lien vers la fiche du restaurant. **Aucun filtrage artificiel**
-*(DATA_MODEL §10)* : on ne cache pas les mauvaises notes, on les route vers quelqu'un qui peut agir.
+**Sections** : une note de 1 à 5, des thèmes proposés (accueil, attente, plats, boissons,
+propreté, prix), un commentaire libre facultatif avec le rappel « n'y mettez pas vos coordonnées ».
+L'avis va **au restaurant seul, quelle que soit la note** : **aucun renvoi vers un avis public selon
+la note** *(D-105)* — trier les clients satisfaits vers Google est interdit par ses règles et trompe
+les autres clients. Proposé dans les 6 h qui suivent la clôture, une fois par convive.
 **Action principale** : **Envoyer mon avis**.
-**Actions secondaires** : passer · laisser ses coordonnées pour la fidélité — **facultatif,
-explicitement consenti, jamais exigé**.
+**Actions secondaires** : fermer. Aucune coordonnée n'est demandée en T4.
 **États** — *erreur* : l'avis est conservé localement et réessayé. *Hors ligne* : cercle 3, avec
 conservation locale. *Vide* : sans objet.
 **Données** : `feedback` ; `customerProfiles` + `customerConsents` **seulement** si le client
@@ -2299,7 +2299,7 @@ friction finale, celui qui décide du souvenir *(P7)*.
 | 10 | Idem pour la part 4, réglée avec un billet de 20 000 | idem | Rendu monnaie calculé : 7 500. `cashMovements` de type `sale` |
 | 11 | Reste dû = 0 | `/app/cashier` + écrans clients | `tableSessions` : `settling` → **`closed`** *(R2 respectée : plus rien n'est dû)* |
 | 12 | Tickets | `/…/table/ticket/$reference` | `bills` par addition. **Envoyer sur WhatsApp**, canal réel du marché |
-| 13 | Avis proposé après le paiement | `/…/table/avis` | `feedback`. Note basse → **canal privé** ; note haute → avis public proposé. **Aucun filtrage** |
+| 13 | Avis proposé après la clôture | tiroir « Donner mon avis » sur la carte de la table | `feedback`, **vers le restaurant seul quelle que soit la note** *(D-105)* : aucun renvoi vers un avis public |
 
 **Variante tout aussi réelle** : une **seule** addition réglée 28 000 en espèces + 20 000 en Mobile
 Money. C'est **deux lignes de `payments` avec le même `checkId`** — aucune structure supplémentaire,

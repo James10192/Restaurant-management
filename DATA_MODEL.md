@@ -223,7 +223,7 @@ lecture d'un nom d'établissement.
 
 | Bloc | Contenu |
 |---|---|
-| `service` | `orderingMode` (`staff_only`/`guest_with_approval`/`guest_direct`/`hybrid`), `paymentTiming` (`post_paid`/`pre_paid`/`per_order`), `paymentLocations[]`, `qrStrategy` (`frictionless`/`table_activation`/`approval`/`presence_code`), `guestDirectCategories[]`, `serviceDayStartHour?` (heure locale de début du jour de service, 4 h par défaut) |
+| `service` | `orderingMode` (`staff_only`/`guest_with_approval`/`guest_direct`/`hybrid`), `paymentTiming` (`post_paid`/`pre_paid`/`per_order`), `paymentLocations[]`, `qrStrategy` (`frictionless`/`table_activation`/`approval`/`presence_code`), `guestDirectCategories[]`, `serviceDayStartHour?` (heure locale de début du jour de service, 4 h par défaut), `guestMaxQuantityPerLine?` (quantité au plus par plat dans un envoi du client, 10 par défaut, D-098) |
 | `tax` | `pricesIncludeTax`, `rates[]` (`{code,label,percent,appliesTo}`), `serviceChargePercent?` (**non appliqué en T3** : aucun écran ne le règle, et l'addition ne l'ajoute pas) |
 | `payments` | `enabledMethods[]` et `onlineProviders[]` (paiement en ligne, T5), `amountStep?` (pas d'arrondi des parts), `cashMode?` (`central`/`per_waiter`, défaut `central`), `mobileMoneyWallets?[]` (portefeuilles de l'établissement, réglés par lui) |
 | `tipping` | `enabled`, `mode` (`free`/`percentages`), `suggestions[]` |
@@ -515,7 +515,9 @@ l'installation à la clôture. Ni la table, ni la commande, ni l'addition.
 | `debtAmount?` | number | le dû abandonné à une clôture `closed_with_debt`, **figé** — sans lui, le rapport dit qu'une table est partie sans payer, pas combien (T3) |
 | `debtSettledAt?` | number | la dette entièrement recouvrée (le client est revenu payer) ; la table reste `closed_with_debt`, D-093 |
 | `currency` | string | figé à l'ouverture |
-| `activationCode?` | string | mode « code de présence » (§9) |
+| `activationCode?` | string | le **code de la table**, quatre chiffres tirés à CHAQUE ouverture, quel que soit le mode ; seul un convive qui le saisit (ou que le personnel admet) envoie en `guest_direct` *(D-095)*. En clair : le serveur le lit et le dit |
+| `codeFailures?` | number | essais faux sur cette tablée ; à 10, un code neuf est tiré et le compteur repart à zéro *(D-096)* |
+| `codeAlertAt?` | number | quand le code s'est renouvelé seul : le plan de salle le signale 30 minutes *(D-096, D-107)* |
 | `clientRef?` | string | UUID choisi par l'appareil quand la table s'ouvre hors ligne ; index `by_venue_clientRef` (D-062) |
 | `lastActivityAt` | number | alimente l'abandon automatique |
 
@@ -537,7 +539,10 @@ commande collaborative possible **sans compte** (§11).
 **Champs** : `venueId`, `tableSessionId`, `displayName?` (« Invité 2 », ou le
 prénom donné), `colorKey`, `deviceFingerprintHash?` (SHA-256 d'une clé aléatoire tirée par le
 navigateur : elle sépare les paniers des convives, ce n'est pas une identité), `joinedAt`, `lastSeenAt`, `status`
-(`active`/`left`), `customerProfileId?` (si le client s'identifie volontairement).
+(`active`/`left`), `customerProfileId?` (si le client s'identifie volontairement),
+`guestNumber?` (« Convive N », dans l'ordre d'arrivée, D-099), `admittedAt?` et
+`admittedBy?` (`code`/`staff` : seul un convive admis envoie en `guest_direct`, D-095),
+`removedAt?` (retiré par le personnel : il n'envoie plus rien, D-096).
 **Index** : `by_session ["tableSessionId"]` · `by_session_status ["tableSessionId","status"]`
 **Permissions** : lecture par la session elle-même (cookie signé) ; le personnel via `table.read`.
 **Cycle** : rejoint → actif → parti → détruit à la clôture + délai de rétention.
@@ -575,7 +580,7 @@ collaboratif.
 `carts` : `tableSessionId`, `guestSessionId?` (absent = panier commun à la table), `status`
 (`active`/`submitted`/`dismissed`/`abandoned`), `updatedAt`, `orderId?` (la commande qu'il est
 devenu). En T2, c'est le **panier à montrer** (D-061) : le client compose, rien ne part, le serveur
-l'importe d'un geste (`carts.importCart`) ; oublié 30 minutes après la dernière modification.
+l'importe d'un geste (`carts.importCart`) ; oublié 30 minutes après la dernière modification. `takenAt?` : repris par le serveur dans sa saisie ; le client lit alors « Pris par votre serveur », et la commande reste au convive d'origine (D-101).
 `cartItems` : `cartId`, `productId`, `variantId?`, `modifierSelections[]`, `quantity`,
 `instructions?`, `addedByGuestSessionId`, `courseNumber?`, `estimatedUnitPrice`.
 
@@ -910,9 +915,11 @@ quand.
 ### `feedback`
 **Champs** : `organizationId`, `venueId`, `tableSessionId?`, `guestSessionId?`, `rating` (1–5),
 `comment?`, `topics: string[]`, `isPublicRedirect`, `status`, `respondedByUserId?`, `createdAt`.
-**Index** : `by_venue_createdAt ["venueId","createdAt"]` · `by_venue_rating ["venueId","rating"]`
-**Règle** : une note basse ouvre un canal **privé** vers le restaurant ; une note haute peut proposer
-un avis public. Aucun filtrage artificiel des avis (§46).
+**Index** : `by_venue_createdAt ["venueId","createdAt"]` · `by_venue_rating ["venueId","rating"]` ·
+`by_guest_session ["guestSessionId"]` (un avis par convive, D-105)
+**Règle** : l'avis va **au restaurant seul, quelle que soit la note** ; `isPublicRedirect` reste faux
+— aucun renvoi vers un avis public selon la note *(D-105)*. Laissé dans les 6 h suivant la clôture,
+par un convive de la tablée, une fois. Lu avec `feedback.read`.
 
 ### `aiConversations` / `aiMessages`
 **Champs (conversation)** : `organizationId`, `venueId?`, `surface` (`guest`/`manager`/`import`),

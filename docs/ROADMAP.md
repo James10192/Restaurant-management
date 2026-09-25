@@ -177,6 +177,21 @@ et savent où en est leur plat.
 
 **Porte de sortie** : une table de quatre, quatre appareils, aucune commande perdue ni dupliquée.
 
+**Lots** :
+
+| Lot | Contenu | État |
+|---|---|---|
+| T4.a | Arbitrages adverses : sens des modes, preuve de présence par code de table, panier par convive, attribution, suivi, recommandations, avis *(D-094 à D-107)* | fait (2026-09-24) |
+| T4.b | Moteur : code tiré à chaque ouverture et ses garde-fous, admission et retrait par le personnel, envoi direct rejouable, limites par convive, reprise d'un panier qui garde son convive, suivi ligne par ligne, onglet de la table, avis, permission `feedback.read` | fait (2026-09-24) |
+| T4.c | Écrans (composants shadcn uniquement) : saisie du code, envoi direct avec panier figé, « Mes commandes » et « La table », avis ; fiche de table (code, téléphones), pastilles du plan, troisième mode, présélection par convive, page des avis, suggestions du restaurant. Bout en bout `e2e/t4.spec.ts`, revue adverse, documentation | fait (2026-09-25) |
+
+- Écarts assumés à la fin de T4 : `hybrid` reporté *(D-094)* ; pas de réattribution d'une ligne ni
+  de ligne « partagée » *(D-102)* ; pas d'heure d'arrivée estimée, pas de temps réel côté client
+  *(D-103)* ; recommandations tirées des ventes reportées à T6 *(D-104)* ; les plats envoyés par
+  le client partent tous au premier service (entrées et plats ensemble) ; la porte de sortie
+  (quatre vrais téléphones à une vraie table) attend un essai en salle — l'e2e la rejoue avec
+  quatre navigateurs, une réponse coupée et un double appui.
+
 > Vient **après** T2 délibérément : on ouvre la commande directe quand le restaurant l'a décidé,
 > pas parce que c'était le défaut *(A2)*.
 

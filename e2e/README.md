@@ -7,7 +7,10 @@ révocation) et `t3.spec.ts` (l'argent : encaisser en deux fois, ouvrir la caiss
 imprimer le ticket et vérifier qu'il part en 80 mm, compter une caisse juste, puis provoquer un
 écart et le retrouver au rapport avec son auteur et son motif ; puis, en pochettes, encaisser sous
 PIN sur une tablette partagée, faire compter la pochette par un responsable, et recouvrer un
-impayé) s'exécutent dans un vrai navigateur, contre le build de production et un
+impayé) et `t4.spec.ts` (le client commande lui-même : quatre téléphones à une table, trois admis
+par le code et un par le serveur, envois simultanés dont une réponse coupée puis rejouée et un double
+appui, une commande par convive, un plat prêt lu par le seul téléphone concerné, un cinquième
+téléphone sans code tenu à l'écart) s'exécutent dans un vrai navigateur, contre le build de production et un
 backend Convex **local** (sans compte). Aucun service extérieur n'est appelé : les e-mails, codes
 de connexion compris, sont recueillis par un faux serveur de courrier.
 
@@ -28,7 +31,7 @@ PORT=3000 node .output/server/index.mjs &
 MAIL_SINK=/tmp/joliba-mails.jsonl pnpm test:e2e
 ```
 
-`t2.spec.ts` et `t3.spec.ts` sèment eux-mêmes un établissement de démonstration (`scripts/seed-demo.mjs`) et y
+`t2.spec.ts`, `t3.spec.ts` et `t4.spec.ts` sèment eux-mêmes un établissement de démonstration (`scripts/seed-demo.mjs`) et y
 rattachent le compte de test par `devSeed:joinDemo`, qui ne fonctionne que sur un backend local
 (`JOLIBA_DEMO_SEED=1`, posé par `scripts/e2e-env.sh`).
 

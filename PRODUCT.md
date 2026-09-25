@@ -57,8 +57,8 @@ d'établissement lus par les machines à états**, jamais des conditions dissém
 |---|---|---|
 | `staff_only` | Seul le personnel saisit. Le QR sert à consulter la carte et à préparer un **panier à montrer** que le serveur importe d'un geste. | **Défaut** *(D-061)* — maquis, restaurants traditionnels, débuts prudents |
 | `guest_with_approval` | Le client compose, le serveur valide avant production | Réglage, avec garde-fous : message « pas encore en cuisine », alerte à toute la zone à 90 s, expiration à 10 min *(D-061)* |
-| `guest_direct` | Le client envoie directement en cuisine | Fast-food, food court — **refusé jusqu'en T4**, et jamais avec un QR sans friction *(D-061)* |
-| `hybrid` | Client direct autorisé sur certaines catégories (boissons), validation requise ailleurs | Bars, lounges — **refusé jusqu'en T4** *(D-061)* |
+| `guest_direct` | Le client envoie directement en cuisine, **une fois admis par le code de la table** (quatre chiffres tirés à chaque ouverture, donnés par le serveur) ou par le personnel | Maquis et restaurants qui veulent que chacun commande de son téléphone *(T4, D-094, D-095)* ; jamais avec un QR sans friction |
+| `hybrid` | Client direct autorisé sur certaines catégories (boissons), validation requise ailleurs | Bars, lounges — **reporté après T4** : une commande à moitié partie est ce que D-061 condamne *(D-094)* |
 
 ### Axe 2 — Quand on paie
 
