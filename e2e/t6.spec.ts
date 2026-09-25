@@ -112,7 +112,7 @@ test("le gérant voit le service en direct, puis comprend sa journée", async ({
   await expect(delays.locator("[data-slot=item]").filter({ hasText: "Prêt → servi" }).getByText(/sur \d+ bons?/)).toBeVisible();
   await expect(page.getByRole("heading", { name: "L'argent tombe-t-il juste ?" })).toBeVisible();
   await shot(page, "t6-04-donnees");
-  await page.getByRole("radio", { name: "7 jours" }).click();
+  await page.getByRole("radio", { name: "7 jours", exact: true }).click();
   await expect(page).toHaveURL(/du=\d{4}-\d{2}-\d{2}&au=/);
   await expect(page.getByText(/· 7 jours$/)).toBeVisible();
 
