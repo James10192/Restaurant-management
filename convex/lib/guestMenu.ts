@@ -13,7 +13,7 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { ReadCtx } from "./guards";
 import type { MenuSnapshot, SnapshotProduct } from "./menuSnapshot";
-import { HEX_PATTERN } from "./brand";
+import { HEX_PATTERN } from "./brandTheme";
 
 export type GuestImage = { url: string | null; thumbUrl: string | null; width: number; height: number };
 export type GuestProduct = Omit<SnapshotProduct, "images"> & { images: GuestImage[] };

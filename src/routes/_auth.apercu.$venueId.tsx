@@ -3,7 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
-import { brandThemeCss, HEX_PATTERN } from "../../convex/lib/brand";
+import { brandThemeCss, HEX_PATTERN } from "../../convex/lib/brandTheme";
 import { useAuthStatus } from "~/components/app/convex-providers";
 import { MenuView } from "~/components/guest/menu-view";
 import { VenueHero } from "~/components/guest/venue-hero";

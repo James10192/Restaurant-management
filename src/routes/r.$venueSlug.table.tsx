@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { QrCodeIcon } from "lucide-react";
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
-import { brandThemeCss } from "../../convex/lib/brand";
+import { brandThemeCss } from "../../convex/lib/brandTheme";
 import { MenuView, type MenuOrdering } from "~/components/guest/menu-view";
 import { VenueHero } from "~/components/guest/venue-hero";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "~/components/ui/empty";

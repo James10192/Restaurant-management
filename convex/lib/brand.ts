@@ -20,12 +20,13 @@
 /** La couleur Joliba (D-059), quand l'établissement n'en a choisi aucune (D-151). */
 export const JOLIBA_BRAND = "#044e5a";
 
-/** Le seul format accepté, en saisie comme à l'émission dans la page (D-152). */
-export const HEX_PATTERN = /^#[0-9a-f]{6}$/;
+import { BRAND_FOREGROUND, HEX_PATTERN } from "./brandTheme";
+
+export { brandThemeCss, HEX_PATTERN } from "./brandTheme";
 
 /** Le fond de la carte client (`--background`) et le texte posé sur la couleur (`--primary-foreground`). */
 const BACKGROUND = "#ffffff";
-const FOREGROUND = "#fafafa";
+const FOREGROUND = BRAND_FOREGROUND;
 const MIN_CONTRAST = 4.5;
 
 export type BrandColor = {
@@ -71,12 +72,6 @@ export function resolveBrandColor(raw: string): BrandColor {
     }
   }
   return { input, primary: "#000000", adjusted: true, contrast: round2(worstContrast([0, 0, 0])) };
-}
-
-/** Les jetons que la page client pose sur `:root`. Refuse tout ce qui n'est pas un hexadécimal. */
-export function brandThemeCss(primary: string): string {
-  if (!HEX_PATTERN.test(primary)) throw new Error("Couleur de thème invalide");
-  return `:root{--primary:${primary};--ring:${primary};--primary-foreground:${FOREGROUND}}`;
 }
 
 /** Contraste WCAG entre deux couleurs sRGB (composantes 0–1). */

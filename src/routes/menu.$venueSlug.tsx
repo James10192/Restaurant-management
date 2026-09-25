@@ -1,6 +1,6 @@
 import { createFileRoute, notFound, useNavigate } from "@tanstack/react-router";
 import { localTime } from "../../convex/lib/availability";
-import { brandThemeCss } from "../../convex/lib/brand";
+import { brandThemeCss } from "../../convex/lib/brandTheme";
 import type { PublicVenue } from "../../convex/lib/guestMenu";
 import { isIndexable } from "../../convex/lib/indexability";
 import { VENUE_TYPE_LABELS } from "../../convex/lib/validators";

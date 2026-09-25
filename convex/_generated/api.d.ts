@@ -34,6 +34,7 @@ import type * as lib_availability from "../lib/availability.js";
 import type * as lib_availabilityIndex from "../lib/availabilityIndex.js";
 import type * as lib_billing from "../lib/billing.js";
 import type * as lib_brand from "../lib/brand.js";
+import type * as lib_brandTheme from "../lib/brandTheme.js";
 import type * as lib_cashCount from "../lib/cashCount.js";
 import type * as lib_catalog from "../lib/catalog.js";
 import type * as lib_catalogAccess from "../lib/catalogAccess.js";
@@ -130,6 +131,7 @@ declare const fullApi: ApiFromModules<{
   "lib/availabilityIndex": typeof lib_availabilityIndex;
   "lib/billing": typeof lib_billing;
   "lib/brand": typeof lib_brand;
+  "lib/brandTheme": typeof lib_brandTheme;
   "lib/cashCount": typeof lib_cashCount;
   "lib/catalog": typeof lib_catalog;
   "lib/catalogAccess": typeof lib_catalogAccess;

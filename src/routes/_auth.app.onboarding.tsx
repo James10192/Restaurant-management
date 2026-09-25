@@ -78,7 +78,8 @@ function Onboarding() {
     }
   }
 
-  if (etape === "marque") return <BrandStep />;
+  // Sans organisation (adresse gardée en favori, retour arrière), l'étape n'a pas de sens : le formulaire.
+  if (etape === "marque" && w.status !== "no-organization") return <BrandStep />;
 
   return (
     <div className="mx-auto flex w-full max-w-xl flex-col gap-6">
@@ -169,8 +170,8 @@ function BrandStep() {
   const w = useWorkspace();
   const navigate = useNavigate();
   // La nouvelle organisation vient d'être choisie : ses droits arrivent après un aller-retour.
-  if (w.status !== "ready" || !w.venue) return <LoadingState />;
-  if (!w.canInVenue("venue.manage")) return <PermissionDeniedState venue={w.venue.name} permission="Configurer l'établissement" />;
+  if (w.status !== "ready") return <LoadingState />;
+  if (!w.venue || !w.canInVenue("venue.manage")) return <PermissionDeniedState venue={w.venue?.name} permission="Configurer l'établissement" />;
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
