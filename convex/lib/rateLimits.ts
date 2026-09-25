@@ -1,0 +1,55 @@
+/**
+ * Limites de débit — Joliba
+ *
+ * Les limites vivent ici, toutes ensemble, pour qu'on voie d'un coup d'œil ce qui est
+ * borné. Les codes de connexion sont limités par Better Auth lui-même (`convex/auth.ts`).
+ */
+
+import { HOUR, MINUTE, RateLimiter } from "@convex-dev/rate-limiter";
+import { components } from "../_generated/api";
+
+export const rateLimiter = new RateLimiter(components.rateLimiter, {
+  // Une invitation envoie un e-mail : sans borne, un compte compromis devient un relais
+  // d'envoi. Trente par heure couvrent l'ouverture d'un établissement entier.
+  invitation: { kind: "fixed window", rate: 30, period: HOUR },
+  // Codes de connexion PAR ADRESSE, en plus de la limite par IP de Better Auth : l'IP se
+  // falsifie auprès d'un appel direct au déploiement, l'adresse visée, non. Protège aussi
+  // la boîte de la personne visée contre une inondation de codes.
+  otpEmail: { kind: "fixed window", rate: 5, period: 10 * MINUTE },
+  // Plafond GLOBAL des codes : la limite par IP se contourne en appelant le déploiement
+  // directement avec un en-tête d'IP inventé, et la limite par adresse n'empêche pas de
+  // viser des milliers d'adresses. Borne le coût d'envoi et protège la réputation du domaine.
+  // Largement au-dessus d'un usage réel (une connexion par personne et par jour).
+  otpGlobal: { kind: "token bucket", rate: 120, period: MINUTE, capacity: 240 },
+  // Une invitation porte un nom d'organisation et d'invitant choisis par l'appelant, envoyés
+  // depuis le domaine Joliba : plafond par organisation, en plus de celui par personne.
+  invitationPerOrganization: { kind: "fixed window", rate: 100, period: 24 * HOUR },
+  // Enrôlement d'appareil : le code a 40 bits et vit 10 minutes, mais l'appel est public.
+  // Plafond global, en plus : un essai massif ne passe pas inaperçu.
+  deviceEnroll: { kind: "token bucket", rate: 20, period: MINUTE, capacity: 40 },
+  // Codes d'activation de PIN, par appareil enrôlé.
+  pinActivation: { kind: "fixed window", rate: 10, period: 10 * MINUTE },
+  // Côté client, par QR : une photo du code qui circule ne doit pas inonder la salle.
+  guestRequest: { kind: "fixed window", rate: 12, period: 10 * MINUTE },
+  // Envois du client (D-098) : PAR CONVIVE d'abord — quatre personnes qui recommandent chacune à
+  // boire ne doivent pas se gêner —, et par QR comme filet.
+  guestOrderPerGuest: { kind: "fixed window", rate: 4, period: 10 * MINUTE },
+  guestOrder: { kind: "fixed window", rate: 20, period: 10 * MINUTE },
+  // Paniers montrés : de quoi corriger souvent, pas de quoi inonder le serveur.
+  guestCartPerGuest: { kind: "fixed window", rate: 40, period: 10 * MINUTE },
+  guestCart: { kind: "fixed window", rate: 120, period: 10 * MINUTE },
+  // Code de table (D-096) : cinq essais faux par QR et par 10 minutes. 10 000 codes : moins de
+  // 1 % de chances sur une tablée de deux heures.
+  guestCode: { kind: "fixed window", rate: 5, period: 10 * MINUTE },
+  // Paiement en ligne (D-119) : chaque création appelle Wave. Par convive, et par QR comme filet.
+  guestPayPerGuest: { kind: "fixed window", rate: 3, period: 10 * MINUTE },
+  guestPay: { kind: "fixed window", rate: 10, period: 10 * MINUTE },
+  // « J'ai payé, vérifier » : une relecture chez Wave par appui, bornée.
+  guestPayCheck: { kind: "fixed window", rate: 10, period: 10 * MINUTE },
+  // Par établissement, tous convives confondus (D-119) : un restaurant plein reste loin de ces
+  // chiffres ; un script qui tourne sur une photo du QR, non.
+  guestPayVenue: { kind: "fixed window", rate: 60, period: 10 * MINUTE },
+  guestPayCheckVenue: { kind: "fixed window", rate: 200, period: 10 * MINUTE },
+  // Nouveaux convives, par tablée : une photo du QR ne doit pas remplir la table de faux invités.
+  guestJoin: { kind: "fixed window", rate: 15, period: 10 * MINUTE },
+});

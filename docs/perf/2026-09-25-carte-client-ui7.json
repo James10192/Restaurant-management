@@ -1,0 +1,48 @@
+{
+  "date": "2026-09-25",
+  "change": "UI.7 : en-tête compact, barre unique, lignes de plat à vignette",
+  "runs": 5,
+  "profile": {
+    "offline": false,
+    "latency": 300,
+    "downloadThroughput": 200000,
+    "uploadThroughput": 93750,
+    "cpuSlowdown": 6,
+    "viewport": "360x740@2x"
+  },
+  "summary": {
+    "ttfb": {
+      "median": 373,
+      "p75": 387,
+      "max": 438
+    },
+    "fcp": {
+      "median": 1988,
+      "p75": 2000,
+      "max": 2068
+    },
+    "lcp": {
+      "median": 2156,
+      "p75": 2156,
+      "max": 2160
+    },
+    "domContentLoaded": {
+      "median": 2057,
+      "p75": 2079,
+      "max": 2146
+    },
+    "load": {
+      "median": 4037,
+      "p75": 6623,
+      "max": 6743
+    },
+    "kb": {
+      "document": 93,
+      "script": 143,
+      "stylesheet": 18,
+      "image": 378,
+      "font": 29,
+      "other": 0
+    }
+  }
+}

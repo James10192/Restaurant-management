@@ -1,0 +1,42 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build
+dist/
+.output/
+.vinxi/
+.tanstack/
+.vercel/
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Compte rendu de complétude — local, jamais commité (voir .claude/hooks/completude-check.sh)
+.claude/completude.md
+.claude/worktrees/
+
+# Scratch
+/tmp/
+*.tmp
+
+# Backend Convex local (déploiement anonyme de développement)
+.convex/
+
+# Playwright
+test-results/
+playwright-report/

@@ -1,0 +1,114 @@
+# Voir DEPLOYMENT.md §2. L'ordre va du contrôle le moins cher au plus cher,
+# pour rendre la main vite quand quelque chose casse.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    env:
+      # Backend Convex local, sans compte : il sert à la génération des types et au
+      # parcours de bout en bout. Aucun déploiement réel n'est touché par la CI.
+      CONVEX_AGENT_MODE: anonymous
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # Le fichier de verrou fait foi. `--frozen-lockfile` échoue si package.json
+      # et le verrou divergent, au lieu de résoudre silencieusement autre chose.
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # D-017 : le composant Convex exige better-auth < 1.7. Le tilde de package.json
+      # l'impose ; ce contrôle vérifie que la résolution l'a respecté.
+      - name: better-auth stays below 1.7
+        # Lu sur disque : le champ `exports` de better-auth n'expose pas `./package.json`.
+        run: node -e "const v=JSON.parse(require('fs').readFileSync('node_modules/better-auth/package.json','utf8')).version; if(!/^1\.6\./.test(v)){console.error('better-auth '+v+' hors de ~1.6'); process.exit(1)}"
+
+      # Déploie le schéma et les fonctions sur un backend local, ce qui régénère
+      # `convex/_generated`. S'il diffère de ce qui est commité, quelqu'un a modifié le
+      # backend sans régénérer : le code compilerait chez lui et nulle part ailleurs.
+      # La configuration d'authentification lit des variables d'environnement (jetons
+      # d'appareil, D-060) : le premier envoi échoue tant qu'elles ne sont pas posées. On
+      # démarre donc le backend, on pose l'environnement, puis on renvoie les fonctions.
+      # Ce backend reste allumé pour le parcours de bout en bout.
+      - name: Convex codegen (local backend)
+        run: |
+          pnpm exec convex dev --typecheck disable > "$RUNNER_TEMP/convex.log" 2>&1 &
+          timeout 180 sh -c 'until grep -qE "Convex functions ready|Environment variable" "$0"; do sleep 1; done' "$RUNNER_TEMP/convex.log"
+          sh scripts/e2e-env.sh
+          touch convex/schema.ts
+          timeout 180 sh -c 'until grep -q "Convex functions ready" "$0"; do sleep 1; done' "$RUNNER_TEMP/convex.log" || { cat "$RUNNER_TEMP/convex.log"; exit 1; }
+
+      - name: Generated Convex files are committed
+        run: git diff --exit-code convex/_generated
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      # PERMISSIONS.md §9 : une permission existe dans le code OU dans la doc,
+      # jamais dans un seul des deux.
+      - name: Permissions catalog matches documentation
+        run: pnpm check:permissions
+
+      # CRITIQUE.md B1 : ce contrôle a déjà menti une fois. Il ne vérifie que des
+      # propriétés réfutables.
+      - name: Schema invariants
+        run: pnpm check:schema
+
+      # PERMISSIONS.md §6 : toute fonction publique commence par une garde, AVANT toute
+      # lecture. Le contrôle est lui-même testé (il doit échouer sur une fonction fautive).
+      - name: Every public function is guarded
+        run: pnpm check:guards
+
+      # PAYMENTS.md §2 : le franc CFA n'a pas de sous-unité.
+      - name: Money invariants
+        run: pnpm check:money
+
+      # Isolation multi-tenant (porte de sortie de T0), verrous, portée, plan tarifaire.
+      - name: Unit and isolation tests
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+        env:
+          VITE_CONVEX_URL: http://127.0.0.1:3210
+          VITE_CONVEX_SITE_URL: http://127.0.0.1:3211
+
+      # Parcours critique dans un vrai navigateur : connexion par code, ouverture d'un
+      # établissement, invitation, cloisonnement du collègue. Voir e2e/README.md.
+      - name: Install Playwright browser
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: End-to-end (T0 à T5)
+        run: |
+          # Le backend local et son environnement sont ceux de l'étape de génération.
+          node e2e/mail-sink.mjs "$RUNNER_TEMP/mails.jsonl" &
+          node e2e/wave-sink.mjs &
+          # Contre le BUILD de production, pas le serveur de développement : ce dernier
+          # recharge la page quand il optimise ses dépendances, ce qui rend le test aléatoire.
+          # `.env.local`, écrit par `convex dev`, fournit les URL du backend local au build.
+          NITRO_PRESET=node-server pnpm build
+          PORT=3000 node .output/server/index.mjs > "$RUNNER_TEMP/app.log" 2>&1 &
+          until curl -sf http://localhost:3000/api/health > /dev/null; do sleep 1; done
+          # Les en-têtes de sécurité RÉELLEMENT servis (DEPLOYMENT.md §4).
+          curl -sI http://localhost:3000/connexion | grep -qi "x-frame-options: DENY"
+          MAIL_SINK="$RUNNER_TEMP/mails.jsonl" pnpm test:e2e
+
+      - name: Upload Playwright traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: test-results/
+          retention-days: 7
