@@ -227,11 +227,27 @@ describe("les délais, honnêtes (D-143)", () => {
     const t = (await ticketOf(v, a.orderId))._id;
     await v.owner.as.mutation(api.kitchen.advance, { venueId: v.cocody, ticketId: t, action: "start", ageMs: 0 });
     vi.advanceTimersByTime(4 * 60_000);
-    // Le même « Commencer », resté dans la file d'une autre tablette pendant dix minutes.
-    await v.owner.as.mutation(api.kitchen.advance, { venueId: v.cocody, ticketId: t, action: "start", ageMs: 10 * 60_000 });
+    // Le même « Commencer », fait deux minutes APRÈS sur une tablette coupée du réseau : le bon
+    // était déjà commencé en direct, son heure est juste.
+    await v.owner.as.mutation(api.kitchen.advance, { venueId: v.cocody, ticketId: t, action: "start", ageMs: 2 * 60_000 });
     await v.owner.as.mutation(api.kitchen.advance, { venueId: v.cocody, ticketId: t, action: "ready", ageMs: 0 });
     const day = await v.owner.as.query(api.analytics.period, { venueId: v.cocody, from: DAY, to: DAY });
     expect([day.delays.prep.count, day.delays.replayed]).toEqual([1, 0]);
+  });
+
+  test("la copie restée dans la file du client Convex passe la première, avec un âge nul : le renvoi qui porte le vrai âge marque le bon", async () => {
+    const v = await venue();
+    const a = await tableWithOrder(v);
+    const t = (await ticketOf(v, a.orderId))._id;
+    await v.owner.as.mutation(api.kitchen.advance, { venueId: v.cocody, ticketId: t, action: "start", ageMs: 0 });
+    // « Prêt » tapé au début d'une coupure silencieuse : la copie du client part vingt minutes plus
+    // tard, sérialisée avec un âge nul, puis la file d'envoi renvoie le geste avec son vrai âge.
+    vi.advanceTimersByTime(20 * 60_000);
+    await v.owner.as.mutation(api.kitchen.advance, { venueId: v.cocody, ticketId: t, action: "ready", ageMs: 0 });
+    vi.advanceTimersByTime(2_000);
+    expect(await v.owner.as.mutation(api.kitchen.advance, { venueId: v.cocody, ticketId: t, action: "ready", ageMs: 20 * 60_000 + 2_000 })).toEqual({ changed: false });
+    const day = await v.owner.as.query(api.analytics.period, { venueId: v.cocody, from: DAY, to: DAY });
+    expect([day.delays.prep.count, day.delays.replayed]).toEqual([0, 1]);
   });
 
   test("un « Servi » rejoué après une coupure ne mesure pas la passe, et se compte", async () => {

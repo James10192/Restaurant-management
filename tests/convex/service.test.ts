@@ -141,9 +141,11 @@ describe("service complet", () => {
     expect(await status()).toBe("in_preparation");
     await s.cook.as.mutation(api.kitchen.advance, { venueId: s.cocody, ticketId: alloco._id, action: "ready" });
     expect(await status()).toBe("partially_ready");
-    // Un double appui ne fait rien ; revenir en arrière est refusé en disant pourquoi.
+    // Un double appui ne fait rien ; un geste déjà dépassé non plus (« Commencer » renvoyé après
+    // « Prêt », sa réponse perdue) : il a eu lieu, le refuser le mettrait « à régulariser » (D-164).
     expect(await s.cook.as.mutation(api.kitchen.advance, { venueId: s.cocody, ticketId: alloco._id, action: "ready" })).toEqual({ changed: false });
-    await expectCode(s.cook.as.mutation(api.kitchen.advance, { venueId: s.cocody, ticketId: alloco._id, action: "start" }), "CONFLICT");
+    expect(await s.cook.as.mutation(api.kitchen.advance, { venueId: s.cocody, ticketId: alloco._id, action: "start" })).toEqual({ changed: false });
+    expect(await status()).toBe("partially_ready");
 
     const toServe = await s.waiter.as.query(api.orders.readyToServe, { venueId: s.cocody });
     expect(toServe.tickets.map((t) => [t.reference, t.tableNumber, t.isMine])).toEqual([["A-001-CUI-2", "1", true]]);

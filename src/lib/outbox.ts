@@ -26,7 +26,7 @@ export const REPLAY_MAX_MS = 6 * 60 * 60_000;
  * sur le serveur : il vaut dès le démarrage hors ligne, et un appareil à la mauvaise heure le
  * mesure juste. Le serveur y reconnaît un geste rejoué au retour du réseau.
  */
-export const AGED_MUTATIONS: ReadonlySet<string> = new Set(["kitchen:advance", "orders:serveTicket"]);
+const AGED_MUTATIONS: ReadonlySet<string> = new Set(["kitchen:advance", "orders:serveTicket"]);
 
 export type OutboxStatus = "pending" | "sending" | "confirmed" | "rejected" | "needs_review";
 

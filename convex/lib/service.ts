@@ -169,6 +169,9 @@ const STATUS_LABEL: Record<TicketStatus, string> = {
  */
 const REPLAYED_GESTURE_MS = 15_000;
 
+/** L'heure que chaque pas pose sur le bon : de quoi dire, au renvoi d'un geste, quand il a vraiment été appliqué. */
+const DONE_AT = { start: "startedAt", ready: "readyAt", serve: "servedAt", recall: "recalledAt" } as const;
+
 /** L'état qu'aurait déjà produit cette action : la rejouer (double appui, file hors ligne) est sans effet. */
 const ALREADY: Record<TicketAction, TicketStatus> = {
   fire: "queued",
@@ -193,10 +196,21 @@ export async function advanceTicket(
   ageMs?: number,
 ): Promise<{ changed: boolean; ticket: Doc<"kitchenTickets"> }> {
   const current = ticket.status as TicketStatus;
-  if (current === ALREADY[action]) return { changed: false, ticket };
-  const next = nextTicketStatus(current, action);
-  if (next === null) throw conflict(`Ce bon est déjà ${STATUS_LABEL[current]}.`);
   const now = Date.now();
+  const next = current === ALREADY[action] ? null : nextTicketStatus(current, action);
+  if (next === null) {
+    // Ce geste a déjà eu lieu : double appui, ou renvoi d'un geste dont la réponse s'est perdue —
+    // parfois après que le bon est allé plus loin. C'est sans effet, pas un refus. Seul un bon
+    // annulé, ou qui n'a jamais franchi ce pas, refuse en disant son état réel.
+    const doneAt = action === "start" || action === "ready" || action === "serve" || action === "recall" ? ticket[DONE_AT[action]] : undefined;
+    if (current !== ALREADY[action] && (current === "cancelled" || doneAt === undefined)) throw conflict(`Ce bon est déjà ${STATUS_LABEL[current]}.`);
+    // Le pas a été posé bien après le geste : c'était la copie restée dans la file du client
+    // Convex, rejouée au retour du réseau avec un âge nul. Ce renvoi-ci porte le vrai âge (D-164).
+    if (ageMs !== undefined && ageMs > REPLAYED_GESTURE_MS && doneAt !== undefined && doneAt - (now - ageMs) > REPLAYED_GESTURE_MS && !ticket.timesFromReplay) {
+      await ctx.db.patch(ticket._id, { timesFromReplay: true });
+    }
+    return { changed: false, ticket };
+  }
   const memberId = actor.type === "staff" ? actor.memberId : undefined;
   const patch: Partial<Doc<"kitchenTickets">> = { status: next };
   if (action === "fire") patch.queuedAt = now;
