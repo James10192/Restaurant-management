@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
-import { Building2, ChevronRight, CircleAlert, KeyRound, MailOpen, Users } from "lucide-react";
+import { Building2, ChartColumn, ChefHat, ChevronRight, CircleAlert, ClipboardList, ConciergeBell, KeyRound, MailOpen, Users, UtensilsCrossed, Wallet } from "lucide-react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { useWorkspace } from "~/components/app/workspace";
@@ -19,9 +19,9 @@ export const Route = createFileRoute("/_auth/app/")({
 });
 
 /**
- * L'accueil est un AIGUILLAGE, pas un tableau de bord (INFORMATION_ARCHITECTURE §4.1).
- * Tant que les écrans de service (salle, cuisine, caisse) ne sont pas livrés, il mène aux
- * seuls écrans qui existent — sans promettre ceux qui n'existent pas encore.
+ * L'accueil est un AIGUILLAGE, pas un tableau de bord (INFORMATION_ARCHITECTURE §4.1) : il mène
+ * chacun à ses écrans, selon ses droits et jamais selon l'heure — les horaires d'ouverture sont
+ * facultatifs (D-146). Le travail du jour d'abord, les réglages ensuite.
  */
 function AppHome() {
   const w = useWorkspace();
@@ -54,7 +54,50 @@ function AppHome() {
     );
   }
 
+  const canCollect = w.canInVenue("payment.collect") || w.canInVenue("cash_register.open") || w.canInVenue("cash_register.close");
   const sections = [
+    {
+      to: "/app/service" as const,
+      icon: ConciergeBell,
+      title: "Service",
+      description: "Les tables, ce qui attend d'être servi, les demandes des clients.",
+      show: w.canInVenue("table.read"),
+    },
+    {
+      to: "/app/cuisine" as const,
+      icon: ChefHat,
+      title: "Cuisine",
+      description: "Les bons de votre poste, dans l'ordre où les préparer.",
+      show: w.canInVenue("kitchen.ticket.update"),
+    },
+    {
+      to: "/app/service/caisse" as const,
+      icon: Wallet,
+      title: "Caisse",
+      description: "Ouvrir, encaisser, compter, clôturer.",
+      show: w.canInVenue("table.read") && canCollect,
+    },
+    {
+      to: "/app/rapport" as const,
+      icon: ClipboardList,
+      title: "Fin de service",
+      description: "Ce qui est entré, par quel moyen, par qui — et la journée comparée à ses semblables.",
+      show: w.canInVenue("report.service_day.read"),
+    },
+    {
+      to: "/app/analytics" as const,
+      icon: ChartColumn,
+      title: "Données",
+      description: "Ce qui se vend, quand vous êtes chargé, où le service coince.",
+      show: w.canInVenue("analytics.read"),
+    },
+    {
+      to: "/app/menu" as const,
+      icon: UtensilsCrossed,
+      title: "Carte",
+      description: "Les plats, les prix, ce qui est disponible ce soir.",
+      show: w.canInVenue("menu.read") || w.canInVenue("menu.availability.toggle"),
+    },
     {
       to: "/app/team" as const,
       icon: Users,
@@ -110,8 +153,8 @@ function AppHome() {
         <Card>
           <CardContent>
             <p className="text-muted-foreground">
-              Votre espace de travail sera ici dès que les écrans de service de votre rôle seront ouverts. Votre responsable
-              peut vous indiquer la suite.
+              Votre rôle ne donne encore accès à aucun écran de cet établissement. Votre responsable peut vous indiquer la
+              suite.
             </p>
           </CardContent>
         </Card>

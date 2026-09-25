@@ -30,7 +30,10 @@ test("T0 — ouvrir, inviter, cloisonner", async ({ browser }) => {
   await shot(owner, "accueil-proprietaire");
 
   // Invitation d'un serveur, portée : cet établissement.
-  await owner.getByRole("navigation", { name: "Navigation principale" }).getByRole("link", { name: "Équipe" }).click();
+  // L'équipe se range sous « Réglages », replié : la navigation du service reste courte.
+  const ownerNav = owner.getByRole("navigation", { name: "Navigation principale" });
+  await ownerNav.getByRole("button", { name: "Réglages" }).click();
+  await ownerNav.getByRole("link", { name: "Équipe" }).click();
   await expect(owner.getByText("Vous êtes seul pour l'instant")).toBeVisible();
   await owner.getByRole("button", { name: "Inviter un membre" }).click();
   await owner.getByLabel("Adresse e-mail").fill(WAITER);

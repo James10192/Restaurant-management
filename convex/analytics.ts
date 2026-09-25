@@ -266,15 +266,18 @@ async function aggregate(ctx: QueryCtx, venue: Doc<"venues">, settings: Doc<"ven
  * partie de la période, est calculé en direct.
  */
 export const period = query({
-  args: { venueId: v.id("venues"), from: v.string(), to: v.string() },
-  handler: async (ctx, args) => {
-    const actor = await requirePermission(ctx, "analytics.read", { venueId: args.venueId });
+  /** Sans dates : les 7 derniers jours, aujourd'hui compris. */
+  args: { venueId: v.id("venues"), from: v.optional(v.string()), to: v.optional(v.string()) },
+  handler: async (ctx, a) => {
+    const actor = await requirePermission(ctx, "analytics.read", { venueId: a.venueId });
     const venue = actor.venue;
+    const settings = await settingsOf(ctx, venue._id);
+    const today = serviceDayOf(Date.now(), venue, settings);
+    const to = a.to ?? today;
+    const args = { from: a.from ?? shiftDay(to, -6), to };
     if (!DAY.test(args.from) || !DAY.test(args.to) || args.from > args.to) throw invalid("Période invalide.");
     const length = dayCount(args.from, args.to);
     if (length > MAX_PERIOD_DAYS) throw invalid(`Une période compte au plus ${MAX_PERIOD_DAYS} jours.`);
-    const settings = await settingsOf(ctx, venue._id);
-    const today = serviceDayOf(Date.now(), venue, settings);
     const access = await accessOf(ctx, actor, venue, args.from <= today && today <= args.to);
     const { agg, missing } = await aggregate(ctx, venue, settings, args.from, args.to, today);
 

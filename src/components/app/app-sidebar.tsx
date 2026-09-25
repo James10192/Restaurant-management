@@ -1,8 +1,11 @@
+import { useState } from "react";
 import { Link, useLocation, useNavigate, useRouter } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
 import {
   Banknote,
   Building2,
+  ChartColumn,
+  ChevronRight,
   ClipboardList,
   ChefHat,
   ChevronsUpDown,
@@ -14,6 +17,7 @@ import {
   MessageSquare,
   Settings,
   ShieldCheck,
+  SlidersHorizontal,
   TabletSmartphone,
   UserRound,
   Users,
@@ -23,6 +27,7 @@ import {
 } from "lucide-react";
 import { api } from "../../../convex/_generated/api";
 import { Avatar, AvatarFallback } from "~/components/ui/avatar";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "~/components/ui/collapsible";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -43,6 +48,9 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
   SidebarRail,
   useSidebar,
 } from "~/components/ui/sidebar";
@@ -50,7 +58,11 @@ import { useWorkspace } from "~/components/app/workspace";
 import { JolibaMark } from "~/components/app/auth-layout";
 import { authClient } from "~/lib/auth-client";
 
-type NavItem = { to: string; label: string; icon: LucideIcon; show: boolean; exact?: boolean };
+/**
+ * `settings` : ce qu'on règle une fois, rangé sous « Réglages », replié. La navigation du service
+ * reste sous neuf entrées (INFORMATION_ARCHITECTURE §1.2).
+ */
+type NavItem = { to: string; label: string; icon: LucideIcon; show: boolean; exact?: boolean; settings?: boolean };
 
 export function useNavItems(): NavItem[] {
   const w = useWorkspace();
@@ -65,8 +77,8 @@ export function useNavItems(): NavItem[] {
       show: w.canInVenue("table.read") && (w.canInVenue("payment.collect") || w.canInVenue("cash_register.open") || w.canInVenue("cash_register.close")),
     },
     { to: "/app/rapport", label: "Fin de service", icon: ClipboardList, show: w.canInVenue("report.service_day.read") },
+    { to: "/app/analytics", label: "Données", icon: ChartColumn, show: w.canInVenue("analytics.read") },
     { to: "/app/feedback", label: "Avis des clients", icon: MessageSquare, show: w.canInVenue("feedback.read") },
-    { to: "/app/team", label: "Équipe", icon: Users, show: w.canInVenue("team.read") || w.canInOrganization("team.read") },
     {
       to: "/app/menu",
       label: "Carte",
@@ -74,11 +86,12 @@ export function useNavItems(): NavItem[] {
       show: w.canInVenue("menu.read") || w.canInVenue("menu.availability.toggle"),
     },
     { to: "/app/floor", label: "Plan de salle", icon: LayoutGrid, show: w.canInVenue("table.read") },
-    { to: "/app/roles", label: "Rôles", icon: ShieldCheck, show: w.canInOrganization("permissions.manage") },
-    { to: "/app/settings/stations", label: "Postes de préparation", icon: Flame, show: w.canInVenue("kitchen.manage") },
-    { to: "/app/settings/payments", label: "Encaissement", icon: Banknote, show: w.canInVenue("venue.settings.service") },
-    { to: "/app/settings/devices", label: "Appareils", icon: TabletSmartphone, show: w.canInVenue("device.manage") || w.canInVenue("venue.settings.service") },
-    { to: "/app/settings/venue", label: "Établissement", icon: Settings, show: w.canInVenue("venue.manage") },
+    { to: "/app/team", label: "Équipe", icon: Users, show: w.canInVenue("team.read") || w.canInOrganization("team.read"), settings: true },
+    { to: "/app/roles", label: "Rôles", icon: ShieldCheck, show: w.canInOrganization("permissions.manage"), settings: true },
+    { to: "/app/settings/stations", label: "Postes de préparation", icon: Flame, show: w.canInVenue("kitchen.manage"), settings: true },
+    { to: "/app/settings/payments", label: "Encaissement", icon: Banknote, show: w.canInVenue("venue.settings.service"), settings: true },
+    { to: "/app/settings/devices", label: "Appareils", icon: TabletSmartphone, show: w.canInVenue("device.manage") || w.canInVenue("venue.settings.service"), settings: true },
+    { to: "/app/settings/venue", label: "Établissement", icon: Settings, show: w.canInVenue("venue.manage"), settings: true },
   ].filter((item) => item.show);
 }
 
@@ -92,6 +105,12 @@ export function AppSidebar() {
   const items = useNavItems();
   const { pathname } = useLocation();
   const { setOpenMobile } = useSidebar();
+  // L'entrée la plus précise l'emporte : « Caisse » (/app/service/caisse) n'allume pas « Service ».
+  const matches = (i: NavItem) => (i.exact ? pathname === i.to : pathname === i.to || pathname.startsWith(`${i.to}/`));
+  const best = items.filter(matches).sort((x, y) => y.to.length - x.to.length)[0];
+  const settings = items.filter((i) => i.settings);
+  // Replié par défaut ; ouvert quand on est dans un réglage, pour voir où l'on est.
+  const [settingsOpen, setSettingsOpen] = useState(best?.settings === true);
 
   return (
     <Sidebar collapsible="icon" className="print:hidden">
@@ -105,22 +124,36 @@ export function AppSidebar() {
             <SidebarGroupContent>
               <nav aria-label="Navigation principale">
                 <SidebarMenu>
-                  {items.map((item) => {
-                    // L'entrée la plus précise l'emporte : « Caisse » (/app/service/caisse) n'allume pas « Service ».
-                    const matches = (i: NavItem) => (i.exact ? pathname === i.to : pathname === i.to || pathname.startsWith(`${i.to}/`));
-                    const best = items.filter(matches).sort((x, y) => y.to.length - x.to.length)[0];
-                    const active = best?.to === item.to;
-                    return (
-                      <SidebarMenuItem key={item.to}>
-                        <SidebarMenuButton asChild isActive={active} tooltip={item.label}>
-                          <Link to={item.to} onClick={() => setOpenMobile(false)}>
-                            <item.icon />
-                            <span>{item.label}</span>
-                          </Link>
-                        </SidebarMenuButton>
+                  {items.filter((i) => !i.settings).map((item) => (
+                    <NavEntry key={item.to} item={item} active={best?.to === item.to} onNavigate={() => setOpenMobile(false)} />
+                  ))}
+                  {settings.length > 0 ? (
+                    <Collapsible asChild open={settingsOpen} onOpenChange={setSettingsOpen} className="group/settings">
+                      <SidebarMenuItem>
+                        <CollapsibleTrigger asChild>
+                          <SidebarMenuButton tooltip="Réglages" isActive={!settingsOpen && best?.settings === true}>
+                            <SlidersHorizontal />
+                            <span>Réglages</span>
+                            <ChevronRight className="ml-auto transition-transform group-data-[state=open]/settings:rotate-90" />
+                          </SidebarMenuButton>
+                        </CollapsibleTrigger>
+                        <CollapsibleContent>
+                          <SidebarMenuSub>
+                            {settings.map((item) => (
+                              <SidebarMenuSubItem key={item.to}>
+                                <SidebarMenuSubButton asChild isActive={best?.to === item.to}>
+                                  <Link to={item.to} onClick={() => setOpenMobile(false)}>
+                                    <item.icon />
+                                    <span>{item.label}</span>
+                                  </Link>
+                                </SidebarMenuSubButton>
+                              </SidebarMenuSubItem>
+                            ))}
+                          </SidebarMenuSub>
+                        </CollapsibleContent>
                       </SidebarMenuItem>
-                    );
-                  })}
+                    </Collapsible>
+                  ) : null}
                 </SidebarMenu>
               </nav>
             </SidebarGroupContent>
@@ -132,6 +165,19 @@ export function AppSidebar() {
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>
+  );
+}
+
+function NavEntry({ item, active, onNavigate }: { item: NavItem; active: boolean; onNavigate: () => void }) {
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton asChild isActive={active} tooltip={item.label}>
+        <Link to={item.to} onClick={onNavigate}>
+          <item.icon />
+          <span>{item.label}</span>
+        </Link>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
   );
 }
 

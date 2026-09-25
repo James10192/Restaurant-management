@@ -23,6 +23,7 @@ import { Route as AppareilCaisseRouteImport } from './routes/appareil.caisse'
 import { Route as MenuVenueSlugRouteImport } from './routes/menu.$venueSlug'
 import { Route as AuthAppIndexRouteImport } from './routes/_auth.app.index'
 import { Route as AuthAppAccountRouteImport } from './routes/_auth.app.account'
+import { Route as AuthAppAnalyticsRouteImport } from './routes/_auth.app.analytics'
 import { Route as AuthAppCuisineRouteImport } from './routes/_auth.app.cuisine'
 import { Route as AuthAppFeedbackRouteImport } from './routes/_auth.app.feedback'
 import { Route as AuthAppMenuRouteImport } from './routes/_auth.app.menu'
@@ -122,6 +123,11 @@ const AuthAppIndexRoute = AuthAppIndexRouteImport.update({
 const AuthAppAccountRoute = AuthAppAccountRouteImport.update({
   id: '/account',
   path: '/account',
+  getParentRoute: () => AuthAppRoute,
+} as any)
+const AuthAppAnalyticsRoute = AuthAppAnalyticsRouteImport.update({
+  id: '/analytics',
+  path: '/analytics',
   getParentRoute: () => AuthAppRoute,
 } as any)
 const AuthAppCuisineRoute = AuthAppCuisineRouteImport.update({
@@ -296,6 +302,7 @@ export interface FileRoutesByFullPath {
   '/menu/$venueSlug': typeof MenuVenueSlugRoute
   '/appareil/': typeof AppareilIndexRoute
   '/app/account': typeof AuthAppAccountRoute
+  '/app/analytics': typeof AuthAppAnalyticsRoute
   '/app/cuisine': typeof AuthAppCuisineRoute
   '/app/feedback': typeof AuthAppFeedbackRoute
   '/app/menu': typeof AuthAppMenuRouteWithChildren
@@ -340,6 +347,7 @@ export interface FileRoutesByTo {
   '/menu/$venueSlug': typeof MenuVenueSlugRoute
   '/appareil': typeof AppareilIndexRoute
   '/app/account': typeof AuthAppAccountRoute
+  '/app/analytics': typeof AuthAppAnalyticsRoute
   '/app/cuisine': typeof AuthAppCuisineRoute
   '/app/feedback': typeof AuthAppFeedbackRoute
   '/app/onboarding': typeof AuthAppOnboardingRoute
@@ -386,6 +394,7 @@ export interface FileRoutesById {
   '/menu/$venueSlug': typeof MenuVenueSlugRoute
   '/appareil/': typeof AppareilIndexRoute
   '/_auth/app/account': typeof AuthAppAccountRoute
+  '/_auth/app/analytics': typeof AuthAppAnalyticsRoute
   '/_auth/app/cuisine': typeof AuthAppCuisineRoute
   '/_auth/app/feedback': typeof AuthAppFeedbackRoute
   '/_auth/app/menu': typeof AuthAppMenuRouteWithChildren
@@ -434,6 +443,7 @@ export interface FileRouteTypes {
     | '/menu/$venueSlug'
     | '/appareil/'
     | '/app/account'
+    | '/app/analytics'
     | '/app/cuisine'
     | '/app/feedback'
     | '/app/menu'
@@ -478,6 +488,7 @@ export interface FileRouteTypes {
     | '/menu/$venueSlug'
     | '/appareil'
     | '/app/account'
+    | '/app/analytics'
     | '/app/cuisine'
     | '/app/feedback'
     | '/app/onboarding'
@@ -523,6 +534,7 @@ export interface FileRouteTypes {
     | '/menu/$venueSlug'
     | '/appareil/'
     | '/_auth/app/account'
+    | '/_auth/app/analytics'
     | '/_auth/app/cuisine'
     | '/_auth/app/feedback'
     | '/_auth/app/menu'
@@ -670,6 +682,13 @@ declare module '@tanstack/react-router' {
       path: '/account'
       fullPath: '/app/account'
       preLoaderRoute: typeof AuthAppAccountRouteImport
+      parentRoute: typeof AuthAppRoute
+    }
+    '/_auth/app/analytics': {
+      id: '/_auth/app/analytics'
+      path: '/analytics'
+      fullPath: '/app/analytics'
+      preLoaderRoute: typeof AuthAppAnalyticsRouteImport
       parentRoute: typeof AuthAppRoute
     }
     '/_auth/app/cuisine': {
@@ -932,6 +951,7 @@ const AuthAppServiceRouteWithChildren = AuthAppServiceRoute._addFileChildren(
 
 interface AuthAppRouteChildren {
   AuthAppAccountRoute: typeof AuthAppAccountRoute
+  AuthAppAnalyticsRoute: typeof AuthAppAnalyticsRoute
   AuthAppCuisineRoute: typeof AuthAppCuisineRoute
   AuthAppFeedbackRoute: typeof AuthAppFeedbackRoute
   AuthAppMenuRoute: typeof AuthAppMenuRouteWithChildren
@@ -952,6 +972,7 @@ interface AuthAppRouteChildren {
 
 const AuthAppRouteChildren: AuthAppRouteChildren = {
   AuthAppAccountRoute: AuthAppAccountRoute,
+  AuthAppAnalyticsRoute: AuthAppAnalyticsRoute,
   AuthAppCuisineRoute: AuthAppCuisineRoute,
   AuthAppFeedbackRoute: AuthAppFeedbackRoute,
   AuthAppMenuRoute: AuthAppMenuRouteWithChildren,

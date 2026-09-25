@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
@@ -15,9 +15,14 @@ import { ButtonGroup } from "~/components/ui/button-group";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/ui/card";
 import { Input } from "~/components/ui/input";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemTitle } from "~/components/ui/item";
+import { Figure } from "~/components/analytics/figures";
+import { DayComparison } from "~/components/analytics/day-comparison";
 
 export const Route = createFileRoute("/_auth/app/rapport")({
   head: () => ({ meta: [{ title: "Fin de service — Joliba" }] }),
+  // Le jour vit dans l'adresse : on peut envoyer à un associé l'écran exact qu'on regarde.
+  validateSearch: (search: Record<string, unknown>): { jour?: string } =>
+    typeof search.jour === "string" && /^\d{4}-\d{2}-\d{2}$/.test(search.jour) ? { jour: search.jour } : {},
   component: ReportPage,
 });
 
@@ -43,7 +48,10 @@ function shiftDay(day: string, delta: number): string {
  * encaissé par qui — et l'écart s'explique-t-il ? Un jour de service, lisible sur un téléphone.
  */
 function ReportView({ venueId }: { venueId: Id<"venues"> }) {
-  const [day, setDay] = useState<string | undefined>(undefined);
+  const w = useWorkspace();
+  const { jour: day } = Route.useSearch();
+  const navigate = Route.useNavigate();
+  const setDay = (next: string) => void navigate({ search: { jour: next } });
   const report = useQuery(api.reports.serviceDay, { venueId, ...(day ? { day } : {}) });
   if (report === undefined) return <LoadingState />;
   const money = (amount: number) => formatMoney({ amount, currency: report.currency as CurrencyCode });
@@ -71,6 +79,8 @@ function ReportView({ venueId }: { venueId: Id<"venues"> }) {
           </Button>
         </ButtonGroup>
       </div>
+
+      {w.canInVenue("analytics.read") ? <DayComparison venueId={venueId} day={report.day} /> : null}
 
       {report.totals === null ? (
         <Alert>
@@ -173,18 +183,6 @@ function ReportView({ venueId }: { venueId: Id<"venues"> }) {
         ))}
       </Section>
     </div>
-  );
-}
-
-function Figure({ label, value, hint }: { label: string; value: string; hint?: string }) {
-  return (
-    <Card size="sm">
-      <CardHeader>
-        <CardDescription>{label}</CardDescription>
-        <CardTitle className="text-2xl tabular-nums">{value}</CardTitle>
-        {hint ? <CardDescription>{hint}</CardDescription> : null}
-      </CardHeader>
-    </Card>
   );
 }
 

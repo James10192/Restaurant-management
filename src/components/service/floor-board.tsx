@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
-import { Bell, Check, ChefHat, Clock, Hand, LayoutGrid, Lock, Users, Wallet, X } from "lucide-react";
+import { Bell, Check, ChefHat, CircleAlert, Clock, Flame, Hand, LayoutGrid, Lock, Users, UtensilsCrossed as UtensilsCrossedIcon, Wallet, X } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
+import { isTicketLate, ticketWait } from "../../../convex/lib/analytics";
 import { APPROVAL_ESCALATE_MS } from "../../../convex/lib/ordering";
 import { EmptyState, LoadingState } from "~/components/app/states";
 import { FormField } from "~/components/app/form-field";
@@ -16,6 +17,7 @@ import {
   ResponsiveDialogHeader,
   ResponsiveDialogTitle,
 } from "~/components/app/responsive-dialog";
+import { Alert, AlertDescription, AlertTitle } from "~/components/ui/alert";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/ui/card";
@@ -47,13 +49,22 @@ export function FloorBoard() {
   const ready = useQuery(api.orders.readyToServe, scope.can("order.read") ? { venueId: scope.venueId } : "skip");
   const requests = useQuery(api.serviceRequests.open, scope.can("service_request.read") ? { venueId: scope.venueId } : "skip");
   const pending = useQuery(api.orders.pendingAcceptance, scope.can("order.accept") ? { venueId: scope.venueId } : "skip");
+  const kitchen = useQuery(api.kitchen.inProduction, scope.can("kitchen.read") ? { venueId: scope.venueId } : "skip");
   const [tab, setTab] = useState("tables");
+  const now = useMinuteClock();
   useOrderMenu(); // la carte à commander reste à jour sur l'appareil, pour les coupures
 
   if (floor === undefined) return <LoadingState />;
   const readyCount = ready?.tickets.length ?? 0;
-  const requestCount = requests?.requests.filter((r) => r.status === "open").length ?? 0;
+  const openRequests = requests?.requests.filter((r) => r.status === "open") ?? [];
   const pendingCount = pending?.length ?? 0;
+  const lateCount = kitchen?.filter((t) => t.station.lateThresholdMinutes !== null && isTicketLate(t, { lateThresholdMinutes: t.station.lateThresholdMinutes }, now)).length ?? 0;
+  // L'âge du plus ancien élément de chaque file : trois plats prêts depuis 1 min ne pressent pas
+  // autant qu'un seul qui refroidit depuis 9 (D-133).
+  const oldest = (times: readonly (number | null | undefined)[]) => {
+    const known = times.filter((x): x is number => typeof x === "number");
+    return known.length > 0 ? waitedLabel(now - Math.min(...known), false) : null;
+  };
 
   return (
     <div className="flex flex-col gap-4">
@@ -81,8 +92,9 @@ export function FloorBoard() {
         </div>
       </div>
       <ServiceStatus />
+      <ServiceAlerts />
       <Tabs value={tab} onValueChange={setTab}>
-        <TabsList className="w-full sm:w-fit">
+        <TabsList className="w-full justify-start overflow-x-auto [scrollbar-width:none] sm:w-fit">
           <TabsTrigger value="tables">
             <LayoutGrid />
             Tables
@@ -90,18 +102,25 @@ export function FloorBoard() {
           <TabsTrigger value="ready">
             <ChefHat />
             À servir
-            {readyCount > 0 ? <Badge>{readyCount}</Badge> : null}
+            {readyCount > 0 ? <QueueBadge count={readyCount} age={oldest(ready?.tickets.map((t) => t.readyAt) ?? [])} /> : null}
           </TabsTrigger>
           <TabsTrigger value="requests">
             <Bell />
             Demandes
-            {requestCount > 0 ? <Badge>{requestCount}</Badge> : null}
+            {openRequests.length > 0 ? <QueueBadge count={openRequests.length} age={oldest(openRequests.map((r) => r.createdAt))} /> : null}
           </TabsTrigger>
           {scope.can("order.accept") ? (
             <TabsTrigger value="pending">
               <Hand />
               À valider
-              {pendingCount > 0 ? <Badge variant="destructive">{pendingCount}</Badge> : null}
+              {pendingCount > 0 ? <QueueBadge count={pendingCount} age={oldest(pending?.map((o) => o.submittedAt) ?? [])} urgent /> : null}
+            </TabsTrigger>
+          ) : null}
+          {scope.can("kitchen.read") ? (
+            <TabsTrigger value="kitchen">
+              <Flame />
+              En cuisine
+              {lateCount > 0 ? <Badge variant="destructive">{lateCount} en retard</Badge> : kitchen && kitchen.length > 0 ? <Badge variant="secondary">{kitchen.length}</Badge> : null}
             </TabsTrigger>
           ) : null}
         </TabsList>
@@ -119,8 +138,104 @@ export function FloorBoard() {
             <PendingTab data={pending} />
           </TabsContent>
         ) : null}
+        {scope.can("kitchen.read") ? (
+          <TabsContent value="kitchen">
+            <KitchenTab data={kitchen} now={now} />
+          </TabsContent>
+        ) : null}
       </Tabs>
     </div>
+  );
+}
+
+/** Le compte d'une file, et depuis combien de temps attend le plus ancien. */
+function QueueBadge({ count, age, urgent = false }: { count: number; age: string | null; urgent?: boolean }) {
+  return (
+    <Badge variant={urgent ? "destructive" : "default"} className="tabular-nums">
+      {count}
+      {age ? <span className="font-normal opacity-80">· {age}</span> : null}
+    </Badge>
+  );
+}
+
+/**
+ * Les alertes de gestion (D-147) : chacune appelle un geste, et n'apparaît qu'à qui peut le faire.
+ * Les files du service (retards, à valider, à servir, demandes) ont leurs onglets ; ici, le reste.
+ */
+function ServiceAlerts() {
+  const scope = useServiceScope();
+  const alerts = useQuery(api.tower.alerts, { venueId: scope.venueId });
+  if (!alerts) return null;
+  const { staleCash, soldOut, paymentAlerts } = alerts;
+  if (staleCash.length === 0 && soldOut.length === 0 && !paymentAlerts) return null;
+  return (
+    <div className="flex flex-col gap-2" data-service-alerts>
+      {staleCash.length > 0 ? (
+        <Alert variant="destructive">
+          <Wallet />
+          <AlertTitle>{staleCash.length === 1 ? "Une caisse d'un jour précédent n'est pas close" : `${staleCash.length} caisses d'un jour précédent ne sont pas closes`}</AlertTitle>
+          <AlertDescription>
+            <p>{staleCash.map((c) => c.name).join(", ")} : à compter avant d'encaisser la journée.</p>
+            <Button size="sm" variant="outline" className="mt-2" onClick={scope.nav.cash}>
+              Aller à la caisse
+            </Button>
+          </AlertDescription>
+        </Alert>
+      ) : null}
+      {paymentAlerts ? (
+        <Alert>
+          <CircleAlert />
+          <AlertTitle>{paymentAlerts === 1 ? "Un paiement en ligne demande votre attention" : `${paymentAlerts} paiements en ligne demandent votre attention`}</AlertTitle>
+          <AlertDescription>
+            <Button size="sm" variant="outline" className="mt-1" onClick={scope.nav.cash}>
+              Voir à la caisse
+            </Button>
+          </AlertDescription>
+        </Alert>
+      ) : null}
+      {soldOut.length > 0 ? (
+        <Alert>
+          <UtensilsCrossedIcon />
+          <AlertTitle>{soldOut.length === 1 ? "Un plat est en rupture jusqu'à nouvel ordre" : `${soldOut.length} plats sont en rupture jusqu'à nouvel ordre`}</AlertTitle>
+          <AlertDescription>{soldOut.map((p) => p.name).join(", ")} — à remettre en vente dans la carte quand ils reviennent.</AlertDescription>
+        </Alert>
+      ) : null}
+    </div>
+  );
+}
+
+/* ─────────────────────────── En cuisine ─────────────────────────── */
+
+const KITCHEN_STATUS = { queued: "Envoyé", started: "En préparation", recalled: "Rappelé" } as const;
+
+/** Tous les bons en cuisine, du plus ancien au plus récent ; le retard selon le seuil de chaque poste. */
+function KitchenTab({ data, now }: { data: FunctionReturnType<typeof api.kitchen.inProduction> | undefined; now: number }) {
+  if (data === undefined) return <LoadingState />;
+  if (data.length === 0) return <EmptyState title="Rien en cuisine" description="Les bons envoyés et pas encore prêts s'affichent ici, du plus ancien au plus récent." />;
+  return (
+    <ItemGroup className="gap-2 pt-2">
+      {data.map((t) => {
+        const threshold = t.station.lateThresholdMinutes;
+        const late = threshold !== null && isTicketLate(t, { lateThresholdMinutes: threshold }, now);
+        return (
+          <Item key={t._id} variant="outline" className={cn(late && "border-destructive")} data-kitchen-ticket={t.reference}>
+            <ItemContent>
+              <ItemTitle>
+                Table {t.tableNumber}
+                <Badge variant="outline">{t.station.name}</Badge>
+                {late ? <Badge variant="destructive">En retard</Badge> : <Badge variant="secondary">{KITCHEN_STATUS[t.status as keyof typeof KITCHEN_STATUS] ?? t.status}</Badge>}
+              </ItemTitle>
+              <ItemDescription>{t.lines.map((l) => `${l.quantity} × ${l.name}`).join(" · ")}</ItemDescription>
+              <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                <Clock className="size-3" />
+                Envoyé {waitedLabel(ticketWait(t, now))}
+                {threshold !== null ? ` · retard au-delà de ${threshold} min` : ""}
+              </p>
+            </ItemContent>
+          </Item>
+        );
+      })}
+    </ItemGroup>
   );
 }
 
