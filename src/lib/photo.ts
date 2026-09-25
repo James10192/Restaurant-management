@@ -3,7 +3,8 @@
  *
  * Une photo de téléphone pèse 3 à 6 Mo ; la carte d'un client en 4G n'en veut pas. On la
  * réduit ici, dans le navigateur du restaurateur : une grande image (1280 px au plus long)
- * pour la fiche, et une vignette (480 px) pour la liste. Le serveur vérifie ensuite la
+ * pour la fiche, et une vignette (256 px, ≤ 20 Ko) pour la liste — affichée à 112 px, elle
+ * reste nette sur un écran de densité 2 (D-166). Le serveur vérifie ensuite la
  * signature du fichier et son poids (`convex/products.ts`, `imageProblem`) — cette étape ne
  * remplace pas le contrôle, elle évite d'envoyer des mégaoctets pour se les voir refuser.
  *
@@ -11,7 +12,7 @@
  */
 
 const FULL = { edge: 1280, maxBytes: 600_000 };
-const THUMB = { edge: 480, maxBytes: 80_000 };
+const THUMB = { edge: 256, maxBytes: 20_000 };
 const QUALITIES = [0.82, 0.74, 0.66, 0.58, 0.5, 0.42];
 
 export type ReducedPhoto = { full: Blob; thumb: Blob; width: number; height: number };
@@ -62,6 +63,37 @@ export async function reducePhoto(file: File): Promise<ReducedPhoto> {
       width: full.width,
       height: full.height,
     };
+  } finally {
+    bitmap.close();
+  }
+}
+
+/**
+ * Le logo de l'établissement (D-153) : 256 px au plus long, 20 Ko au plus, et sa TRANSPARENCE
+ * gardée — WebP d'abord, PNG sinon, jamais JPEG (qui la perd). Un SVG est refusé : il peut porter
+ * du script. Le serveur relit la signature et les dimensions (`convex/branding.ts`, `logoInfo`).
+ */
+export async function reduceLogo(file: File): Promise<Blob> {
+  if (!/^image\/(jpeg|png|webp)$/.test(file.type)) {
+    throw new PhotoError("Choisissez une image PNG, WebP ou JPEG. Le SVG n'est pas accepté.");
+  }
+  let bitmap: ImageBitmap;
+  try {
+    bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
+  } catch {
+    throw new PhotoError("Cette image n'a pas pu être lue. Enregistrez-la en PNG, puis réessayez.");
+  }
+  try {
+    const canvas = draw(bitmap, 256);
+    if (Math.min(canvas.width, canvas.height) < 16) throw new PhotoError("Ce logo est trop étroit : recadrez-le plus près du dessin.");
+    for (const quality of QUALITIES) {
+      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/webp", quality));
+      if (!blob || blob.type !== "image/webp") break;
+      if (blob.size <= 20_000) return blob;
+    }
+    const png = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
+    if (png && png.size <= 20_000) return png;
+    throw new PhotoError("Ce logo reste trop lourd une fois réduit. Essayez une version plus simple, sur fond transparent.");
   } finally {
     bitmap.close();
   }

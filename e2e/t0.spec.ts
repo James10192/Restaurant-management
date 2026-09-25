@@ -6,7 +6,7 @@
 
 import { expect, test } from "@playwright/test";
 import { clientHeaders, lastEmailTo } from "./mail";
-import { shot, signIn } from "./session";
+import { openVenue, shot, signIn, skipBrandStep } from "./session";
 
 const run = Date.now().toString(36);
 const OWNER = `awa-${run}@maquis.test`;
@@ -20,13 +20,9 @@ test("T0 — ouvrir, inviter, cloisonner", async ({ browser }) => {
   await signIn(owner, OWNER);
 
   await expect(owner.getByRole("heading", { name: /aucune organisation/ })).toBeVisible();
-  await owner.getByRole("link", { name: "Ouvrir mon établissement" }).click();
-  await owner.getByLabel("Votre nom").fill("Awa Koné");
-  await owner.getByLabel("Nom de votre restaurant ou de votre groupe").fill("Maquis Awa");
-  await owner.getByLabel("Ville").fill("Abidjan");
-  await shot(owner, "onboarding");
-  await owner.getByRole("button", { name: "Ouvrir l'établissement" }).click();
-  await expect(owner.getByRole("heading", { name: "Maquis Awa" })).toBeVisible();
+  await openVenue(owner, "Awa Koné", "Maquis Awa", () => shot(owner, "onboarding"));
+  await shot(owner, "onboarding-marque");
+  await skipBrandStep(owner, "Maquis Awa");
   await shot(owner, "accueil-proprietaire");
 
   // Invitation d'un serveur, portée : cet établissement.

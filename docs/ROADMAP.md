@@ -275,10 +275,13 @@ première commande de test sans nous.
 
 **Porte de sortie** : trois restaurants s'installent sans assistance, mesuré.
 
-**T7.a — Apparence** *(D-149 à D-160)* : la carte client prend la couleur et le logo du
-restaurant — couleur résolue côté serveur pour rester lisible (4,5:1 sur trois paires), logo léger
-sans SVG, aperçu qui rend la vraie carte à 390 px. Ni gabarits, ni polices, ni mode sombre par
-restaurant ; la couverture attend que la carte revienne dans son budget.
+**T7.a — Apparence** *(D-149 à D-167)* — **livrée** : la carte client prend la couleur et le
+logo du restaurant — couleur résolue côté serveur pour rester lisible (4,5:1 sur trois paires), logo
+léger sans SVG, aperçu qui rend la vraie carte à 390 px, dans Réglages › Apparence et à la mise en
+route. La carte elle-même est adoucie (D-166) : casse normale, couleur réservée au « + » et à la
+section lue, devise écrite une fois, vignettes de 20 Ko. Ni gabarits, ni polices, ni mode sombre par
+restaurant ; la couverture attend que la carte revienne dans son budget. Au déploiement :
+`npx convex run migrations:resetSeededBranding`.
 
 > Cette tranche décide du coût d'acquisition. Tant qu'elle n'est pas faite, chaque client coûte une
 > installation accompagnée.

@@ -33,3 +33,28 @@ export const grantTemplatePermission = internalMutation({
     return { updated, templates };
   },
 });
+
+/**
+ * La couleur semée à la création (`#0B6478`, jamais choisie : aucun écran ne la réglait) et le
+ * thème, jamais lu, sont retirés (D-151). Sans couleur saisie, la carte porte celle de Joliba.
+ * Une couleur déjà résolue (`resolvedPrimary`) est un choix du restaurant : on n'y touche pas.
+ *
+ *     npx convex run migrations:resetSeededBranding
+ *
+ * Idempotente : relancée, elle ne trouve plus rien à faire.
+ */
+export const resetSeededBranding = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    let updated = 0;
+    for await (const settings of ctx.db.query("venueSettings")) {
+      const { branding } = settings;
+      const seeded = branding.resolvedPrimary === undefined && branding.primaryColor !== undefined;
+      if (!seeded && branding.theme === undefined) continue;
+      const { theme: _theme, primaryColor, ...rest } = branding;
+      await ctx.db.patch(settings._id, { branding: seeded || primaryColor === undefined ? rest : { ...rest, primaryColor } });
+      updated++;
+    }
+    return { updated };
+  },
+});

@@ -17,7 +17,7 @@ import { ClockIcon, InfoIcon, PlusIcon, SearchIcon, UtensilsCrossedIcon, WifiOff
 import { createContext, lazy, Suspense, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ALLERGENS } from "../../../convex/lib/allergens";
 import type { GuestMenu, GuestProduct, LiveAvailability, PublicVenue } from "../../../convex/lib/guestMenu";
-import { formatMoney, type CurrencyCode } from "../../../convex/lib/money";
+import { currencySymbol, type CurrencyCode } from "../../../convex/lib/money";
 import { Alert, AlertDescription } from "~/components/ui/alert";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
@@ -29,6 +29,8 @@ import { availabilityIndex, formatMinute, type AvailabilityIndex } from "~/lib/g
 import type { AddResult, DishChoice } from "~/lib/guest/cart";
 import { GUEST_TEXT, localized, type GuestLocale, type GuestText } from "~/lib/guest/i18n";
 import { cn } from "~/lib/utils";
+import { DishSheetSkeleton } from "./dish-sheet-skeleton";
+import { money, priceLabel } from "./price";
 
 /** Devise et heure, lues une fois au plus haut : chaque carte n'a pas à les recevoir. */
 const GuestContext = createContext<{ currency: string; now: number; orderable: boolean }>({ currency: "XOF", now: 0, orderable: false });
@@ -68,10 +70,6 @@ function normalize(text: string) {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
-}
-
-function money(amount: number, currency: string) {
-  return formatMoney({ amount, currency: currency as CurrencyCode });
 }
 
 /** L'heure qui tourne : celle du rendu serveur au premier affichage (pas d'écart d'hydratation), puis la vraie. */
@@ -247,6 +245,8 @@ export function MenuView(props: MenuViewProps) {
               onLocale={() => setLocale(locale === "fr" ? "en" : "fr")}
             />
             <div className="mx-auto max-w-[960px] px-4">
+              {/* La devise, UNE fois : dans la liste, les prix ne portent que leurs chiffres (D-166). */}
+              <p className="pt-4 text-xs text-muted-foreground">{t.pricesIn(currencySymbol(venue.currency as CurrencyCode))}</p>
               {visibleMenus.length === 0 ? (
                 <Empty className="py-10">
                   <EmptyHeader>
@@ -285,17 +285,13 @@ export function MenuView(props: MenuViewProps) {
                 ))
               )}
 
-              <Alert role="note" className="mt-10">
-                <InfoIcon />
-                <AlertDescription>{t.noAllergenInfo}</AlertDescription>
-              </Alert>
-              {props.footer ? <div className="mt-6">{props.footer}</div> : null}
+              <MenuNotes t={t} footer={props.footer} />
             </div>
           </div>
         )}
 
         {sheetMounted ? (
-          <Suspense fallback={null}>
+          <Suspense fallback={selected ? <DishSheetSkeleton t={t} photo={Boolean(selected.product.images[0]?.url)} /> : null}>
             <DishSheet
               selection={selected}
               menus={menus}
@@ -315,6 +311,19 @@ export function MenuView(props: MenuViewProps) {
         {props.ordering ? props.ordering.render({ locale, live, now, online }) : null}
       </div>
     </GuestContext.Provider>
+  );
+}
+
+/** Sous la carte : la note d'allergènes, puis le pied de page. Une note, pas une alerte : en gris, elle informe sans inquiéter (D-166). */
+function MenuNotes({ t, footer }: { t: GuestText; footer?: ReactNode }) {
+  return (
+    <>
+      <p role="note" className="mt-10 flex gap-2 text-sm text-muted-foreground">
+        <InfoIcon aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+        {t.noAllergenInfo}
+      </p>
+      {footer ? <div className="mt-6">{footer}</div> : null}
+    </>
   );
 }
 
@@ -341,7 +350,7 @@ function summary(names: string[]) {
  * le soir, les boissons) ajoutent un étage d'étiquettes au-dessus.
  */
 /**
- * Une zone active de 56 px autour d'un contrôle qui en paraît 40 (DESIGN §11 : « une cible peut
+ * Une zone active de 56 px autour d'un contrôle qui en paraît 40 (DESIGN §4, R-D4 : « une cible peut
  * être visuellement plus petite que sa zone active ») : 8 px au-dessus et au-dessous.
  */
 const HIT = "relative after:absolute after:inset-x-0 after:-inset-y-2 after:content-['']";
@@ -467,7 +476,7 @@ function useCurrentSection(hrefs: string[], navHeight: number): string | null {
 /** L'étage des cartes publiées, quand il y en a plusieurs (le midi, le soir, les boissons). */
 function MenuTabs({ groups, current }: { groups: ToolbarGroup[]; current: ToolbarGroup | undefined }) {
   return (
-    <ul className="flex gap-2 overflow-x-auto px-4 pt-3 [scrollbar-width:none]">
+    <ul className="flex gap-5 overflow-x-auto px-4 pt-2 [scrollbar-width:none]">
       {groups.map((g) => {
         const on = g === current;
         return (
@@ -475,13 +484,14 @@ function MenuTabs({ groups, current }: { groups: ToolbarGroup[]; current: Toolba
             <a
               href={g.links[0]!.href}
               aria-current={on ? "true" : undefined}
+              // Souligné, pas rempli : la couleur du restaurant marque la carte lue, sans aplat (D-166).
               className={cn(
-                "flex min-h-14 min-w-36 flex-col justify-center rounded-xl border px-4 py-2 transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
-                on ? "border-primary bg-primary text-primary-foreground" : "bg-card hover:bg-muted",
+                "flex min-h-14 min-w-36 flex-col justify-center border-b-2 px-1 py-2 transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+                on ? "border-primary" : "border-transparent hover:border-border",
               )}
             >
-              <span className="text-sm font-black tracking-wide uppercase">{g.name}</span>
-              <span className={cn("max-w-52 truncate text-xs", on ? "text-primary-foreground/80" : "text-muted-foreground")}>{g.summary}</span>
+              <span className={cn("text-base font-bold", !on && "text-muted-foreground")}>{g.name}</span>
+              <span className="max-w-52 truncate text-xs text-muted-foreground">{g.summary}</span>
             </a>
           </li>
         );
@@ -500,14 +510,21 @@ function SectionPills({ links, current }: { links: { href: string; name: string 
   return (
     // Le fondu à droite dit qu'il y a d'autres sections plus loin ; la marge laisse la dernière
     // pastille sortir du fondu. Le rembourrage vertical laisse la place aux zones actives de 56 px.
-    <ul ref={row} className="-my-2 flex gap-2 overflow-x-auto py-2 pr-8 [scrollbar-width:none] [mask-image:linear-gradient(to_right,#000_calc(100%-2rem),transparent)]">
+    <ul ref={row} className="-my-2 flex gap-5 overflow-x-auto py-2 pr-8 [scrollbar-width:none] [mask-image:linear-gradient(to_right,#000_calc(100%-2rem),transparent)]">
       {links.map((l) => (
         <li key={l.href} className="shrink-0">
-          <Button asChild variant={current === l.href ? "default" : "outline"} className={cn("h-10 rounded-full px-4 font-semibold", HIT)}>
-            <a href={l.href} aria-current={current === l.href ? "true" : undefined}>
-              {l.name}
-            </a>
-          </Button>
+          {/* Des sections soulignées, pas des pastilles : seule la lue porte la couleur (D-166). */}
+          <a
+            href={l.href}
+            aria-current={current === l.href ? "true" : undefined}
+            className={cn(
+              "flex h-10 items-center border-b-2 px-1 text-[15px] font-semibold whitespace-nowrap transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+              current === l.href ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground",
+              HIT,
+            )}
+          >
+            {l.name}
+          </a>
         </li>
       ))}
     </ul>
@@ -567,7 +584,7 @@ function MenuBlock(props: {
   const active = props.index.menuActive(menu);
   return (
     <section className="mt-2">
-      {props.showMenuTitle ? <h2 className="mt-8 text-xs font-semibold tracking-[0.18em] text-primary uppercase">{menu.menu.name}</h2> : null}
+      {props.showMenuTitle ? <h2 className="mt-8 text-sm font-semibold text-muted-foreground">{menu.menu.name}</h2> : null}
       {schedule && !active ? (
         <Badge variant="secondary" className="mt-3">
           <ClockIcon data-icon="inline-start" />
@@ -577,15 +594,10 @@ function MenuBlock(props: {
       {props.sections.map((section, sectionIndex) => {
         const text = localized(section, props.locale);
         const anchor = sectionAnchor(menu, section);
-        // Le rang dans la carte publiée, et non dans la liste filtrée : il ne bouge pas quand on cherche.
-        const rank = String(menu.sections.findIndex((s) => s.id === section.id) + 1).padStart(2, "0");
         return (
           <section key={section.id} id={anchor} className="scroll-mt-(--guest-nav-h,64px) pt-8" aria-labelledby={`${anchor}-t`}>
-            <div className="flex items-baseline gap-3 border-b-2 border-foreground pb-2">
-              <span aria-hidden="true" className="text-sm font-semibold text-primary tabular-nums">
-                {rank}
-              </span>
-              <h3 id={`${anchor}-t`} className="min-w-0 text-2xl leading-none font-black tracking-tight uppercase [overflow-wrap:anywhere]">
+            <div className="flex items-baseline gap-3 border-b pb-2">
+              <h3 id={`${anchor}-t`} className="min-w-0 text-xl leading-tight font-bold tracking-tight [overflow-wrap:anywhere]">
                 {text.name}
               </h3>
               <span className="ml-auto shrink-0 text-sm text-muted-foreground">{t.dishes(section.products.length)}</span>
@@ -603,7 +615,7 @@ function MenuBlock(props: {
                     t={t}
                     onSelect={props.onSelect}
                     // Les premières photos portent l'affichage utile : chargées tout de suite, les autres à l'approche.
-                    eager={props.priorityImages && sectionIndex === 0 && productIndex < 3}
+                    eager={props.priorityImages && sectionIndex === 0 && productIndex < 2}
                   />
                 </li>
               ))}
@@ -613,17 +625,6 @@ function MenuBlock(props: {
       })}
     </section>
   );
-}
-
-function priceLabel(product: GuestProduct, currency: string, t: GuestText, now: number) {
-  const promoActive = product.promoPrice !== undefined && (product.promoEndsAt === undefined || product.promoEndsAt > now);
-  if (product.variants.length > 1) {
-    const min = Math.min(...product.variants.map((v) => v.price));
-    return { main: `${t.from} ${money(min, currency)}`, old: null };
-  }
-  if (product.variants.length === 1) return { main: money(product.variants[0]!.price, currency), old: null };
-  if (promoActive) return { main: money(product.promoPrice!, currency), old: money(product.basePrice, currency) };
-  return { main: money(product.basePrice, currency), old: null };
 }
 
 function dietaryMarks(product: GuestProduct, t: GuestText): string[] {
@@ -697,8 +698,8 @@ function DishCard(props: {
         <span className={cn("text-base leading-snug font-bold", soldOut && "text-muted-foreground")}>{text.name}</span>
         {text.description ? <span className="line-clamp-2 text-sm text-muted-foreground">{text.description}</span> : null}
         <span className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-1">
-          <span className={cn("font-bold tabular-nums", soldOut ? "text-muted-foreground" : "text-primary")}>{price.main}</span>
-          {price.old ? <span className="text-xs text-muted-foreground tabular-nums line-through">{price.old}</span> : null}
+          <span className={cn("font-semibold tabular-nums", soldOut && "text-muted-foreground")}>{price.list}</span>
+          {price.oldList ? <span className="text-xs text-muted-foreground tabular-nums line-through">{price.oldList}</span> : null}
           {marks.length > 0 ? <span className="text-xs text-muted-foreground">{marks.join(" · ")}</span> : null}
         </span>
         {soldOut ? (

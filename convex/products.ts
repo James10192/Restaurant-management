@@ -31,11 +31,13 @@ import {
 import { forbidden, invalid } from "./lib/errors";
 import { requirePermission, type MutationCtx, type ReadCtx, type VenueActor } from "./lib/guards";
 import { uniqueSlug } from "./lib/slug";
+import { assertFreshUnusedFiles } from "./lib/uploads";
 
 const MAX_PRODUCTS_PER_VENUE = 1500;
 /** Les photos sont réduites dans le navigateur ; au-delà, elles n'ont pas été réduites. */
 const MAX_IMAGE_BYTES = 600 * 1024;
-const MAX_THUMB_BYTES = 80 * 1024;
+/** La vignette de liste : 256 px, 20 Ko au plus (D-166). Au-delà, elle ne sort pas du navigateur de Joliba. */
+const MAX_THUMB_BYTES = 20 * 1024;
 
 const i18nArg = v.optional(
   v.record(v.string(), v.object({ name: v.optional(v.string()), description: v.optional(v.string()) })),
@@ -613,39 +615,6 @@ export function imageProblem(bytes: Uint8Array, maxBytes: number): string | null
   const png = at(0) === 0x89 && ascii(1, "PNG");
   const webp = ascii(0, "RIFF") && ascii(8, "WEBP");
   return jpeg || png || webp ? null : refuse;
-}
-
-/** Un fichier fraîchement envoyé : au-delà, ce n'est plus « la photo qu'on vient de choisir ». */
-const FRESH_UPLOAD_MS = 60 * 60 * 1000;
-
-/**
- * Les identifiants de fichier viennent du navigateur : rien ne dit qu'ils désignent la photo
- * qu'il vient d'envoyer. On n'accepte donc qu'un fichier RÉCENT et que AUCUN produit de
- * l'organisation n'utilise déjà — sinon on pourrait s'approprier, ou faire effacer par un
- * refus, la photo d'un autre plat, voire celle d'une carte en ligne.
- */
-async function assertFreshUnusedFiles(ctx: ReadCtx, actor: VenueActor, ids: Id<"_storage">[]) {
-  const now = Date.now();
-  for (const id of ids) {
-    const file = await ctx.db.system.get(id);
-    if (!file || now - file._creationTime > FRESH_UPLOAD_MS) throw invalid("Cette photo n'a pas été envoyée à l'instant. Choisissez-la à nouveau.");
-  }
-  const venues = await ctx.db
-    .query("venues")
-    .withIndex("by_org", (q) => q.eq("organizationId", actor.organization._id))
-    .collect();
-  const wanted = new Set<string>(ids);
-  for (const venue of venues) {
-    const products = await ctx.db
-      .query("products")
-      .withIndex("by_venue_section_sort", (q) => q.eq("venueId", venue._id))
-      .collect();
-    for (const p of products) {
-      if (p.images.some((image) => wanted.has(image.storageId) || wanted.has(image.thumbStorageId))) {
-        throw invalid("Cette photo est déjà utilisée par un autre produit.");
-      }
-    }
-  }
 }
 
 /** La garde de l'envoi, rejouée par l'action AVANT qu'elle touche un fichier. */

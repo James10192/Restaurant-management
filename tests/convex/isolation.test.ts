@@ -664,6 +664,33 @@ const CASES: Record<string, (w: Awaited<ReturnType<typeof twoTenants>>) => Promi
       a.owner.as.mutation(api.products.removeImage, { venueId: a.venueId, productId: catalogB.productId, storageId: file }),
     );
   },
+  "branding.get": async ({ a, b }) => {
+    await expectCode(a.owner.as.query(api.branding.get, { venueId: b.venueId }), "NOT_FOUND");
+  },
+  "branding.previewMenu": async ({ a, b }) => {
+    await expectCode(a.owner.as.query(api.branding.previewMenu, { venueId: b.venueId }), "NOT_FOUND");
+  },
+  "branding.setColor": async ({ a, b }) => {
+    await expectCode(a.owner.as.mutation(api.branding.setColor, { venueId: b.venueId, color: "#b00020" }), "NOT_FOUND");
+  },
+  "branding.generateLogoUploadUrl": async ({ a, b }) => {
+    await expectCode(a.owner.as.mutation(api.branding.generateLogoUploadUrl, { venueId: b.venueId }), "NOT_FOUND");
+  },
+  "branding.setLogo": async ({ t, a, b }) => {
+    const png = new Uint8Array(200);
+    png.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52]);
+    new DataView(png.buffer).setUint32(16, 128);
+    new DataView(png.buffer).setUint32(20, 128);
+    const logoB = await t.run((ctx) => ctx.storage.store(new Blob([png])));
+    expect(await b.owner.as.action(api.branding.setLogo, { venueId: b.venueId, storageId: logoB })).toEqual({ ok: true });
+    await expectCode(a.owner.as.action(api.branding.setLogo, { venueId: b.venueId, storageId: logoB }), "NOT_FOUND");
+    // Le logo encore frais de B, posé chez A puis remplacé, aurait été effacé chez B : refusé.
+    await expectCode(a.owner.as.action(api.branding.setLogo, { venueId: a.venueId, storageId: logoB }), "INVALID_ARGUMENT");
+    expect(await t.run((ctx) => ctx.db.system.get(logoB))).not.toBeNull();
+  },
+  "branding.removeLogo": async ({ a, b }) => {
+    await expectCode(a.owner.as.mutation(api.branding.removeLogo, { venueId: b.venueId }), "NOT_FOUND");
+  },
   "modifiers.list": async ({ a, b }) => {
     await expectCode(a.owner.as.query(api.modifiers.list, { venueId: b.venueId }), "NOT_FOUND");
     const mine = await a.owner.as.query(api.modifiers.list, { venueId: a.venueId });

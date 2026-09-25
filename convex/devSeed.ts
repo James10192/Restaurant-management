@@ -15,6 +15,7 @@
  */
 
 import { v } from "convex/values";
+import { resolveBrandColor } from "./lib/brand";
 import { internalMutation, type MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { invalid } from "./lib/errors";
@@ -146,30 +147,48 @@ async function demoOwner(ctx: MutationCtx): Promise<Id<"users">> {
   return ctx.db.insert("users", { authId: "demo:seed", email, name: "Démonstration", locale: "fr", status: "active" });
 }
 
+/** L'organisation de démonstration, ses rôles tirés des modèles, et son propriétaire. */
+async function demoOrganization(ctx: MutationCtx, userId: Id<"users">, now: number): Promise<Id<"organizations">> {
+  const organizationId = await ctx.db.insert("organizations", {
+    name: "Démo Joliba",
+    slug: `demo-${now.toString(36)}`,
+    ownerUserId: userId,
+    countryCode: "CI",
+    defaultCurrency: "XOF",
+    defaultLocale: "fr",
+    status: "active",
+  });
+  const memberId = await ctx.db.insert("organizationMembers", { organizationId, userId, status: "active", joinedAt: now });
+  for (const [key, template] of Object.entries(ROLE_TEMPLATES)) {
+    const roleId = await ctx.db.insert("roles", { organizationId, key, label: template.label, permissions: [...template.permissions], isCustom: false });
+    if (key === "owner") {
+      await ctx.db.insert("memberRoleAssignments", { organizationId, memberId, roleId, scopeType: "organization", grantedByUserId: userId, grantedAt: now });
+    }
+  }
+  return organizationId;
+}
+
+/**
+ * Un logo et un jaune vif, posés directement : la mesure de la carte (D-167) doit voir ce qu'un
+ * restaurant qui a une marque sert. Hors du chemin d'envoi réel, donc hors de ses gardes : ce
+ * n'est acceptable que derrière `assertEnabled()`.
+ */
+async function brandDemoVenue(ctx: MutationCtx, venueId: Id<"venues">, logo: { storageId: Id<"_storage">; width: number; height: number }) {
+  const settings = (await ctx.db.query("venueSettings").withIndex("by_venue", (q) => q.eq("venueId", venueId)).unique())!;
+  await ctx.db.patch(settings._id, { branding: { ...settings.branding, logo, primaryColor: "#ffd100", resolvedPrimary: resolveBrandColor("#ffd100").primary } });
+}
+
 export const demoRestaurant = internalMutation({
   args: {
     images: v.array(v.object({ storageId: v.id("_storage"), thumbStorageId: v.id("_storage"), width: v.number(), height: v.number() })),
+    /** Un logo, pour mesurer la carte telle qu'un restaurant qui en a un la sert (D-167). */
+    logo: v.optional(v.object({ storageId: v.id("_storage"), width: v.number(), height: v.number() })),
   },
   handler: async (ctx, args) => {
     assertEnabled();
     const userId = await demoOwner(ctx);
     const now = Date.now();
-    const organizationId = await ctx.db.insert("organizations", {
-      name: "Démo Joliba",
-      slug: `demo-${now.toString(36)}`,
-      ownerUserId: userId,
-      countryCode: "CI",
-      defaultCurrency: "XOF",
-      defaultLocale: "fr",
-      status: "active",
-    });
-    const memberId = await ctx.db.insert("organizationMembers", { organizationId, userId, status: "active", joinedAt: now });
-    for (const [key, template] of Object.entries(ROLE_TEMPLATES)) {
-      const roleId = await ctx.db.insert("roles", { organizationId, key, label: template.label, permissions: [...template.permissions], isCustom: false });
-      if (key === "owner") {
-        await ctx.db.insert("memberRoleAssignments", { organizationId, memberId, roleId, scopeType: "organization", grantedByUserId: userId, grantedAt: now });
-      }
-    }
+    const organizationId = await demoOrganization(ctx, userId, now);
     const venueId = await createVenueRecords(ctx, { organizationId, name: "Maquis démo", venueType: "maquis", countryCode: "CI", city: "Abidjan" });
     await ctx.db.patch(venueId, {
       status: "active",
@@ -183,6 +202,7 @@ export const demoRestaurant = internalMutation({
       openingHours: [0, 1, 2, 3, 4, 5, 6].map((dayOfWeek) => ({ dayOfWeek, opensAtMinute: 11 * 60, closesAtMinute: 23 * 60 + 30 })),
     });
     const venue = (await ctx.db.get(venueId))!;
+    if (args.logo) await brandDemoVenue(ctx, venueId, args.logo);
 
     const menuId = await ctx.db.insert("menus", { venueId, name: "Carte", slug: "carte", status: "draft", sortOrder: 0 });
     const sides = await ctx.db.insert("modifierGroups", {

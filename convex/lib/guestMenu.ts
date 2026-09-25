@@ -13,6 +13,7 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { ReadCtx } from "./guards";
 import type { MenuSnapshot, SnapshotProduct } from "./menuSnapshot";
+import { HEX_PATTERN } from "./brandTheme";
 
 export type GuestImage = { url: string | null; thumbUrl: string | null; width: number; height: number };
 export type GuestProduct = Omit<SnapshotProduct, "images"> & { images: GuestImage[] };
@@ -151,9 +152,33 @@ export async function loadLiveAvailability(ctx: ReadCtx, venueId: Id<"venues">):
   };
 }
 
-/** Ce que l'en-tête de carte peut montrer de l'établissement. Rien d'interne. */
-export function publicVenue(venue: Doc<"venues">) {
+/**
+ * L'apparence que la carte applique : la couleur DÉJÀ résolue (jamais la saisie brute, D-152)
+ * et le logo. `primary` nul : la carte garde la couleur Joliba de la feuille de style.
+ */
+export type PublicBrand = {
+  primary: string | null;
+  logo: { url: string; width: number; height: number } | null;
+};
+
+export async function publicBrand(ctx: ReadCtx, venueId: Id<"venues">): Promise<PublicBrand> {
+  const settings = await ctx.db
+    .query("venueSettings")
+    .withIndex("by_venue", (q) => q.eq("venueId", venueId))
+    .unique();
+  const branding = settings?.branding;
+  const primary = branding?.resolvedPrimary !== undefined && HEX_PATTERN.test(branding.resolvedPrimary) ? branding.resolvedPrimary : null;
+  const logoUrl = branding?.logo ? await ctx.storage.getUrl(branding.logo.storageId) : null;
   return {
+    primary,
+    logo: branding?.logo && logoUrl ? { url: logoUrl, width: branding.logo.width, height: branding.logo.height } : null,
+  };
+}
+
+/** Ce que l'en-tête de carte peut montrer de l'établissement. Rien d'interne. */
+export async function publicVenue(ctx: ReadCtx, venue: Doc<"venues">) {
+  return {
+    brand: await publicBrand(ctx, venue._id),
     _id: venue._id,
     name: venue.name,
     slug: venue.slug,
@@ -168,4 +193,4 @@ export function publicVenue(venue: Doc<"venues">) {
   };
 }
 
-export type PublicVenue = ReturnType<typeof publicVenue>;
+export type PublicVenue = Awaited<ReturnType<typeof publicVenue>>;

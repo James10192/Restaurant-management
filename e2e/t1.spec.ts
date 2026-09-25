@@ -7,7 +7,7 @@
 
 import { expect, test, type Page } from "@playwright/test";
 import { clientHeaders } from "./mail";
-import { shot, signIn } from "./session";
+import { openVenue, shot, signIn, skipBrandStep } from "./session";
 
 const run = Date.now().toString(36);
 const OWNER = `mariam-${run}@maquis.test`;
@@ -43,12 +43,8 @@ test("T1 — composer, publier, imprimer, scanner, couper un plat", async ({ bro
   const owner = await ownerContext.newPage();
   await owner.goto("/connexion");
   await signIn(owner, OWNER);
-  await owner.getByRole("link", { name: "Ouvrir mon établissement" }).click();
-  await owner.getByLabel("Votre nom").fill("Mariam Traoré");
-  await owner.getByLabel("Nom de votre restaurant ou de votre groupe").fill(`Chez Mariam ${run}`);
-  await owner.getByLabel("Ville").fill("Abidjan");
-  await owner.getByRole("button", { name: "Ouvrir l'établissement" }).click();
-  await expect(owner.getByRole("heading", { name: `Chez Mariam ${run}` })).toBeVisible();
+  await openVenue(owner, "Mariam Traoré", `Chez Mariam ${run}`);
+  await skipBrandStep(owner, `Chez Mariam ${run}`);
 
   // ── Une carte, ses sections ─────────────────────────────────────────────────────
   await nav(owner, "Carte");

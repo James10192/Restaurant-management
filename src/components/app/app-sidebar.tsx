@@ -1,30 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation, useNavigate, useRouter } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
-import {
-  Banknote,
-  Building2,
-  ChartColumn,
-  ChevronRight,
-  ClipboardList,
-  ChefHat,
-  ChevronsUpDown,
-  ConciergeBell,
-  Flame,
-  House,
-  LayoutGrid,
-  LogOut,
-  MessageSquare,
-  Settings,
-  ShieldCheck,
-  SlidersHorizontal,
-  TabletSmartphone,
-  UserRound,
-  Users,
-  UtensilsCrossed,
-  Wallet,
-  type LucideIcon,
-} from "lucide-react";
+import { Banknote, Building2, ChartColumn, ChefHat, ChevronRight, ChevronsUpDown, ClipboardList, ConciergeBell, Flame, House, LayoutGrid, LogOut, MessageSquare, Palette, Settings, ShieldCheck, SlidersHorizontal, TabletSmartphone, UserRound, Users, UtensilsCrossed, Wallet, type LucideIcon } from "lucide-react";
 import { api } from "../../../convex/_generated/api";
 import { Avatar, AvatarFallback } from "~/components/ui/avatar";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "~/components/ui/collapsible";
@@ -94,6 +71,7 @@ export function useNavItems(): NavItem[] {
     { to: "/app/settings/payments", label: "Encaissement", icon: Banknote, show: w.canInVenue("venue.settings.service"), settings: true, description: "Caisse, moyens de paiement, début de la journée." },
     { to: "/app/settings/devices", label: "Appareils", icon: TabletSmartphone, show: w.canInVenue("device.manage") || w.canInVenue("venue.settings.service"), settings: true, description: "Les tablettes partagées et leurs codes PIN." },
     { to: "/app/settings/venue", label: "Établissement", icon: Settings, show: w.canInVenue("venue.manage"), settings: true, description: "Nom, adresse, téléphone : ce que vos clients verront." },
+    { to: "/app/settings/apparence", label: "Apparence", icon: Palette, show: w.canInVenue("venue.manage"), settings: true, description: "Votre couleur et votre logo, sur la carte de vos clients." },
   ].filter((item) => item.show);
 }
 

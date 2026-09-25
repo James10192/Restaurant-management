@@ -16,6 +16,9 @@ jobs:
       CONVEX_AGENT_MODE: anonymous
     steps:
       - uses: actions/checkout@v4
+        with:
+          # La branche de base doit être présente : le contrôle des tailles compare à elle.
+          fetch-depth: 0
 
       - uses: pnpm/action-setup@v4
 
@@ -75,6 +78,16 @@ jobs:
       - name: Money invariants
         run: pnpm check:money
 
+      # Axe 6 de la revue thermo-nucléaire (.claude/skills/thermo-review), rendu mécanique :
+      # aucun fichier ne franchit 1000 lignes, aucune fonction créée ou allongée ne dépasse 80.
+      # Seulement sur une pull request : sur main, il n'y a pas de base à laquelle comparer.
+      - name: Sizes against the base branch
+        if: github.event_name == 'pull_request'
+        # La branche de base passe par l'environnement, jamais interpolée dans le script shell.
+        env:
+          BASE: ${{ github.base_ref }}
+        run: node scripts/check-sizes.mjs "origin/$BASE"
+
       # Isolation multi-tenant (porte de sortie de T0), verrous, portée, plan tarifaire.
       - name: Unit and isolation tests
         run: pnpm test
@@ -84,6 +97,11 @@ jobs:
         env:
           VITE_CONVEX_URL: http://127.0.0.1:3210
           VITE_CONVEX_SITE_URL: http://127.0.0.1:3211
+
+      # Sur le build lui-même : aucun fichier que les pages client chargent d'office ne contient le
+      # calcul de couleur OKLCH (D-166), quel que soit l'import qui l'y aurait amené.
+      - name: Guest bundle boundary
+        run: pnpm check:guest-bundle
 
       # Parcours critique dans un vrai navigateur : connexion par code, ouverture d'un
       # établissement, invitation, cloisonnement du collègue. Voir e2e/README.md.

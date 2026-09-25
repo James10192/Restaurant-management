@@ -35,8 +35,8 @@ function convexRun(fn, args) {
 
 const browser = await chromium.launch(process.env.PLAYWRIGHT_CHROMIUM_PATH ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH } : {});
 const page = await browser.newPage();
-const images = await page.evaluate(async (count) => {
-  function draw(seed, width, height) {
+const drawn = await page.evaluate(async (count) => {
+  async function draw(seed, width, height) {
     const canvas = document.createElement("canvas");
     canvas.width = width;
     canvas.height = height;
@@ -63,7 +63,13 @@ const images = await page.evaluate(async (count) => {
       pixels.data[i + 2] += noise;
     }
     g.putImageData(pixels, 0, 0);
-    return new Promise((resolve) => canvas.toBlob(resolve, "image/webp", 0.72));
+    // Le même plafond que l'envoi réel : 600 Ko la photo, 20 Ko la vignette (D-166).
+    const cap = width <= 256 ? 20_000 : 600_000;
+    for (const quality of [0.72, 0.6, 0.5, 0.4, 0.3]) {
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/webp", quality));
+      if (blob.size <= cap) return blob;
+    }
+    throw new Error("Image de démonstration trop lourde");
   }
   const toBase64 = async (blob) => {
     const bytes = new Uint8Array(await blob.arrayBuffer());
@@ -72,14 +78,28 @@ const images = await page.evaluate(async (count) => {
     return btoa(s);
   };
   const out = [];
-  for (let i = 0; i < count; i++) {
-    out.push({ full: await toBase64(await draw(i + 1, 1280, 960)), thumb: await toBase64(await draw(i + 1, 480, 360)) });
+  // Un logo de 256 × 128 sur fond transparent, réduit comme le ferait l'écran Apparence (D-153).
+  {
+    const canvas = document.createElement("canvas");
+    canvas.width = 256;
+    canvas.height = 128;
+    const g = canvas.getContext("2d");
+    g.fillStyle = "#1f2937";
+    g.beginPath();
+    g.arc(64, 64, 52, 0, Math.PI * 2);
+    g.fill();
+    g.fillRect(132, 40, 110, 48);
+    out.logo = await toBase64(await new Promise((resolve) => canvas.toBlob(resolve, "image/png")));
   }
-  return out;
+  for (let i = 0; i < count; i++) {
+    out.push({ full: await toBase64(await draw(i + 1, 1280, 960)), thumb: await toBase64(await draw(i + 1, 256, 192)) });
+  }
+  return { photos: out, logo: out.logo };
 }, PHOTOS);
 await browser.close();
+const images = drawn.photos;
 
-const urls = convexRun("devSeed:uploadUrls", { count: PHOTOS * 2 });
+const urls = convexRun("devSeed:uploadUrls", { count: PHOTOS * 2 + 1 });
 const upload = async (url, base64) => {
   const response = await fetch(url, { method: "POST", headers: { "Content-Type": "image/webp" }, body: Buffer.from(base64, "base64") });
   if (!response.ok) throw new Error(`Envoi refusé : ${response.status}`);
@@ -95,5 +115,8 @@ for (const [i, image] of images.entries()) {
   });
 }
 const sizes = images.map((i) => Math.round((i.thumb.length * 3) / 4 / 1024));
-const result = convexRun("devSeed:demoRestaurant", { images: stored });
+const logoUpload = await fetch(urls[PHOTOS * 2], { method: "POST", headers: { "Content-Type": "image/png" }, body: Buffer.from(drawn.logo, "base64") });
+if (!logoUpload.ok) throw new Error(`Envoi du logo refusé : ${logoUpload.status}`);
+const logo = { storageId: (await logoUpload.json()).storageId, width: 256, height: 128 };
+const result = convexRun("devSeed:demoRestaurant", { images: stored, logo });
 console.log(JSON.stringify({ ...result, scanPath: `/r/${result.venueSlug}/t/${result.token}`, thumbKb: { min: Math.min(...sizes), max: Math.max(...sizes) } }));

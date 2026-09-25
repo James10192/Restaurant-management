@@ -145,6 +145,34 @@ export function formatMoney(m: Money, locale = "fr-CI"): string {
   }).format(toDecimal(m));
 }
 
+function moneyParts(m: Money, locale: string): Intl.NumberFormatPart[] {
+  return new Intl.NumberFormat(locale, {
+    style: "currency",
+    currency: m.currency,
+    minimumFractionDigits: CURRENCY_EXPONENT[m.currency],
+    maximumFractionDigits: CURRENCY_EXPONENT[m.currency],
+  }).formatToParts(toDecimal(m));
+}
+
+/**
+ * Les CHIFFRES d'un montant, sans sa devise : « 12 500 ». Réservé à la liste de la carte client,
+ * sous la ligne « Prix en F CFA » (D-166) — jamais sur une pièce, un ticket, un total ou un
+ * paiement. Nommé pour ne pas se confondre avec `billing.formatAmount`, qui, lui, écrit la devise.
+ * Mêmes chiffres, même séparateur que `formatMoney` : seuls la devise et son espace disparaissent.
+ */
+export function formatListDigits(m: Money, locale = "fr-CI"): string {
+  return moneyParts(m, locale)
+    .filter((p) => p.type !== "currency")
+    .map((p) => p.value)
+    .join("")
+    .trim();
+}
+
+/** La devise telle que `formatMoney` l'écrit : « F CFA », « € ». */
+export function currencySymbol(currency: CurrencyCode, locale = "fr-CI"): string {
+  return moneyParts(zero(currency), locale).find((p) => p.type === "currency")?.value ?? currency;
+}
+
 /**
  * Un montant tel qu'un fournisseur l'attend : une CHAÎNE décimale, dans l'unité principale.
  * 5000 XOF → "5000" · 1250 EUR → "12.50". Wave refuse toute décimale en XOF (« Decimal places are
