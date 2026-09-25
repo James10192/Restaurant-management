@@ -3,13 +3,13 @@ import { localTime } from "../../convex/lib/availability";
 import type { PublicVenue } from "../../convex/lib/guestMenu";
 import { isIndexable } from "../../convex/lib/indexability";
 import { VENUE_TYPE_LABELS } from "../../convex/lib/validators";
-import { ArrowDownIcon, MapPinIcon, PhoneIcon, UtensilsCrossedIcon } from "lucide-react";
-import { MENU_ANCHOR, MenuView } from "~/components/guest/menu-view";
+import { NavigationIcon, PhoneIcon, UtensilsCrossedIcon } from "lucide-react";
+import { MenuView } from "~/components/guest/menu-view";
 import { VenueHero } from "~/components/guest/venue-hero";
-import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "~/components/ui/empty";
 import { formatMinute } from "~/lib/guest/availability";
+import { openingStatus, openingText } from "~/lib/guest/opening";
 import { loadPublicMenu, SLUG_PATTERN } from "~/lib/guest/server";
 import { useServiceWorker } from "~/lib/guest/sw";
 
@@ -101,15 +101,10 @@ function jsonLd(venue: PublicVenue, menus: { sections: { name: string; products:
   return JSON.stringify(data).replace(/</g, "\\u003c");
 }
 
-function isOpenNow(venue: PublicVenue, now: number): boolean | null {
-  const hours = venue.openingHours ?? [];
-  if (hours.length === 0) return null;
-  const t = localTime(now, venue.timezone);
-  return hours.some((h) =>
-    h.opensAtMinute < h.closesAtMinute
-      ? h.dayOfWeek === t.dayOfWeek && t.minute >= h.opensAtMinute && t.minute < h.closesAtMinute
-      : (h.dayOfWeek === t.dayOfWeek && t.minute >= h.opensAtMinute) || ((h.dayOfWeek + 1) % 7 === t.dayOfWeek && t.minute < h.closesAtMinute),
-  );
+/** Un itinéraire sans coordonnées : la recherche Maps sur le nom et l'adresse déclarés. */
+function mapsUrl(name: string, address: string): string | null {
+  if (!address) return null;
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${name}, ${address}`)}`;
 }
 
 function PublicMenu() {
@@ -118,10 +113,12 @@ function PublicMenu() {
   const navigate = useNavigate({ from: Route.fullPath });
   useServiceWorker();
   const { venue } = data;
-  const open = isOpenNow(venue, data.renderedAt);
+  const local = localTime(data.renderedAt, venue.timezone);
+  const status = openingStatus(venue.openingHours ?? [], local);
   // Le quartier et la ville au-dessus du nom ; la rue et le repère sous la présentation.
   const place = [venue.address?.district, venue.address?.city].filter(Boolean).join(", ");
   const street = [venue.address?.line1, venue.address?.landmark].filter(Boolean).join(", ");
+  const directions = mapsUrl(venue.name, [street, place].filter(Boolean).join(", "));
 
   return (
     <MenuView
@@ -132,31 +129,33 @@ function PublicMenu() {
       selectedProductId={plat ?? null}
       onSelectProduct={(id) => void navigate({ search: id ? { plat: id } : {}, replace: !id, resetScroll: false })}
       header={
-        <VenueHero eyebrow={place || VENUE_TYPE_LABELS[venue.venueType]} name={venue.name}>
-          {venue.description ? <p className="mt-4 max-w-xl text-base text-muted-foreground">{venue.description}</p> : null}
-          {street ? (
-            <p className="mt-3 flex items-start gap-1.5 text-sm text-muted-foreground">
-              <MapPinIcon aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
-              <span>{street}</span>
-            </p>
+        <VenueHero
+          eyebrow={place || VENUE_TYPE_LABELS[venue.venueType]}
+          name={venue.name}
+          status={status ? { open: status.open, text: openingText(status, local.dayOfWeek) } : null}
+          description={venue.description}
+          street={street || null}
+        >
+          {venue.phone || directions ? (
+            <div className="mt-4 flex flex-wrap gap-2">
+              {venue.phone ? (
+                <Button asChild variant="outline" className="h-11 rounded-full px-5">
+                  <a href={`tel:${venue.phone.replace(/\s+/g, "")}`}>
+                    <PhoneIcon data-icon="inline-start" />
+                    Appeler
+                  </a>
+                </Button>
+              ) : null}
+              {directions ? (
+                <Button asChild variant="outline" className="h-11 rounded-full px-5">
+                  <a href={directions} target="_blank" rel="noopener noreferrer">
+                    <NavigationIcon data-icon="inline-start" />
+                    Itinéraire
+                  </a>
+                </Button>
+              ) : null}
+            </div>
           ) : null}
-          <div className="mt-5 flex flex-wrap items-center gap-3">
-            <Button asChild size="lg" className="h-12 rounded-full px-6 font-semibold tracking-wide uppercase">
-              <a href={`#${MENU_ANCHOR}`}>
-                Découvrir la carte
-                <ArrowDownIcon data-icon="inline-end" />
-              </a>
-            </Button>
-            {venue.phone ? (
-              <Button asChild variant="outline" size="lg" className="h-12 rounded-full px-5">
-                <a href={`tel:${venue.phone.replace(/\s+/g, "")}`}>
-                  <PhoneIcon data-icon="inline-start" />
-                  Appeler
-                </a>
-              </Button>
-            ) : null}
-            {open !== null ? <Badge variant={open ? "default" : "secondary"}>{open ? "Ouvert" : "Fermé"}</Badge> : null}
-          </div>
         </VenueHero>
       }
       footer={

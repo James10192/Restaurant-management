@@ -13,7 +13,7 @@
  *  - rien n'est déduit : un allergène, un régime, un piment ne s'affichent que déclarés (R28).
  */
 
-import { ClockIcon, InfoIcon, PlusIcon, SearchIcon, UtensilsCrossedIcon, WifiOffIcon } from "lucide-react";
+import { ClockIcon, InfoIcon, PlusIcon, SearchIcon, UtensilsCrossedIcon, WifiOffIcon, XIcon } from "lucide-react";
 import { createContext, lazy, Suspense, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ALLERGENS } from "../../../convex/lib/allergens";
 import type { GuestMenu, GuestProduct, LiveAvailability, PublicVenue } from "../../../convex/lib/guestMenu";
@@ -21,10 +21,9 @@ import { formatMoney, type CurrencyCode } from "../../../convex/lib/money";
 import { Alert, AlertDescription } from "~/components/ui/alert";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/ui/card";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "~/components/ui/empty";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "~/components/ui/input-group";
-import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "~/components/ui/item";
+import { Item, ItemActions, ItemContent, ItemGroup, ItemTitle } from "~/components/ui/item";
 import { Toggle } from "~/components/ui/toggle";
 import { availabilityIndex, formatMinute, type AvailabilityIndex } from "~/lib/guest/availability";
 import type { AddResult, DishChoice } from "~/lib/guest/cart";
@@ -33,9 +32,6 @@ import { cn } from "~/lib/utils";
 
 /** Devise et heure, lues une fois au plus haut : chaque carte n'a pas à les recevoir. */
 const GuestContext = createContext<{ currency: string; now: number; orderable: boolean }>({ currency: "XOF", now: 0, orderable: false });
-
-/** Une section bascule en liste sans photo sous 40 % de plats photographiés (R-D7). */
-const PHOTO_GRID_THRESHOLD = 0.4;
 
 export type MenuViewProps = {
   venue: PublicVenue;
@@ -235,59 +231,18 @@ export function MenuView(props: MenuViewProps) {
           </Empty>
         ) : (
           <div id={MENU_ANCHOR}>
-            <SectionNav menus={visibleMenus} locale={locale} label={t.sections} />
+            <MenuToolbar
+              menus={visibleMenus}
+              locale={locale}
+              t={t}
+              query={query}
+              onQuery={setQuery}
+              filters={filters}
+              availableFilters={availableFilters}
+              onFilters={setFilters}
+              onLocale={() => setLocale(locale === "fr" ? "en" : "fr")}
+            />
             <div className="mx-auto max-w-[960px] px-4">
-              <div className="mt-4 flex flex-col gap-3">
-                <label className="sr-only" htmlFor="guest-search">
-                  {t.search}
-                </label>
-                <div className="flex gap-2">
-                  <InputGroup className="h-11 flex-1">
-                    <InputGroupInput
-                      id="guest-search"
-                      type="search"
-                      value={query}
-                      onChange={(e) => setQuery(e.target.value)}
-                      placeholder={t.search}
-                      autoComplete="off"
-                    />
-                    <InputGroupAddon>
-                      <SearchIcon />
-                    </InputGroupAddon>
-                  </InputGroup>
-                  {/* En haut, là où on la cherche : un client anglophone ne descend pas jusqu'au pied de page. */}
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="lg"
-                    className="h-11 min-w-11"
-                    onClick={() => setLocale(locale === "fr" ? "en" : "fr")}
-                    lang={locale === "fr" ? "en" : "fr"}
-                    aria-label={t.language}
-                  >
-                    {locale === "fr" ? "EN" : "FR"}
-                  </Button>
-                </div>
-                {availableFilters.length > 0 ? (
-                  // Des Toggle indépendants, et non un ToggleGroup : même rendu, même annonce (bouton
-                  // « pressé »), mais sans la navigation au clavier du groupe — plusieurs Ko de moins
-                  // sur la 4G du client, pour quatre boutons au plus.
-                  <div role="group" aria-label={t.filters} className="flex flex-wrap gap-2">
-                    {availableFilters.map((f) => (
-                      <Toggle
-                        key={f}
-                        variant="outline"
-                        size="lg"
-                        pressed={filters.includes(f)}
-                        onPressedChange={(on) => setFilters(FILTERS.filter((x) => (x === f ? on : filters.includes(x))))}
-                      >
-                        {t[f]}
-                      </Toggle>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-
               {visibleMenus.length === 0 ? (
                 <Empty className="py-10">
                   <EmptyHeader>
@@ -366,7 +321,7 @@ function sectionAnchor(menu: GuestMenu, section: { id: string }) {
   return `s-${menu.menu.id.slice(-6)}-${section.id.slice(-8)}`;
 }
 
-/** La cible du bouton « Découvrir la carte » de l'en-tête : la navigation et tout ce qui suit. */
+/** Le début de la carte : la barre collante et tout ce qui suit. */
 export const MENU_ANCHOR = "carte";
 
 /** « Entrées, Grillades & Plats » : de quoi reconnaître une carte avant de l'ouvrir. */
@@ -376,14 +331,24 @@ function summary(names: string[]) {
 }
 
 /**
- * Des liens d'ancre, et non des onglets : ils défilent jusqu'à la section avant même que le
- * JavaScript soit arrivé, et chaque section reste dans la page (rien n'est masqué).
- *
- * Deux étages quand l'établissement publie plusieurs cartes (le midi, le soir, les boissons) :
- * les cartes en grandes étiquettes, puis les sections de celle qu'on lit. Avec une seule carte,
- * seules les sections.
+ * La barre collante, sur UNE ligne : les sections, la recherche, la langue. La recherche et les
+ * filtres s'ouvrent à la demande — ils ne repoussent pas les plats sous la ligne de flottaison.
+ * Les sections sont des liens d'ancre, pas des onglets : elles défilent jusqu'à la section avant
+ * même que le JavaScript soit arrivé, et rien n'est masqué. Plusieurs cartes publiées (le midi,
+ * le soir, les boissons) ajoutent un étage d'étiquettes au-dessus.
  */
-function SectionNav({ menus, locale, label }: { menus: { menu: GuestMenu; sections: SectionView[] }[]; locale: GuestLocale; label: string }) {
+function MenuToolbar(props: {
+  menus: { menu: GuestMenu; sections: SectionView[] }[];
+  locale: GuestLocale;
+  t: GuestText;
+  query: string;
+  onQuery: (q: string) => void;
+  filters: Filter[];
+  availableFilters: Filter[];
+  onFilters: (f: Filter[]) => void;
+  onLocale: () => void;
+}) {
+  const { menus, locale, t } = props;
   const groups = menus.map(({ menu, sections }) => {
     const names = sections.map((s) => localized(s, locale).name);
     return {
@@ -399,6 +364,9 @@ function SectionNav({ menus, locale, label }: { menus: { menu: GuestMenu; sectio
   const current = active ?? links[0]?.href ?? null;
   const currentGroup = groups.find((g) => g.links.some((l) => l.href === current)) ?? groups[0];
   const pills = useRef<HTMLUListElement>(null);
+  const searchInput = useRef<HTMLInputElement>(null);
+  // Ouverte d'office quand une recherche ou un filtre est en cours : on voit ce qui filtre la carte.
+  const [searching, setSearching] = useState(props.query !== "" || props.filters.length > 0);
 
   useEffect(() => {
     // Suit le défilement sans écouteur de scroll : un observateur ne coûte rien entre deux changements.
@@ -423,9 +391,12 @@ function SectionNav({ menus, locale, label }: { menus: { menu: GuestMenu; sectio
     if (row && pill) row.scrollTo({ left: pill.offsetLeft - (row.clientWidth - pill.clientWidth) / 2, behavior: "smooth" });
   }, [current]);
 
-  if (links.length < 2 || !currentGroup) return null;
+  useEffect(() => {
+    if (searching) searchInput.current?.focus();
+  }, [searching]);
+
   return (
-    <nav aria-label={label} className="sticky top-0 z-20 border-b bg-background/95 backdrop-blur">
+    <div className="sticky top-0 z-20 border-b bg-background">
       <div className="mx-auto max-w-[960px]">
         {twoRows ? (
           <ul className="flex gap-2 overflow-x-auto px-4 pt-3 [scrollbar-width:none]">
@@ -449,19 +420,88 @@ function SectionNav({ menus, locale, label }: { menus: { menu: GuestMenu; sectio
             })}
           </ul>
         ) : null}
-        <ul ref={pills} className="flex gap-2 overflow-x-auto px-4 py-2.5 [scrollbar-width:none]">
-          {currentGroup.links.map((l) => (
-            <li key={l.href} className="shrink-0">
-              <Button asChild variant={current === l.href ? "default" : "outline"} className="h-10 rounded-full px-4 font-semibold">
-                <a href={l.href} aria-current={current === l.href ? "true" : undefined}>
-                  {l.name}
-                </a>
-              </Button>
-            </li>
-          ))}
-        </ul>
+        <div className="flex items-center gap-1 py-2 pr-2 pl-4">
+          <nav aria-label={t.sections} className="min-w-0 flex-1">
+            {links.length > 1 && currentGroup ? (
+              // Le fondu à droite dit qu'il y a d'autres sections plus loin ; la marge laisse la
+              // dernière pastille sortir du fondu.
+              <ul
+                ref={pills}
+                className="flex gap-2 overflow-x-auto pr-8 [scrollbar-width:none] [mask-image:linear-gradient(to_right,#000_calc(100%-2rem),transparent)]"
+              >
+                {currentGroup.links.map((l) => (
+                  <li key={l.href} className="shrink-0">
+                    <Button asChild variant={current === l.href ? "default" : "outline"} className="h-10 rounded-full px-4 font-semibold">
+                      <a href={l.href} aria-current={current === l.href ? "true" : undefined}>
+                        {l.name}
+                      </a>
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </nav>
+          <Toggle
+            size="lg"
+            className="size-10 shrink-0 rounded-full"
+            pressed={searching}
+            onPressedChange={(on) => {
+              setSearching(on);
+              if (!on) {
+                props.onQuery("");
+                props.onFilters([]);
+              }
+            }}
+            aria-label={searching ? t.searchClose : t.search}
+          >
+            {searching ? <XIcon /> : <SearchIcon />}
+          </Toggle>
+          {/* En haut, là où on la cherche : un client anglophone ne descend pas jusqu'au pied de page. */}
+          <Button type="button" variant="ghost" className="size-10 shrink-0 rounded-full font-semibold" onClick={props.onLocale} lang={locale === "fr" ? "en" : "fr"} aria-label={t.language}>
+            {locale === "fr" ? "EN" : "FR"}
+          </Button>
+        </div>
+        {searching ? (
+          <div className="flex flex-col gap-2 px-4 pb-3">
+            <label className="sr-only" htmlFor="guest-search">
+              {t.search}
+            </label>
+            <InputGroup className="h-11">
+              <InputGroupInput
+                id="guest-search"
+                ref={searchInput}
+                type="search"
+                value={props.query}
+                onChange={(e) => props.onQuery(e.target.value)}
+                placeholder={t.search}
+                autoComplete="off"
+              />
+              <InputGroupAddon>
+                <SearchIcon />
+              </InputGroupAddon>
+            </InputGroup>
+            {props.availableFilters.length > 0 ? (
+              // Des Toggle indépendants, et non un ToggleGroup : même rendu, même annonce (bouton
+              // « pressé »), mais sans la navigation au clavier du groupe — plusieurs Ko de moins
+              // sur la 4G du client, pour quatre boutons au plus.
+              <div role="group" aria-label={t.filters} className="flex flex-wrap gap-2">
+                {props.availableFilters.map((f) => (
+                  <Toggle
+                    key={f}
+                    variant="outline"
+                    className="rounded-full"
+                    pressed={props.filters.includes(f)}
+                    onPressedChange={(on) => props.onFilters(FILTERS.filter((x) => (x === f ? on : props.filters.includes(x))))}
+                  >
+                    {t[f]}
+                  </Toggle>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </div>
-    </nav>
+    </div>
   );
 }
 
@@ -480,63 +520,48 @@ function MenuBlock(props: {
   const schedule = menu.menu.activeSchedule;
   const active = props.index.menuActive(menu);
   return (
-    <section className="mt-6">
-      {/* Le nom de la carte est dit par le bandeau de chaque section ; le titre ne sert qu'à la structure. */}
-      {props.showMenuTitle ? <h2 className="sr-only">{menu.menu.name}</h2> : null}
+    <section className="mt-2">
+      {props.showMenuTitle ? <h2 className="mt-8 text-xs font-semibold tracking-[0.18em] text-primary uppercase">{menu.menu.name}</h2> : null}
       {schedule && !active ? (
-        <Badge variant="secondary" className="mt-2">
+        <Badge variant="secondary" className="mt-3">
           <ClockIcon data-icon="inline-start" />
           {t.servedFrom(formatMinute(schedule.startMinute), formatMinute(schedule.endMinute))}
         </Badge>
       ) : null}
       {props.sections.map((section, sectionIndex) => {
         const text = localized(section, props.locale);
-        const withPhotos = section.products.filter((p) => p.images.length > 0).length;
-        const grid = section.products.length > 0 && withPhotos / section.products.length >= PHOTO_GRID_THRESHOLD;
         const anchor = sectionAnchor(menu, section);
-        const card = (product: GuestProduct, productIndex: number) => (
-          <DishCard
-            product={product}
-            form={grid ? "grid" : "list"}
-            unavailable={props.index.product(menu, section.id, product.id)}
-            locale={props.locale}
-            t={t}
-            eyebrow={text.name}
-            onSelect={props.onSelect}
-            // Les premières photos portent l'affichage utile : chargées tout de suite, les autres à l'approche.
-            eager={props.priorityImages && sectionIndex === 0 && productIndex < 2}
-          />
-        );
+        // Le rang dans la carte publiée, et non dans la liste filtrée : il ne bouge pas quand on cherche.
+        const rank = String(menu.sections.findIndex((s) => s.id === section.id) + 1).padStart(2, "0");
         return (
-          <section key={section.id} id={anchor} className={cn("pt-6", props.twoRowNav ? "scroll-mt-36" : "scroll-mt-20")} aria-labelledby={`${anchor}-t`}>
-            <div className="rounded-2xl bg-primary px-5 py-6 text-primary-foreground">
-              <p className="flex items-baseline gap-3 text-xs font-semibold tracking-[0.18em] uppercase">
-                {/* Le rang dans la carte publiée, et non dans la liste filtrée : il ne bouge pas quand on cherche. */}
-                <span aria-hidden="true" className="text-sm font-black tabular-nums opacity-70">
-                  {String(menu.sections.findIndex((s) => s.id === section.id) + 1).padStart(2, "0")}
-                </span>
-                {props.showMenuTitle ? <span className="opacity-80">{menu.menu.name}</span> : null}
-              </p>
-              <h3 id={`${anchor}-t`} className="mt-2 text-3xl leading-none font-black tracking-tight uppercase [overflow-wrap:anywhere]">
+          <section key={section.id} id={anchor} className={cn("pt-8", props.twoRowNav ? "scroll-mt-36" : "scroll-mt-16")} aria-labelledby={`${anchor}-t`}>
+            <div className="flex items-baseline gap-3 border-b-2 border-foreground pb-2">
+              <span aria-hidden="true" className="text-sm font-semibold text-primary tabular-nums">
+                {rank}
+              </span>
+              <h3 id={`${anchor}-t`} className="min-w-0 text-2xl leading-none font-black tracking-tight uppercase [overflow-wrap:anywhere]">
                 {text.name}
               </h3>
-              {text.description ? <p className="mt-3 max-w-xl text-sm text-primary-foreground/80">{text.description}</p> : null}
+              <span className="ml-auto shrink-0 text-sm text-muted-foreground">{t.dishes(section.products.length)}</span>
             </div>
-            {grid ? (
-              <ul className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
-                {section.products.map((product, productIndex) => (
-                  <li key={product.id}>{card(product, productIndex)}</li>
-                ))}
-              </ul>
-            ) : (
-              <ItemGroup className="mt-4 gap-2">
-                {section.products.map((product, productIndex) => (
-                  <div key={product.id} role="listitem">
-                    {card(product, productIndex)}
-                  </div>
-                ))}
-              </ItemGroup>
-            )}
+            {text.description ? <p className="mt-2 max-w-xl text-sm text-muted-foreground">{text.description}</p> : null}
+            {/* Une liste, deux colonnes sur grand écran : on compare des plats en balayant, on
+                ouvre la fiche pour la grande photo. */}
+            <ul className="grid md:grid-cols-2 md:gap-x-8">
+              {section.products.map((product, productIndex) => (
+                <li key={product.id} className="border-b last:border-b-0 md:[&:nth-last-child(2):nth-child(odd)]:border-b-0">
+                  <DishCard
+                    product={product}
+                    unavailable={props.index.product(menu, section.id, product.id)}
+                    locale={props.locale}
+                    t={t}
+                    onSelect={props.onSelect}
+                    // Les premières photos portent l'affichage utile : chargées tout de suite, les autres à l'approche.
+                    eager={props.priorityImages && sectionIndex === 0 && productIndex < 3}
+                  />
+                </li>
+              ))}
+            </ul>
           </section>
         );
       })}
@@ -588,14 +613,16 @@ const prefetchOrderSheet = () => {
 /** Chargée seulement sur la carte de table, au premier plat ouvert. */
 const DishOrderForm = lazy(loadOrderForm);
 
+/**
+ * Un plat, en ligne : le nom, deux lignes de description, le prix, et la photo à droite. C'est la
+ * forme des cartes qu'on lit vite (on balaie les noms et les prix) ; la grande photo est dans la
+ * fiche, à un appui. Sans photo, la ligne ne laisse pas de trou.
+ */
 function DishCard(props: {
   product: GuestProduct;
-  form: "grid" | "list";
   unavailable: string | null;
   locale: GuestLocale;
   t: GuestText;
-  /** Le nom de la section, rappelé au-dessus du plat sur les cartes à photo. */
-  eyebrow: string;
   onSelect: (id: string) => void;
   eager: boolean;
 }) {
@@ -606,115 +633,62 @@ function DishCard(props: {
   const { currency, now, orderable } = useContext(GuestContext);
   const price = priceLabel(product, currency, t, now);
   const prefetch = orderable ? prefetchOrderSheet : prefetchDishSheet;
-  // Sur la carte de table, chaque plat disponible dit qu'on peut l'ajouter ; l'appui ouvre sa fiche,
-  // où se choisissent variante, options et quantité.
-  const addHint =
-    orderable && !soldOut ? (
-      <Badge variant="secondary" className="h-7 px-2.5">
-        <PlusIcon data-icon="inline-start" />
-        {t.add}
-      </Badge>
-    ) : null;
   const status = props.unavailable === "schedule" ? t.notServedNow : t.soldOut;
   const statusId = `${product.id}-status`;
-
-  const priceBlock = (
-    <>
-      <span className={cn("block font-bold text-primary tabular-nums", soldOut && "text-muted-foreground")}>{price.main}</span>
-      {price.old ? <span className="block text-xs text-muted-foreground tabular-nums line-through">{price.old}</span> : null}
-    </>
-  );
-
-  if (props.form === "list") {
-    return (
-      <Item asChild variant="outline" className="min-h-18 text-left">
-        <button
-          type="button"
-          onClick={() => props.onSelect(product.id)}
-          onPointerDown={prefetch}
-          aria-describedby={soldOut ? statusId : undefined}
-        >
-          {image?.thumbUrl ? (
-            <ItemMedia variant="image" className="size-14">
-              <img
-                src={image.thumbUrl}
-                crossOrigin="anonymous"
-                alt=""
-                width={56}
-                height={56}
-                loading={props.eager ? "eager" : "lazy"}
-                decoding="async"
-                className={cn(soldOut && "opacity-50")}
-              />
-            </ItemMedia>
-          ) : null}
-          <ItemContent className="min-w-0">
-            <ItemTitle className={cn("line-clamp-2 text-base font-bold", soldOut && "text-muted-foreground")}>{text.name}</ItemTitle>
-            {text.description ? <ItemDescription className="line-clamp-1">{text.description}</ItemDescription> : null}
-          </ItemContent>
-          <ItemActions className="flex-col items-end gap-1 text-right">
-            {soldOut ? (
-              <Badge id={statusId} variant="secondary">
-                {status}
-              </Badge>
-            ) : null}
-            <span>{priceBlock}</span>
-            {addHint}
-          </ItemActions>
-        </button>
-      </Item>
-    );
-  }
-
   const marks = dietaryMarks(product, t);
+  // Sur la carte de table, un plat disponible se commande : le « + » le dit sans un mot de plus.
+  const add = orderable && !soldOut;
+
   return (
     <button
       type="button"
       onClick={() => props.onSelect(product.id)}
       onPointerDown={prefetch}
-      className="block h-full w-full rounded-xl text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+      className="flex w-full gap-4 py-4 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
       aria-describedby={soldOut ? statusId : undefined}
     >
-      <Card className="h-full pt-0">
-        <span className="relative block aspect-[4/3] w-full bg-muted">
-          {image?.thumbUrl ? (
-            <img
-              src={image.thumbUrl}
-              crossOrigin="anonymous"
-              alt=""
-              width={image.width}
-              height={image.height}
-              loading={props.eager ? "eager" : "lazy"}
-              {...(props.eager ? { fetchPriority: "high" as const } : {})}
-              decoding="async"
-              className={cn("absolute inset-0 size-full object-cover", soldOut && "opacity-50")}
-            />
-          ) : (
-            // Repli dessiné : l'initiale du plat, jamais une photo d'illustration (R-D7).
-            <span aria-hidden="true" className="absolute inset-0 flex items-center justify-center text-4xl font-semibold text-muted-foreground">
-              {text.name.slice(0, 1).toUpperCase()}
-            </span>
-          )}
-          {soldOut ? (
-            <Badge id={statusId} variant="secondary" className="absolute top-3 left-3">
-              {status}
-            </Badge>
-          ) : null}
+      <span className="flex min-w-0 flex-1 flex-col gap-1">
+        <span className={cn("text-base leading-snug font-bold", soldOut && "text-muted-foreground")}>{text.name}</span>
+        {text.description ? <span className="line-clamp-2 text-sm text-muted-foreground">{text.description}</span> : null}
+        <span className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+          <span className={cn("font-bold tabular-nums", soldOut ? "text-muted-foreground" : "text-primary")}>{price.main}</span>
+          {price.old ? <span className="text-xs text-muted-foreground tabular-nums line-through">{price.old}</span> : null}
+          {marks.length > 0 ? <span className="text-xs text-muted-foreground">{marks.join(" · ")}</span> : null}
         </span>
-        <CardHeader>
-          <p className={cn("text-xs font-semibold tracking-[0.16em] uppercase", soldOut ? "text-muted-foreground" : "text-primary")}>{props.eyebrow}</p>
-          <CardTitle className={cn("text-xl leading-tight font-black tracking-tight uppercase", soldOut && "text-muted-foreground")}>{text.name}</CardTitle>
-          <div className="text-lg">{priceBlock}</div>
-          {text.description ? <CardDescription className="line-clamp-2">{text.description}</CardDescription> : null}
-        </CardHeader>
-        {marks.length > 0 || addHint ? (
-          <CardContent className="mt-auto flex items-end justify-between gap-2">
-            <DietaryMarks marks={marks} />
-            {addHint ? <span className="ml-auto shrink-0">{addHint}</span> : null}
-          </CardContent>
+        {soldOut ? (
+          <Badge id={statusId} variant="secondary" className="mt-1 self-start">
+            {status}
+          </Badge>
         ) : null}
-      </Card>
+      </span>
+      {image?.thumbUrl ? (
+        <span className="relative size-28 shrink-0 overflow-hidden rounded-2xl bg-muted">
+          <img
+            src={image.thumbUrl}
+            crossOrigin="anonymous"
+            alt=""
+            width={112}
+            height={112}
+            loading={props.eager ? "eager" : "lazy"}
+            {...(props.eager ? { fetchPriority: "high" as const } : {})}
+            decoding="async"
+            className={cn("absolute inset-0 size-full object-cover", soldOut && "opacity-40 grayscale")}
+          />
+          {add ? <AddMark className="absolute right-1.5 bottom-1.5" /> : null}
+        </span>
+      ) : add ? (
+        <AddMark className="self-center" />
+      ) : null}
+      {add ? <span className="sr-only">{t.add}</span> : null}
     </button>
+  );
+}
+
+function AddMark({ className }: { className?: string }) {
+  return (
+    <span aria-hidden="true" className={cn("grid size-9 place-items-center rounded-full bg-background text-primary shadow-md ring-1 ring-border", className)}>
+      <PlusIcon className="size-5" />
+    </span>
   );
 }
 

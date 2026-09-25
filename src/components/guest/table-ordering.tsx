@@ -601,7 +601,7 @@ export default function TableOrdering(props: TableOrderingProps) {
 
   return (
     <>
-      <div className="fixed inset-x-0 bottom-0 z-30 border-t bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur">
+      <div className="fixed inset-x-0 bottom-0 z-30 border-t bg-background pb-[env(safe-area-inset-bottom)]">
         <div className="mx-auto flex max-w-[960px] flex-col gap-2 px-4 py-3">
           {!online ? (
             <p className="flex items-center gap-2 text-sm text-muted-foreground">
