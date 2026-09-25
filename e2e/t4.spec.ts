@@ -124,7 +124,8 @@ test("quatre téléphones, une table : rien de perdu, rien en double", async ({ 
     if (cut && route.request().method() === "POST" && body.includes('"submitLines"')) {
       cut = false;
       await route.fetch();
-      await route.abort("connectionreset");
+      // La page a pu lâcher la requête pendant ce temps : elle est alors déjà close.
+      await route.abort("connectionreset").catch(() => {});
       return;
     }
     await route.continue();
@@ -142,8 +143,16 @@ test("quatre téléphones, une table : rien de perdu, rien en double", async ({ 
   await expect(second.getByRole("dialog").getByRole("button", { name: "Un de plus" })).toBeDisabled();
   await shot(second, "t4-04-envoi-sans-reponse", false);
   await second.unroute("**/table");
-  await second.getByRole("dialog").getByRole("button", { name: "Réessayer l'envoi" }).click();
-  await expect(second.getByText(/envoyée en cuisine\.$/).first()).toBeVisible({ timeout: 20_000 });
+  // Deux issues légitimes, et la course entre elles est réelle : le convive réessaie (le serveur
+  // reconnaît la clé d'envoi et répond sans doublon), ou la relecture périodique tranche avant
+  // son doigt — « Votre envoi était bien arrivé » — et le bouton disparaît sous le clic. Le
+  // décompte des commandes, plus bas, vérifie qu'aucune des deux n'en crée une seconde.
+  await second
+    .getByRole("dialog")
+    .getByRole("button", { name: "Réessayer l'envoi" })
+    .click({ timeout: 5_000 })
+    .catch(() => {});
+  await expect(second.getByText(/envoyée en cuisine\.$|Votre envoi était bien arrivé/).first()).toBeVisible({ timeout: 20_000 });
 
   // Un double appui sur un nouvel envoi du convive 1 n'envoie qu'une commande.
   const first = guests[0]!;
