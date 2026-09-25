@@ -47,8 +47,14 @@ test("la propriétaire suit sa mise en service depuis l'accueil", async ({ brows
   await expect(page.locator('[data-onboarding-step="identity"]')).toHaveAttribute("data-state", "done");
   await shot(page, "t7b-01-tableau");
 
-  // ── Les modes de service ne se prouvent pas : on les confirme ──
+  // À la propriétaire, pas de « restaurant à soi » : ce serait une autre organisation.
+  await expect(page.getByRole("link", { name: "Ouvrir mon propre restaurant" })).toHaveCount(0);
+
+  // ── Les modes de service ne se prouvent pas : on va les voir, puis on les confirme ──
   const service = page.locator('[data-onboarding-step="service"]');
+  await service.getByRole("link", { name: "Vérifier" }).click();
+  await expect(page.getByText("Mode de commande des clients")).toBeInViewport();
+  await page.goBack();
   await service.getByRole("button", { name: "C'est bon" }).click();
   await expect(service).toHaveAttribute("data-state", "done");
   await expect(page.locator("[data-onboarding-count]")).toHaveText("2 étapes sur 7");
@@ -83,7 +89,7 @@ test("la propriétaire suit sa mise en service depuis l'accueil", async ({ brows
   await shot(editor, "t7b-03-etapes-grisees");
 
   // ── Ouvrir SON restaurant reste possible, même membre de celui d'un autre ──
-  await editor.getByRole("link", { name: "Ouvrir un autre restaurant" }).click();
+  await editor.getByRole("link", { name: "Ouvrir mon propre restaurant" }).click();
   await expect(editor.getByRole("heading", { name: "Ouvrir mon établissement" })).toBeVisible();
 
   expect(errors).toEqual([]);

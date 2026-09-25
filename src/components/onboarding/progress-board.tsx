@@ -93,20 +93,24 @@ export function ProgressBoard({ venueId }: { venueId: Id<"venues"> }) {
           </ItemGroup>
         </section>
       ))}
-      <div>
-        <OpenAnotherLink />
-      </div>
+      {/* À la propriétaire, ce lien créerait une AUTRE organisation (facturation et équipe à part) :
+          ce n'est pas un second établissement. Il est pour qui travaille chez un autre. */}
+      {progress.isOwner ? null : (
+        <div>
+          <OpenAnotherLink />
+        </div>
+      )}
     </div>
   );
 }
 
-/** Ouvrir SON restaurant quand on est déjà membre de celui d'un autre : le formulaire reste accessible. */
+/** Ouvrir SON restaurant quand on travaille dans celui d'un autre : le formulaire reste accessible. */
 function OpenAnotherLink() {
   return (
     <Button asChild variant="ghost">
       <Link to="/app/onboarding" search={{ nouveau: true }}>
         <Plus data-icon="inline-start" />
-        Ouvrir un autre restaurant
+        Ouvrir mon propre restaurant
       </Link>
     </Button>
   );

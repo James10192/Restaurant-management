@@ -70,13 +70,13 @@ describe("l'équipe se compte par établissement", () => {
     expect(stateOf(await r.owner.as.query(api.onboarding.progress, { venueId: r.plateau })).team).toBe("done");
   });
 
-  test("une invitation échue ne compte plus, même restée « en attente »", async () => {
+  test("une invitation en attente compte, révoquée elle ne compte plus", async () => {
     const t = setup();
     const org = await openOrganization(t, "awa@maquis.ci", "Maquis Awa", "Cocody");
     await org.owner.as.action(api.team.invite, { organizationId: org.organizationId, roleId: org.roleId("waiter"), venueIds: [org.venueId], email: "k@maquis.ci" });
     expect(stateOf(await org.owner.as.query(api.onboarding.progress, { venueId: org.venueId })).team).toBe("done");
     await t.run(async (ctx) => {
-      for await (const i of ctx.db.query("organizationInvitations")) await ctx.db.patch(i._id, { expiresAt: Date.now() - 1 });
+      for await (const i of ctx.db.query("organizationInvitations")) await ctx.db.patch(i._id, { status: "revoked" });
     });
     expect(stateOf(await org.owner.as.query(api.onboarding.progress, { venueId: org.venueId })).team).toBe("todo");
   });
@@ -115,6 +115,7 @@ describe("permissions", () => {
   test("une étape non permise est grisée avec qui peut la faire, et ne s'écrit pas", async () => {
     const r = await restaurantWithMenu();
     const p = await r.editor.as.query(api.onboarding.progress, { venueId: r.cocody });
+    expect(p?.isOwner).toBe(false);
     const service = p?.steps.find((s) => s.key === "service");
     expect(service).toMatchObject({ allowed: false, state: "todo" });
     expect(service?.whoCan).toContain("Propriétaire Maquis Awa");

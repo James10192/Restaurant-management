@@ -81,16 +81,16 @@ async function derivedDone(ctx: ReadCtx, venue: Doc<"venues">): Promise<Record<O
  * Un collègue DANS CET ÉTABLISSEMENT : une invitation en cours qui le couvre (liste vide = toute
  * l'organisation), ou deux membres actifs qui y travaillent. Un collègue parti rouvre l'étape —
  * c'est pourquoi une invitation acceptée ne compte pas : le membre qu'elle a créé compte à sa place.
- * Une invitation dont l'échéance est passée ne compte plus, même si rien ne l'a marquée `expired`.
+ * L'échéance n'est PAS comparée à l'heure : une requête ne se recalcule qu'à l'écriture de ce
+ * qu'elle a lu, jamais quand l'heure passe. L'étape demande d'avoir invité ; une invitation en
+ * attente le prouve, révoquée elle ne le prouve plus.
  */
 async function hasColleague(ctx: ReadCtx, venue: Doc<"venues">): Promise<boolean> {
   const organizationId = venue.organizationId;
-  const now = Date.now();
   for await (const invitation of ctx.db
     .query("organizationInvitations")
     .withIndex("by_org_status", (q) => q.eq("organizationId", organizationId).eq("status", "pending"))) {
-    const covers = invitation.venueIds.length === 0 || invitation.venueIds.includes(venue._id);
-    if (covers && invitation.expiresAt > now) return true;
+    if (invitation.venueIds.length === 0 || invitation.venueIds.includes(venue._id)) return true;
   }
   const organization = await ctx.db.get(organizationId);
   let working = 0;
@@ -165,6 +165,8 @@ export const progress = query({
     const next = steps.find((s) => s.state === "todo" && s.allowed)?.key ?? null;
     return {
       venueName: venue.name,
+      // « Ouvrir mon propre restaurant » ne se propose qu'à qui travaille chez un autre (D-180).
+      isOwner: actor.isOwner,
       doneCount: steps.filter((s) => s.state === "done").length,
       total: steps.length,
       // « Terminé » : plus rien à faire. Une étape sautée l'est, elle ne compte pas comme faite.
@@ -245,8 +247,8 @@ async function auditStep(
  *
  *     npx convex run onboarding:funnel
  *
- * Lecture interne, jamais exposée. Elle parcourt toutes les organisations : un outil de pilotage,
- * pas un écran.
+ * Lecture interne, jamais exposée : un outil de pilotage, pas un écran. Elle rend dix
+ * organisations à la fois ; relancer avec `{"cursor": continueCursor}` jusqu'à `isDone`.
  */
 export const funnel = internalQuery({
   args: { cursor: v.optional(v.union(v.string(), v.null())) },

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useLocation } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { CircleAlert, Monitor, Plus, Smartphone, Tablet, type LucideIcon } from "lucide-react";
@@ -63,6 +63,8 @@ function DevicesPage() {
   const venueId = w.venue?._id;
   const canManageDevices = venueId !== undefined && w.canInVenue("device.manage");
   const canSetMode = venueId !== undefined && w.canInVenue("venue.settings.service");
+  // Venu de la mise en service (« Comment vous travaillez ») : la section qu'on vient régler en tête.
+  const modeFirst = useLocation().hash === MODE_ANCHOR;
   if (!venueId || (!canManageDevices && !canSetMode)) {
     return <PermissionDeniedState venue={w.venue?.name} permission="enrôler et révoquer un appareil" />;
   }
@@ -73,25 +75,31 @@ function DevicesPage() {
         <p className="text-muted-foreground">Les écrans et téléphones de l'établissement, et ce que vos clients peuvent commander.</p>
       </div>
       {canManageDevices ? (
-        <DevicesCard venueId={venueId} canReadStations={w.canInVenue("kitchen.read")} canReadTeam={w.canInVenue("team.read")} />
+        <div className={modeFirst ? "order-last" : undefined}>
+          <DevicesCard venueId={venueId} canReadStations={w.canInVenue("kitchen.read")} canReadTeam={w.canInVenue("team.read")} />
+        </div>
       ) : null}
-      {canSetMode ? <OrderingModeSection venueId={venueId} canReadVenue={w.canInVenue("venue.read")} /> : null}
+      {canSetMode ? (
+        <section id={MODE_ANCHOR} aria-label="Mode de commande" className="scroll-mt-20">
+          <OrderingModeSection venueId={venueId} canReadVenue={w.canInVenue("venue.read")} />
+        </section>
+      ) : null}
     </div>
   );
 }
 
+/** L'ancre qu'ouvre l'étape « Comment vous travaillez » de la mise en service. */
+const MODE_ANCHOR = "mode-de-commande";
+
 function OrderingModeSection({ venueId, canReadVenue }: { venueId: Id<"venues">; canReadVenue: boolean }) {
   const venue = useQuery(api.venues.get, canReadVenue ? { venueId } : "skip");
   if (canReadVenue && venue === undefined) return <LoadingState />;
-  // Ancre de la mise en service (« Comment vous travaillez ») : la section, pas le haut de la page.
   return (
-    <div id="mode-de-commande" className="scroll-mt-20">
-      <OrderingModeCard
-        venueId={venueId}
-        current={venue ? readOrderingMode(venue) : null}
-        maxQuantity={venue && "guestMaxQuantityPerLine" in venue ? venue.guestMaxQuantityPerLine : null}
-      />
-    </div>
+    <OrderingModeCard
+      venueId={venueId}
+      current={venue ? readOrderingMode(venue) : null}
+      maxQuantity={venue && "guestMaxQuantityPerLine" in venue ? venue.guestMaxQuantityPerLine : null}
+    />
   );
 }
 
