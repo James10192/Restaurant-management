@@ -48,9 +48,21 @@ sera lu trop tard.
 | `SITE_URL` | déploiement **Convex** aussi | L'adresse où Wave renvoie le client après paiement (`/r/<établissement>/table?paiement=retour`). Même valeur que côté application web. |
 | `JOLIBA_FAKE_PAYMENTS`, `WAVE_API_URL` | déploiement Convex | **Jamais en production.** Font parler l'adaptateur Wave au faux Wave de `e2e/wave-sink.mjs`. Ignorées hors d'un backend local (`CONVEX_CLOUD_URL` sur localhost) : même posées par erreur en production, Joliba parle au vrai Wave. |
 
-Trois tâches planifiées tournent d'elles-mêmes (`convex/crons.ts`) : le rattrapage des paiements en
-attente toutes les 2 minutes, le rapprochement avec le relevé Wave chaque jour à 06:00 UTC, et le
-ré-encodage des clés après une rotation de la clé maîtresse, chaque nuit (sans effet sinon).
+Quatre tâches planifiées tournent d'elles-mêmes (`convex/crons.ts`) : le rattrapage des paiements en
+attente toutes les 2 minutes, le rapprochement avec le relevé Wave chaque jour à 06:00 UTC, le
+ré-encodage des clés après une rotation de la clé maîtresse, chaque nuit (sans effet sinon), et la
+clôture des jours de service toutes les heures (J-1, puis J-2 recalculé, D-141).
+
+**Les chiffres des jours passés** : à la mise en service de T6, et chaque fois que `METRICS_VERSION`
+change (`convex/lib/serviceDay.ts`), reconstruire l'historique de chaque établissement, un jour par
+transaction :
+
+```sh
+npx convex run analytics:rebuild '{"venueId":"…","from":"2026-06-01","to":"2026-09-24"}'
+```
+
+Sans cela, `/app/analytics` dit combien de jours de la période n'ont pas de chiffres, et la
+comparaison des jours attend trois mêmes jours de semaine clos.
 
 **À dire à chaque restaurant qui branche Wave** : dans le portail Wave Business, **ne pas activer la
 liste blanche d'adresses IP** sur la clé d'API. Elle ne se désactive plus ensuite, et Convex n'a pas

@@ -37,6 +37,13 @@ C'est ce test, appliqué sérieusement, qui évite le « mur de KPI » que le br
 
 ### 3.1 Aujourd'hui — l'écran du gérant pendant le service
 
+> **Tranché en T6 (D-133, D-142, D-147).** Les deux moitiés de ce tableau vivent à deux endroits :
+> les **alertes** en tête de `/app/service` (la tour de contrôle), les **chiffres du jour et leur
+> comparaison** en tête de `/app/rapport`. Pendant le coup de feu, un chiffre sans geste n'aide
+> personne (INFORMATION_ARCHITECTURE §4.2). Le « temps moyen » devient une **médiane avec son
+> effectif** (interdit n°7), le jour comparable est la médiane des 4 derniers mêmes jours de
+> semaine ouverts, à la même heure, et le fil d'activité est reporté (D-144).
+
 Il répond à **une** question : *« Que dois-je regarder maintenant ? »*
 
 | Bloc | Contenu |
@@ -125,6 +132,13 @@ commander seul — souvent le signe qu'il faut passer en mode validation par le 
 On ne recalcule pas six mois d'historique à chaque ouverture d'écran. L'agrégat quotidien est écrit
 la nuit, dans la timezone de l'établissement, et il est **recalculable** : une correction tardive
 (remboursement, annulation) déclenche la reconstruction du jour concerné.
+
+> **Comment c'est fait (T6, D-139 à D-141).** Convex ne planifie qu'en UTC : une tâche **horaire**
+> (`analytics:closeDays`) clôt, pour chaque établissement, le jour de service J-1 une heure après la
+> fin de sa fenêtre, puis recalcule J-2 une fois le lendemain — ce qui rattrape les corrections
+> tardives sans crochet dans chaque mutation. Chaque jour part dans sa propre transaction. Un seul
+> calcul (`computeServiceDay`) sert le rapport, « aujourd'hui » et `dailyMetrics` ; les délais y
+> sont des histogrammes, pour que la médiane d'un mois soit exacte.
 
 ---
 

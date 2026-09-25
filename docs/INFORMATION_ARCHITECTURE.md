@@ -1090,6 +1090,13 @@ qui se produit réellement quand une invitation a été acceptée mais qu'aucun 
 
 ### 4.2 En direct — `/app/live` *(la tour de contrôle)*
 
+> **Révisé par D-133 (T6).** La tour de contrôle n'a pas sa propre route : c'est **`/app/service`**,
+> qui portait déjà les files « À servir », « Demandes » et « À valider » avec leurs compteurs, y
+> compris sur la tablette sous PIN. T6 y ajoute l'onglet « En cuisine » (tous les postes, retard
+> selon le seuil de chaque poste), l'âge du plus ancien élément dans chaque pastille, et une ligne
+> d'alertes de gestion à liste fermée (D-147). La règle de conception ci-dessous tient : aucun
+> chiffre sans geste. Les chiffres du jour et leur comparaison vont en tête de `/app/rapport`.
+
 > **C'est la page la plus importante du produit pendant le service.** Pour Awa, c'est la réponse à
 > P5 : ne plus découvrir les problèmes le lendemain. Elle a une règle de conception propre, plus
 > stricte que les autres : **elle ne montre que ce qui appelle une décision maintenant.** Un chiffre
@@ -1694,6 +1701,14 @@ de repas. *Permission refusée* : `customer.read` sans `customer.manage` → lec
 `customerConsents by_profile_purpose` · `feedback by_venue_createdAt` et `by_venue_rating`.
 
 ### 4.13 Données — `/app/analytics`
+
+> **Livré en T6 (D-139 à D-144).** Quatre questions et demie : ce qui se vend (et ce qu'on a jeté),
+> quand on est chargé (moyenne par demi-heure et par jour de semaine), où le service coince (cinq
+> délais en médiane avec leur effectif), comment tournent les tables (sans taux d'occupation :
+> les horaires sont facultatifs), et l'argent. « Comment s'est passée la soirée ? » est le rapport
+> de fin de service. La période vit dans l'adresse (`?du=…&au=…`). L'index `orderItems.by_venue_product`
+> cité plus bas n'a pas de dimension de temps : les ventes par produit viennent des agrégats
+> quotidiens.
 
 **Persona** : Awa après le service ; Serge pour comparer ; le comptable en lecture.
 **Objectif** : **répondre à une question**, jamais afficher un mur d'indicateurs parce qu'ils

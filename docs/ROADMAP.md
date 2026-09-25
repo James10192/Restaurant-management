@@ -231,12 +231,33 @@ falsifié compris.
 
 ### T6 — Le gérant comprend
 
-Tour de contrôle `/app/live` · tableau de bord du jour avec alertes avant chiffres · analytique
+Tour de contrôle (`/app/service`, D-133) · tableau de bord du jour avec alertes avant chiffres · analytique
 ventes, produits, service, tables, paiements · agrégats quotidiens précalculés · détection
 d'anomalies par règles.
 
 **À la fin** : pendant le service, le gérant voit ce qui est en retard ; après le service, il sait
 pourquoi.
+
+**État (septembre 2026).** Livré en trois lots, après un arbitrage adverse (D-133 à D-148) :
+- **T6.a — correctif et arbitrages** : annuler une commande entière comptait zéro perte au rapport
+  *(D-145)* ; décisions consignées.
+- **T6.b — moteur** : un seul calcul d'un jour de service (`computeServiceDay`) que lisent le
+  rapport, « aujourd'hui » et `dailyMetrics` *(D-139)* ; Ventes et Encaissé, deux montants
+  nommés *(D-136)* ; délais en histogrammes, médianes exactes sur une période *(D-140, D-143)* ;
+  clôture horaire de J-1 puis recalcul de J-2 *(D-141)* ; jour comparable = médiane des mêmes jours
+  de semaine, à la même heure *(D-142)* ; montants sous `analytics.financial.read`, tus pendant un
+  comptage à l'aveugle *(D-137, D-138)*.
+- **T6.c — écrans** : **pas de `/app/live`** — la tour de contrôle est `/app/service`, avec un
+  onglet « En cuisine », l'âge du plus ancien élément de chaque file et les alertes de gestion
+  *(D-133, D-147)* ; la journée comparée en tête du rapport ; `/app/analytics` pour les questions
+  du gérant ; l'accueil aiguille selon les droits *(D-146)* ; les réglages rangés sous
+  « Réglages ».
+
+**Écarts assumés** *(D-144)* : ni tunnel client (aucun scan daté), ni « souvent pris ensemble »
+(D-104 re-reporté), ni taux d'occupation, ni indicateurs par employé, ni export, ni consolidé de
+groupe (T8), ni notifications d'anomalies (T9). Les anomalies se calculent à la lecture, sans table
+ni moteur de règles *(D-134)*. **Porte humaine restante** : un vrai service où le gérant désigne un
+plat en retard, puis en donne la cause le lendemain depuis l'écran.
 
 ### T7 — L'installation devient autonome
 
