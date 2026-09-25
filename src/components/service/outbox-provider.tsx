@@ -179,7 +179,7 @@ export function OutboxProvider({ children }: { children: ReactNode }) {
     };
   }, [convex]);
 
-  useClockOffset(offsetRef, scope.venueId, connected);
+  useClockOffset(offsetRef, scope.venueId);
 
   // Une horloge lente : les messages « annoncez-la » et « service dégradé » dépendent du temps.
   const busy = offlineSince !== null || entries.some((e) => e.status === "pending" || e.status === "sending");
@@ -221,14 +221,14 @@ export function OutboxProvider({ children }: { children: ReactNode }) {
 }
 
 /**
- * L'écart entre l'horloge de l'appareil et celle du serveur, pour les gestes datés (D-062). Mesuré
- * à chaque retour du réseau — une tablette démarrée pendant une coupure n'a rien pu mesurer —,
- * redemandé tant qu'il manque, et jamais sur un aller-retour trop long pour dire l'heure.
+ * L'écart entre l'horloge de l'appareil et celle du serveur, pour les gestes datés (D-062). Jamais
+ * pris sur un aller-retour trop long pour dire l'heure, et redemandé tant qu'il manque : sur une
+ * tablette démarrée pendant une coupure, la première mesure attend dans la file du client Convex,
+ * revient trop tard au retour du réseau, est jetée, et la suivante mesure.
  */
-function useClockOffset(offsetRef: RefObject<number>, venueId: Id<"venues">, connected: boolean) {
+function useClockOffset(offsetRef: RefObject<number>, venueId: Id<"venues">) {
   const convex = useConvex();
   useEffect(() => {
-    if (!connected) return;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const retry = () => {
@@ -252,7 +252,7 @@ function useClockOffset(offsetRef: RefObject<number>, venueId: Id<"venues">, con
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [convex, venueId, connected, offsetRef]);
+  }, [convex, venueId, offsetRef]);
 }
 
 /** Hors d'un fournisseur (écran de réglages…), `null` : on suppose le réseau présent. */

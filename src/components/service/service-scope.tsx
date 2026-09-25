@@ -61,6 +61,10 @@ export function ServiceScopeProvider({
   fallback: ReactNode;
 }) {
   const me = useQuery(api.operators.me, { venueId });
+  // La salle reste abonnée pour tous les écrans du service : passer du tableau à une table ferme
+  // un abonnement avant d'ouvrir l'autre, et hors ligne le nouveau n'aurait jamais de réponse — la
+  // table afficherait « Chargement » au lieu de prendre la commande dans la file.
+  useQuery(api.sessions.floor, me?.permissions.includes("table.read") ? { venueId } : "skip");
   const scope = useMemo<ServiceScope | null>(() => {
     if (!me) return null;
     const permissions = new Set<string>(me.permissions);
