@@ -36,7 +36,8 @@ import { assertFreshUnusedFiles } from "./lib/uploads";
 const MAX_PRODUCTS_PER_VENUE = 1500;
 /** Les photos sont réduites dans le navigateur ; au-delà, elles n'ont pas été réduites. */
 const MAX_IMAGE_BYTES = 600 * 1024;
-const MAX_THUMB_BYTES = 80 * 1024;
+/** La vignette de liste : 256 px, 20 Ko au plus (D-166). Au-delà, elle ne sort pas du navigateur de Joliba. */
+const MAX_THUMB_BYTES = 20 * 1024;
 
 const i18nArg = v.optional(
   v.record(v.string(), v.object({ name: v.optional(v.string()), description: v.optional(v.string()) })),

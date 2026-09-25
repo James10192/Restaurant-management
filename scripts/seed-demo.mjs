@@ -36,7 +36,7 @@ function convexRun(fn, args) {
 const browser = await chromium.launch(process.env.PLAYWRIGHT_CHROMIUM_PATH ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH } : {});
 const page = await browser.newPage();
 const images = await page.evaluate(async (count) => {
-  function draw(seed, width, height) {
+  async function draw(seed, width, height) {
     const canvas = document.createElement("canvas");
     canvas.width = width;
     canvas.height = height;
@@ -63,7 +63,13 @@ const images = await page.evaluate(async (count) => {
       pixels.data[i + 2] += noise;
     }
     g.putImageData(pixels, 0, 0);
-    return new Promise((resolve) => canvas.toBlob(resolve, "image/webp", 0.72));
+    // Le même plafond que l'envoi réel : 600 Ko la photo, 20 Ko la vignette (D-166).
+    const cap = width <= 256 ? 20_000 : 600_000;
+    for (const quality of [0.72, 0.6, 0.5, 0.4, 0.3]) {
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/webp", quality));
+      if (blob.size <= cap) return blob;
+    }
+    throw new Error("Image de démonstration trop lourde");
   }
   const toBase64 = async (blob) => {
     const bytes = new Uint8Array(await blob.arrayBuffer());
@@ -73,7 +79,7 @@ const images = await page.evaluate(async (count) => {
   };
   const out = [];
   for (let i = 0; i < count; i++) {
-    out.push({ full: await toBase64(await draw(i + 1, 1280, 960)), thumb: await toBase64(await draw(i + 1, 480, 360)) });
+    out.push({ full: await toBase64(await draw(i + 1, 1280, 960)), thumb: await toBase64(await draw(i + 1, 256, 192)) });
   }
   return out;
 }, PHOTOS);

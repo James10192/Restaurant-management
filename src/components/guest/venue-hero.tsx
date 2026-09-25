@@ -1,15 +1,16 @@
 import { useState, type ReactNode } from "react";
+import type { PublicBrand } from "../../../convex/lib/guestMenu";
 import { cn } from "~/lib/utils";
 
 /** Au-delà, la présentation est coupée à deux lignes : la carte doit rester au premier écran. */
 const DESCRIPTION_CLAMP = 110;
 
 /**
- * L'en-tête éditorial de la carte client — Joliba (D-132)
+ * L'en-tête de la carte client — Joliba (D-166, qui adoucit D-132)
  *
- * Le nom en capitales, son dernier mot dans la couleur de la marque, le lieu au-dessus. Aucune
- * image : l'en-tête s'affiche avec le HTML, sans rien retarder de la première photo de plat
- * (DESIGN §5). Les capitales ne sont qu'un style : un lecteur d'écran lit le vrai nom.
+ * Le nom en casse normale, en gras, précédé du logo sur une plaque claire quand le restaurant en
+ * a posé un. Pas de couleur de marque ici : elle est réservée au « + » et à la section lue, pour
+ * qu'une couleur vive choisie par le restaurant ne crie pas partout (D-161).
  *
  * Il répond, dans cet ordre, aux questions de quelqu'un qui vient de scanner ou de cliquer un
  * lien : où est-ce, est-ce ouvert — et sinon QUAND —, comment appeler ou y aller. Puis il laisse
@@ -18,6 +19,7 @@ const DESCRIPTION_CLAMP = 110;
 export function VenueHero(props: {
   eyebrow?: string | null;
   name: string;
+  logo?: PublicBrand["logo"];
   compact?: boolean;
   status?: { open: boolean; text: string } | null;
   description?: string | null;
@@ -26,29 +28,33 @@ export function VenueHero(props: {
   labels?: { more: string; less: string };
   children?: ReactNode;
 }) {
-  const words = props.name.trim().split(/\s+/);
-  const last = words.length > 1 ? words.pop() : null;
   return (
     <header className={cn("bg-background px-4", props.compact ? "pt-5 pb-3" : "pt-6 pb-4")}>
       <div className="mx-auto max-w-[960px]">
-        {props.eyebrow ? <p className="text-xs font-semibold tracking-[0.18em] text-primary uppercase">{props.eyebrow}</p> : null}
-        <h1
-          className={cn(
-            "mt-1.5 font-black tracking-tight uppercase [overflow-wrap:anywhere]",
-            props.compact ? "text-3xl leading-[0.95]" : "text-[clamp(2.25rem,11vw,4.5rem)] leading-[0.92]",
-          )}
-        >
-          {words.join(" ")}
-          {last ? (
-            <>
-              {" "}
-              <span className="text-primary">{last}</span>
-            </>
+        {props.eyebrow ? <p className="text-sm text-muted-foreground">{props.eyebrow}</p> : null}
+        <div className="mt-1.5 flex items-center gap-3">
+          {props.logo ? (
+            // 48 px sur une plaque claire : un logo sombre et transparent reste lisible, et sa
+            // place est réservée avant son arrivée (largeur et hauteur connues, rien ne bouge).
+            <span className="grid size-12 shrink-0 place-items-center overflow-hidden rounded-xl bg-white p-1 ring-1 ring-border">
+              <img
+                src={props.logo.url}
+                width={props.logo.width}
+                height={props.logo.height}
+                alt=""
+                crossOrigin="anonymous"
+                decoding="async"
+                className="max-h-full max-w-full object-contain"
+              />
+            </span>
           ) : null}
-        </h1>
+          <h1 className={cn("min-w-0 leading-tight font-bold tracking-tight [overflow-wrap:anywhere]", props.compact ? "text-2xl" : "text-[28px] sm:text-[32px]")}>
+            {props.name}
+          </h1>
+        </div>
         {props.status ? (
           <p className="mt-3 flex items-center gap-2 text-sm font-medium" data-opening-status>
-            <span aria-hidden="true" className={cn("size-2 shrink-0 rounded-full", props.status.open ? "bg-primary" : "bg-muted-foreground/50")} />
+            <span aria-hidden="true" className={cn("size-2 shrink-0 rounded-full", props.status.open ? "bg-foreground" : "bg-muted-foreground/50")} />
             <span className={props.status.open ? "text-foreground" : "text-muted-foreground"}>{props.status.text}</span>
           </p>
         ) : null}

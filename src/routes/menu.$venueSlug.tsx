@@ -138,6 +138,7 @@ function PublicMenu() {
           <VenueHero
             eyebrow={place || VENUE_TYPE_LABELS[venue.venueType]}
             name={venue.name}
+            logo={venue.brand.logo}
             status={status ? { open: status.open, text: openingText(status, local.dayOfWeek, locale) } : null}
             description={venue.description}
             street={street || null}

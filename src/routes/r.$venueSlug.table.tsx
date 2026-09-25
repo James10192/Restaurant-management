@@ -97,7 +97,7 @@ function TableMenu() {
       renderedAt={renderedAt}
       selectedProductId={plat ?? null}
       onSelectProduct={(id) => void navigate({ search: id ? { plat: id } : {}, replace: !id, resetScroll: false })}
-      header={<VenueHero compact eyebrow={`Table ${menu.table.number}`} name={menu.venue.name} />}
+      header={<VenueHero compact eyebrow={`Table ${menu.table.number}`} name={menu.venue.name} logo={menu.venue.brand.logo} />}
     />
   );
 }
