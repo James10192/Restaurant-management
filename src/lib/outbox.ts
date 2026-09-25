@@ -20,12 +20,22 @@
 export const AUTO_SEND_MAX_MS = 3 * 60_000;
 export const REPLAY_MAX_MS = 6 * 60 * 60_000;
 
+/**
+ * Les gestes dont l'heure fait les délais du service (D-164) : ils partent avec leur ÂGE, mesuré
+ * sur l'horloge de l'appareil entre le geste et l'envoi. Un âge ne demande aucune horloge calée
+ * sur le serveur : il vaut dès le démarrage hors ligne, et un appareil à la mauvaise heure le
+ * mesure juste. Le serveur y reconnaît un geste rejoué au retour du réseau.
+ */
+export const AGED_MUTATIONS: ReadonlySet<string> = new Set(["kitchen:advance", "orders:serveTicket"]);
+
 export type OutboxStatus = "pending" | "sending" | "confirmed" | "rejected" | "needs_review";
 
 export type OutboxEntry = {
   opId: string;
-  /** Heure du geste sur l'appareil. */
+  /** Heure du geste sur l'appareil, calée sur le serveur quand l'écart est connu. */
   createdAt: number;
+  /** Heure du geste sur l'horloge BRUTE de l'appareil : l'écart peut changer avant l'envoi. */
+  deviceAt?: number;
   /** Le nom de la mutation Convex, `module:fonction`. */
   mutation: string;
   args: Record<string, unknown>;
@@ -188,6 +198,7 @@ export class Outbox {
     private readonly store: OutboxStore,
     private readonly send: (entry: OutboxEntry) => Promise<SendOutcome>,
     private readonly clock: () => number = () => Date.now(),
+    private readonly deviceClock: () => number = () => Date.now(),
   ) {}
 
   /**
@@ -229,6 +240,7 @@ export class Outbox {
     const entry: OutboxEntry = {
       opId: input.opId ?? uuidv7(now),
       createdAt: now,
+      deviceAt: this.deviceClock(),
       mutation: input.mutation,
       args: input.args,
       dependsOn: input.dependsOn ?? [],
@@ -327,4 +339,13 @@ export const ANNOUNCE_AFTER_MS = 45_000;
 
 export function needsAnnouncing(entry: OutboxEntry, now: number): boolean {
   return entry.goesToKitchen && (entry.status === "pending" || entry.status === "sending") && now - entry.createdAt > ANNOUNCE_AFTER_MS;
+}
+
+/**
+ * Ce qui part au serveur : les arguments du geste, plus son âge pour les gestes de délai. Un geste
+ * mis en file avant cette version (sans `deviceAt`) part sans âge : le serveur ne conclut à rien.
+ */
+export function argsForSend(entry: OutboxEntry, deviceNow: number): Record<string, unknown> {
+  if (!AGED_MUTATIONS.has(entry.mutation) || entry.deviceAt === undefined) return entry.args;
+  return { ...entry.args, ageMs: Math.max(0, deviceNow - entry.deviceAt) };
 }

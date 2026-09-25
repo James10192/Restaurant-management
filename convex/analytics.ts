@@ -74,20 +74,6 @@ function todayOf(at: number | undefined, venue: Doc<"venues">, settings: Doc<"ve
   return [serviceDayOf(clock(at), venue, settings), serviceDayOf(Date.now(), venue, settings)].sort().at(-1)!;
 }
 
-function delays(m: Pick<DayMetrics, "delays">) {
-  const d = m.delays;
-  return {
-    acceptance: delaySummary(d.acceptance),
-    waitStart: delaySummary(d.waitStart),
-    prep: delaySummary(d.prep),
-    pass: delaySummary(d.pass),
-    request: delaySummary(d.request),
-    readyWithoutStart: d.readyWithoutStart,
-    replayed: d.replayed ?? 0,
-    tickets: d.tickets,
-  };
-}
-
 /* ────────────────────────────────────────────────────────────────────────────
  * Un jour
  * ──────────────────────────────────────────────────────────────────────────── */

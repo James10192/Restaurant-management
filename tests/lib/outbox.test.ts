@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { cascadeRejection, MemoryOutboxStore, nextStep, Outbox, uuidv7, type OutboxEntry, type SendOutcome } from "../../src/lib/outbox";
+import { argsForSend, cascadeRejection, MemoryOutboxStore, nextStep, Outbox, uuidv7, type OutboxEntry, type SendOutcome } from "../../src/lib/outbox";
 
 const T0 = 1_790_000_000_000;
 
@@ -153,5 +153,28 @@ describe("la file", () => {
     await outbox.drain();
     expect(sent).toEqual(["a"]);
     expect((await store.all())[0]!.status).toBe("confirmed");
+  });
+});
+
+describe("l'âge d'un geste de délai (D-164)", () => {
+  test("mesuré sur l'horloge brute de l'appareil, quel que soit l'écart avec le serveur", async () => {
+    let device = T0;
+    const store = new MemoryOutboxStore();
+    // Horloge calée sur le serveur décalée de dix minutes : l'âge n'en dépend pas.
+    const box = new Outbox(store, async () => ({ kind: "network" }), () => device + 10 * 60_000, () => device);
+    await box.enqueue({ mutation: "kitchen:advance", args: { action: "start" }, label: "bon" });
+    device += 7 * 60_000;
+    const [queued] = await store.all();
+    expect(argsForSend(queued!, device)).toEqual({ action: "start", ageMs: 7 * 60_000 });
+    box.dispose();
+  });
+
+  test("seulement pour les gestes de délai, et jamais sans heure de l'appareil", () => {
+    const aged = entry("a", T0, { mutation: "orders:serveTicket", deviceAt: T0 });
+    expect(argsForSend(aged, T0 + 1_000)).toMatchObject({ ageMs: 1_000 });
+    expect(argsForSend(entry("b", T0, { deviceAt: T0 }), T0 + 1_000)).not.toHaveProperty("ageMs");
+    expect(argsForSend(entry("c", T0, { mutation: "kitchen:advance" }), T0 + 1_000)).not.toHaveProperty("ageMs");
+    // Une horloge d'appareil qui recule ne donne pas un âge négatif.
+    expect(argsForSend(aged, T0 - 5_000)).toMatchObject({ ageMs: 0 });
   });
 });

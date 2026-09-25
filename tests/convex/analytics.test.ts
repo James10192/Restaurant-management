@@ -200,9 +200,9 @@ describe("les délais, honnêtes (D-143)", () => {
     const replayed = (await ticketOf(v, a.orderId))._id;
     const madeAt = Date.now();
     vi.advanceTimersByTime(10 * 60_000);
-    await v.owner.as.mutation(api.kitchen.advance, { venueId: v.cocody, ticketId: replayed, action: "start", clientCreatedAt: madeAt });
+    await v.owner.as.mutation(api.kitchen.advance, { venueId: v.cocody, ticketId: replayed, action: "start", ageMs: Date.now() - madeAt });
     vi.advanceTimersByTime(1_000);
-    await v.owner.as.mutation(api.kitchen.advance, { venueId: v.cocody, ticketId: replayed, action: "ready", clientCreatedAt: madeAt + 5 * 60_000 });
+    await v.owner.as.mutation(api.kitchen.advance, { venueId: v.cocody, ticketId: replayed, action: "ready", ageMs: Date.now() - (madeAt + 5 * 60_000) });
     // Rappelé : il garde son premier début et prend un second « prêt ».
     const b = await tableWithOrder(v, v.table2);
     const recalled = (await ticketOf(v, b.orderId))._id;
@@ -221,16 +221,29 @@ describe("les délais, honnêtes (D-143)", () => {
     expect(day.delays.replayed).toBe(1);
   });
 
+  test("un geste rejoué qui ne change rien (déjà fait en direct) ne marque pas le bon", async () => {
+    const v = await venue();
+    const a = await tableWithOrder(v);
+    const t = (await ticketOf(v, a.orderId))._id;
+    await v.owner.as.mutation(api.kitchen.advance, { venueId: v.cocody, ticketId: t, action: "start", ageMs: 0 });
+    vi.advanceTimersByTime(4 * 60_000);
+    // Le même « Commencer », resté dans la file d'une autre tablette pendant dix minutes.
+    await v.owner.as.mutation(api.kitchen.advance, { venueId: v.cocody, ticketId: t, action: "start", ageMs: 10 * 60_000 });
+    await v.owner.as.mutation(api.kitchen.advance, { venueId: v.cocody, ticketId: t, action: "ready", ageMs: 0 });
+    const day = await v.owner.as.query(api.analytics.period, { venueId: v.cocody, from: DAY, to: DAY });
+    expect([day.delays.prep.count, day.delays.replayed]).toEqual([1, 0]);
+  });
+
   test("un « Servi » rejoué après une coupure ne mesure pas la passe, et se compte", async () => {
     const v = await venue();
     const a = await tableWithOrder(v);
     const t = (await ticketOf(v, a.orderId))._id;
-    await v.owner.as.mutation(api.kitchen.advance, { venueId: v.cocody, ticketId: t, action: "start", clientCreatedAt: Date.now() });
+    await v.owner.as.mutation(api.kitchen.advance, { venueId: v.cocody, ticketId: t, action: "start", ageMs: 0 });
     vi.advanceTimersByTime(4 * 60_000);
-    await v.owner.as.mutation(api.kitchen.advance, { venueId: v.cocody, ticketId: t, action: "ready", clientCreatedAt: Date.now() });
+    await v.owner.as.mutation(api.kitchen.advance, { venueId: v.cocody, ticketId: t, action: "ready", ageMs: 0 });
     const servedAt = Date.now() + 60_000;
     vi.advanceTimersByTime(20 * 60_000);
-    await v.waiter.as.mutation(api.orders.serveTicket, { venueId: v.cocody, ticketId: t, clientCreatedAt: servedAt });
+    await v.waiter.as.mutation(api.orders.serveTicket, { venueId: v.cocody, ticketId: t, ageMs: Date.now() - servedAt });
     const day = await v.owner.as.query(api.analytics.period, { venueId: v.cocody, from: DAY, to: DAY });
     expect([day.delays.pass.count, day.delays.replayed, day.delays.tickets]).toEqual([0, 1, 1]);
   });
@@ -239,9 +252,9 @@ describe("les délais, honnêtes (D-143)", () => {
     const v = await venue();
     const a = await tableWithOrder(v);
     const t = (await ticketOf(v, a.orderId))._id;
-    await v.owner.as.mutation(api.kitchen.advance, { venueId: v.cocody, ticketId: t, action: "start", clientCreatedAt: Date.now() });
+    await v.owner.as.mutation(api.kitchen.advance, { venueId: v.cocody, ticketId: t, action: "start", ageMs: 0 });
     vi.advanceTimersByTime(20_000);
-    await v.owner.as.mutation(api.kitchen.advance, { venueId: v.cocody, ticketId: t, action: "ready", clientCreatedAt: Date.now() });
+    await v.owner.as.mutation(api.kitchen.advance, { venueId: v.cocody, ticketId: t, action: "ready", ageMs: 0 });
     const day = await v.owner.as.query(api.analytics.period, { venueId: v.cocody, from: DAY, to: DAY });
     expect([day.delays.prep.count, day.delays.waitStart.count, day.delays.readyWithoutStart]).toEqual([1, 1, 0]);
   });

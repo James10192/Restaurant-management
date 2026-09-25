@@ -41,7 +41,7 @@ import { memberName, settingsOf } from "./service";
 /**
  * Change quand la définition d'un chiffre change. La clôture recalcule alors J-1 et J-2 ; le
  * reste de l'historique se reconstruit à la main (`analytics:rebuild`), et une période qui mêle
- * deux versions le dit (`versions`).
+ * deux versions le dit (`mixedVersions`).
  */
 export const METRICS_VERSION = 3;
 

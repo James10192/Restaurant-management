@@ -476,13 +476,13 @@ export const serveTicket = mutation({
     venueId: v.id("venues"),
     ticketId: v.id("kitchenTickets"),
     actingMemberId: v.optional(v.id("organizationMembers")),
-    /** L'heure du geste sur l'appareil : un « Servi » rejoué au retour du réseau fausserait la passe. */
-    clientCreatedAt: v.optional(v.number()),
+    /** L'âge du geste à l'envoi : un « Servi » rejoué au retour du réseau fausserait les délais (D-164). */
+    ageMs: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const actor = await requireServiceMutation(ctx, "order.serve", { venueId: args.venueId, actingMemberId: args.actingMemberId });
     const ticket = await getInVenue(ctx, args.ticketId, actor.venue._id, "Ce bon");
-    await advanceTicket(ctx, ticket, "serve", actor.event, args.clientCreatedAt);
+    await advanceTicket(ctx, ticket, "serve", actor.event, args.ageMs);
   },
 });
 

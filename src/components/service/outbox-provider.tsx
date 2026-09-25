@@ -1,10 +1,12 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useConvex } from "convex/react";
 import { api } from "../../../convex/_generated/api";
+import type { Id } from "../../../convex/_generated/dataModel";
 import { makeFunctionReference } from "convex/server";
 import { ConvexError } from "convex/values";
 import { describeError } from "~/lib/errors";
 import {
+  argsForSend,
   AUTO_SEND_MAX_MS,
   IndexedDbOutboxStore,
   MemoryOutboxStore,
@@ -29,14 +31,13 @@ const SEND_TIMEOUT_MS = 15_000;
 const UNKNOWN_ERROR_ATTEMPTS = 5;
 /** Les gestes datés : le serveur refuse ce qui a plus de 3 minutes sans décision humaine (D-062). */
 const DATED = new Set(["orders:submit", "orders:fireCourse"]);
-/**
- * Les gestes dont l'heure fait les délais : rejoués au retour du réseau, ils se reconnaissent à
- * leur heure (D-163). Datés seulement quand l'écart d'horloge est MESURÉ : sur une horloge non
- * recalée, chaque geste passerait pour un rejeu, ou aucun (D-164).
- */
-const TIMED = new Set(["kitchen:advance", "orders:serveTicket"]);
-/** Tant que l'écart n'est pas mesuré, on le redemande. */
+/** Tant que l'écart d'horloge n'est pas mesuré, on le redemande. */
 const CLOCK_RETRY_MS = 30_000;
+/**
+ * Au-delà, un aller-retour ne mesure rien : la mutation a attendu dans la file du client Convex
+ * (coupure, arriéré à écouler), et son milieu n'est pas l'heure du serveur (D-164).
+ */
+const CLOCK_MAX_RTT_MS = 2_000;
 
 type OutboxContextValue = {
   entries: OutboxEntry[];
@@ -83,7 +84,6 @@ export function OutboxProvider({ children }: { children: ReactNode }) {
   // Écart entre l'horloge de l'appareil et celle du serveur : les gestes sont datés à l'heure du
   // serveur, sinon une tablette en retard de dix minutes enverrait tout « à relire ».
   const offsetRef = useRef(0);
-  const clockMeasuredRef = useRef(false);
   const clock = useCallback(() => Date.now() + offsetRef.current, []);
 
   // Créée dans un effet, pas dans un `useMemo` : l'effet qui l'arrête doit pouvoir la recréer
@@ -97,7 +97,7 @@ export function OutboxProvider({ children }: { children: ReactNode }) {
       let timer: ReturnType<typeof setTimeout> | undefined;
       try {
         const result = await Promise.race([
-          convex.mutation(ref, entry.args),
+          convex.mutation(ref, argsForSend(entry, Date.now())),
           new Promise<never>((_, reject) => {
             timer = setTimeout(() => reject(new Error("timeout")), SEND_TIMEOUT_MS);
           }),
@@ -179,32 +179,7 @@ export function OutboxProvider({ children }: { children: ReactNode }) {
     };
   }, [convex]);
 
-  // L'écart d'horloge se mesure à chaque retour du réseau — une tablette démarrée pendant une
-  // coupure n'a rien pu mesurer —, et se redemande tant qu'il manque.
-  useEffect(() => {
-    if (!connected) return;
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const measure = () => {
-      const sentAt = Date.now();
-      convex
-        .mutation(api.operators.touch, { venueId: scope.venueId })
-        .then(({ now }) => {
-          if (cancelled) return;
-          // L'heure du serveur, au milieu de l'aller-retour.
-          offsetRef.current = now - (sentAt + (Date.now() - sentAt) / 2);
-          clockMeasuredRef.current = true;
-        })
-        .catch(() => {
-          if (!cancelled) timer = setTimeout(measure, CLOCK_RETRY_MS);
-        });
-    };
-    measure();
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [convex, scope.venueId, connected]);
+  useClockOffset(offsetRef, scope.venueId, connected);
 
   // Une horloge lente : les messages « annoncez-la » et « service dégradé » dépendent du temps.
   const busy = offlineSince !== null || entries.some((e) => e.status === "pending" || e.status === "sending");
@@ -229,7 +204,7 @@ export function OutboxProvider({ children }: { children: ReactNode }) {
         args: {
           ...input.args,
           ...(memberId ? { actingMemberId: memberId } : {}),
-          ...(DATED.has(input.mutation) || (TIMED.has(input.mutation) && clockMeasuredRef.current) ? { clientCreatedAt: clock() } : {}),
+          ...(DATED.has(input.mutation) ? { clientCreatedAt: clock() } : {}),
         },
       });
     },
@@ -243,6 +218,41 @@ export function OutboxProvider({ children }: { children: ReactNode }) {
   );
   if (!outbox) return null;
   return <OutboxContext.Provider value={value}>{children}</OutboxContext.Provider>;
+}
+
+/**
+ * L'écart entre l'horloge de l'appareil et celle du serveur, pour les gestes datés (D-062). Mesuré
+ * à chaque retour du réseau — une tablette démarrée pendant une coupure n'a rien pu mesurer —,
+ * redemandé tant qu'il manque, et jamais sur un aller-retour trop long pour dire l'heure.
+ */
+function useClockOffset(offsetRef: RefObject<number>, venueId: Id<"venues">, connected: boolean) {
+  const convex = useConvex();
+  useEffect(() => {
+    if (!connected) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const retry = () => {
+      if (!cancelled) timer = setTimeout(measure, CLOCK_RETRY_MS);
+    };
+    const measure = () => {
+      const sentAt = Date.now();
+      convex
+        .mutation(api.operators.touch, { venueId })
+        .then(({ now }) => {
+          if (cancelled) return;
+          const rtt = Date.now() - sentAt;
+          if (rtt > CLOCK_MAX_RTT_MS) return retry();
+          // L'heure du serveur, au milieu de l'aller-retour.
+          offsetRef.current = now - (sentAt + rtt / 2);
+        })
+        .catch(retry);
+    };
+    measure();
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [convex, venueId, connected, offsetRef]);
 }
 
 /** Hors d'un fournisseur (écran de réglages…), `null` : on suppose le réseau présent. */
