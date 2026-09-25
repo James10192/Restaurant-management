@@ -63,6 +63,17 @@ const CLOCK_SLACK = SLOT_MS + 5 * 60_000;
 
 const clock = (at: number | undefined) => clockOf(at, Date.now(), CLOCK_SLACK);
 
+/**
+ * « Aujourd'hui », pour la journée comme pour la période : la même règle aux deux endroits.
+ * L'heure de l'écran est arrondie à la demi-heure inférieure : au passage du jour, elle dirait
+ * encore la veille, et le plus récent des deux l'emporte. Juste au moment du calcul seulement : un
+ * résultat resté en cache peut garder la veille jusqu'à la demi-heure suivante, quand l'écran
+ * change son `at` — au pire trente minutes, à l'heure où l'on ne regarde pas ses chiffres.
+ */
+function todayOf(at: number | undefined, venue: Doc<"venues">, settings: Doc<"venueSettings">): string {
+  return [serviceDayOf(clock(at), venue, settings), serviceDayOf(Date.now(), venue, settings)].sort().at(-1)!;
+}
+
 function delays(m: Pick<DayMetrics, "delays">) {
   const d = m.delays;
   return {
@@ -72,6 +83,7 @@ function delays(m: Pick<DayMetrics, "delays">) {
     pass: delaySummary(d.pass),
     request: delaySummary(d.request),
     readyWithoutStart: d.readyWithoutStart,
+    replayed: d.replayed ?? 0,
     tickets: d.tickets,
   };
 }
@@ -92,9 +104,7 @@ export const day = query({
     const venue = actor.venue;
     const settings = await settingsOf(ctx, venue._id);
     const now = clock(args.at);
-    // L'heure de l'écran est arrondie à la demi-heure inférieure : au passage du jour, elle dirait
-    // encore la veille. Le plus récent des deux « aujourd'hui » l'emporte.
-    const today = [serviceDayOf(now, venue, settings), serviceDayOf(Date.now(), venue, settings)].sort().at(-1)!;
+    const today = todayOf(args.at, venue, settings);
     const target = args.day ?? today;
     if (!DAY.test(target)) throw invalid("Jour invalide.");
     // Un jour à venir (adresse tapée, heure de début déplacée) n'a rien à comparer : pas une erreur.
@@ -168,7 +178,7 @@ function emptyAggregate() {
     collected: { gross: 0, refunded: 0, net: 0, payments: 0 },
     byMethod: new Map<string, { label: string; amount: number; count: number }>(),
     products: new Map<string, { name: string; quantity: number; amount: number; lostQuantity: number; lostAmount: number }>(),
-    delays: { acceptance: [] as Histogram[], waitStart: [] as Histogram[], prep: [] as Histogram[], pass: [] as Histogram[], request: [] as Histogram[], readyWithoutStart: 0, tickets: 0 },
+    delays: { acceptance: [] as Histogram[], waitStart: [] as Histogram[], prep: [] as Histogram[], pass: [] as Histogram[], request: [] as Histogram[], readyWithoutStart: 0, replayed: 0, tickets: 0 },
     stations: new Map<string, { name: string; prep: Histogram[]; waitStart: Histogram[] }>(),
     duration: [] as Histogram[],
     debts: 0,
@@ -207,6 +217,7 @@ function add(agg: Aggregate, day: string, m: DayMetrics, closed = true) {
   }
   for (const k of ["acceptance", "waitStart", "prep", "pass", "request"] as const) agg.delays[k].push(m.delays[k]);
   agg.delays.readyWithoutStart += m.delays.readyWithoutStart;
+  agg.delays.replayed += m.delays.replayed ?? 0;
   agg.delays.tickets += m.delays.tickets;
   for (const s of m.stations) {
     const row = agg.stations.get(s.stationId) ?? { name: s.name, prep: [], waitStart: [] };
@@ -263,7 +274,7 @@ export const period = query({
     const actor = await requirePermission(ctx, "analytics.read", { venueId: a.venueId });
     const venue = actor.venue;
     const settings = await settingsOf(ctx, venue._id);
-    const today = serviceDayOf(clock(a.at), venue, settings);
+    const today = todayOf(a.at, venue, settings);
     const to = a.to ?? today;
     const args = { from: a.from ?? shiftDay(to, -6), to };
     if (!DAY.test(args.from) || !DAY.test(args.to) || args.from > args.to) throw invalid("Période invalide.");
@@ -313,6 +324,7 @@ export const period = query({
         pass: merged(agg.delays.pass),
         request: merged(agg.delays.request),
         readyWithoutStart: agg.delays.readyWithoutStart,
+        replayed: agg.delays.replayed,
         tickets: agg.delays.tickets,
       },
       stations: [...agg.stations.values()].map((s) => ({ name: s.name, prep: merged(s.prep), waitStart: merged(s.waitStart) })).sort((a, b) => a.name.localeCompare(b.name)),

@@ -217,6 +217,22 @@ describe("les délais, honnêtes (D-143)", () => {
     const day = await v.owner.as.query(api.analytics.period, { venueId: v.cocody, from: DAY, to: DAY });
     // Ni préparation, ni attente, ni passage mesurés ; aucun n'est « prêt sans démarrage » pour autant.
     expect([day.delays.prep.count, day.delays.waitStart.count, day.delays.pass.count, day.delays.readyWithoutStart, day.delays.tickets]).toEqual([0, 1, 0, 0, 2]);
+    // Ce qui sort des délais se compte : l'écran le dit au lieu de réduire l'échantillon en silence.
+    expect(day.delays.replayed).toBe(1);
+  });
+
+  test("un « Servi » rejoué après une coupure ne mesure pas la passe, et se compte", async () => {
+    const v = await venue();
+    const a = await tableWithOrder(v);
+    const t = (await ticketOf(v, a.orderId))._id;
+    await v.owner.as.mutation(api.kitchen.advance, { venueId: v.cocody, ticketId: t, action: "start", clientCreatedAt: Date.now() });
+    vi.advanceTimersByTime(4 * 60_000);
+    await v.owner.as.mutation(api.kitchen.advance, { venueId: v.cocody, ticketId: t, action: "ready", clientCreatedAt: Date.now() });
+    const servedAt = Date.now() + 60_000;
+    vi.advanceTimersByTime(20 * 60_000);
+    await v.waiter.as.mutation(api.orders.serveTicket, { venueId: v.cocody, ticketId: t, clientCreatedAt: servedAt });
+    const day = await v.owner.as.query(api.analytics.period, { venueId: v.cocody, from: DAY, to: DAY });
+    expect([day.delays.pass.count, day.delays.replayed, day.delays.tickets]).toEqual([0, 1, 1]);
   });
 
   test("une préparation rapide, faite en direct, compte : une bière en 20 s n'est pas un bon « prêt sans démarrage »", async () => {

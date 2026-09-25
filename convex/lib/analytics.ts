@@ -137,20 +137,20 @@ export function readyWithoutStart(t: TicketTimes): boolean {
   return t.readyAt !== undefined && t.startedAt !== undefined && t.startedAt === t.readyAt;
 }
 /** Les gestes d'un bon rejoués au retour du réseau sont datés à la réception : ses délais ne mesurent rien (D-163). */
-function replayed(t: TicketTimes): boolean {
+export function timesReplayed(t: TicketTimes): boolean {
   return t.timesFromReplay === true;
 }
 export function waitBeforeStart(t: TicketTimes): number | null {
-  if (t.queuedAt === undefined || t.startedAt === undefined || readyWithoutStart(t) || replayed(t)) return null;
+  if (t.queuedAt === undefined || t.startedAt === undefined || readyWithoutStart(t) || timesReplayed(t)) return null;
   return t.startedAt - t.queuedAt;
 }
 /** Un bon rappelé garde son premier début et prend un second « prêt » : sa préparation et son passage ne mesurent plus rien. */
 export function prepTime(t: TicketTimes): number | null {
-  if (t.startedAt === undefined || t.readyAt === undefined || readyWithoutStart(t) || replayed(t) || t.recalledAt !== undefined) return null;
+  if (t.startedAt === undefined || t.readyAt === undefined || readyWithoutStart(t) || timesReplayed(t) || t.recalledAt !== undefined) return null;
   return t.readyAt - t.startedAt;
 }
 export function passTime(t: TicketTimes): number | null {
-  if (t.readyAt === undefined || t.servedAt === undefined || replayed(t) || t.recalledAt !== undefined) return null;
+  if (t.readyAt === undefined || t.servedAt === undefined || timesReplayed(t) || t.recalledAt !== undefined) return null;
   return t.servedAt - t.readyAt;
 }
 

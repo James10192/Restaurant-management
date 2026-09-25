@@ -46,6 +46,8 @@ export const dayMetricsFields = {
     request: histogram,
     /** Bons marqués prêts sans avoir été démarrés, sur `tickets` : leur part se montre. */
     readyWithoutStart: v.number(),
+    /** Bons dont un geste est arrivé rejoué après une coupure : hors des délais, leur part se montre (D-164). */
+    replayed: v.optional(v.number()),
     tickets: v.number(),
   }),
   stations: v.array(v.object({ stationId: v.id("prepStations"), name: v.string(), prep: histogram, waitStart: histogram })),

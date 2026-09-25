@@ -28,8 +28,15 @@ const SEND_TIMEOUT_MS = 15_000;
 /** Une erreur qui n'est ni un refus métier ni une coupure : on retente, mais pas sans fin. */
 const UNKNOWN_ERROR_ATTEMPTS = 5;
 /** Les gestes datés : le serveur refuse ce qui a plus de 3 minutes sans décision humaine (D-062). */
-// Les gestes de cuisine aussi : un geste rejoué au retour du réseau se reconnaît à son heure (D-163).
-const DATED = new Set(["orders:submit", "orders:fireCourse", "kitchen:advance"]);
+const DATED = new Set(["orders:submit", "orders:fireCourse"]);
+/**
+ * Les gestes dont l'heure fait les délais : rejoués au retour du réseau, ils se reconnaissent à
+ * leur heure (D-163). Datés seulement quand l'écart d'horloge est MESURÉ : sur une horloge non
+ * recalée, chaque geste passerait pour un rejeu, ou aucun (D-164).
+ */
+const TIMED = new Set(["kitchen:advance", "orders:serveTicket"]);
+/** Tant que l'écart n'est pas mesuré, on le redemande. */
+const CLOCK_RETRY_MS = 30_000;
 
 type OutboxContextValue = {
   entries: OutboxEntry[];
@@ -76,6 +83,7 @@ export function OutboxProvider({ children }: { children: ReactNode }) {
   // Écart entre l'horloge de l'appareil et celle du serveur : les gestes sont datés à l'heure du
   // serveur, sinon une tablette en retard de dix minutes enverrait tout « à relire ».
   const offsetRef = useRef(0);
+  const clockMeasuredRef = useRef(false);
   const clock = useCallback(() => Date.now() + offsetRef.current, []);
 
   // Créée dans un effet, pas dans un `useMemo` : l'effet qui l'arrête doit pouvoir la recréer
@@ -119,21 +127,6 @@ export function OutboxProvider({ children }: { children: ReactNode }) {
     // Une file par personne : quand la personne change, l'ancienne file s'arrête net.
     return () => created.dispose();
   }, [convex, key, clock]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const sentAt = Date.now();
-    void convex
-      .mutation(api.operators.touch, { venueId: scope.venueId })
-      .then(({ now }) => {
-        // L'heure du serveur, au milieu de l'aller-retour.
-        if (!cancelled) offsetRef.current = now - (sentAt + (Date.now() - sentAt) / 2);
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, [convex, scope.venueId]);
 
   const [entries, setEntries] = useState<OutboxEntry[]>([]);
   const [connected, setConnected] = useState(true);
@@ -186,6 +179,33 @@ export function OutboxProvider({ children }: { children: ReactNode }) {
     };
   }, [convex]);
 
+  // L'écart d'horloge se mesure à chaque retour du réseau — une tablette démarrée pendant une
+  // coupure n'a rien pu mesurer —, et se redemande tant qu'il manque.
+  useEffect(() => {
+    if (!connected) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const measure = () => {
+      const sentAt = Date.now();
+      convex
+        .mutation(api.operators.touch, { venueId: scope.venueId })
+        .then(({ now }) => {
+          if (cancelled) return;
+          // L'heure du serveur, au milieu de l'aller-retour.
+          offsetRef.current = now - (sentAt + (Date.now() - sentAt) / 2);
+          clockMeasuredRef.current = true;
+        })
+        .catch(() => {
+          if (!cancelled) timer = setTimeout(measure, CLOCK_RETRY_MS);
+        });
+    };
+    measure();
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [convex, scope.venueId, connected]);
+
   // Une horloge lente : les messages « annoncez-la » et « service dégradé » dépendent du temps.
   const busy = offlineSince !== null || entries.some((e) => e.status === "pending" || e.status === "sending");
   useEffect(() => {
@@ -209,7 +229,7 @@ export function OutboxProvider({ children }: { children: ReactNode }) {
         args: {
           ...input.args,
           ...(memberId ? { actingMemberId: memberId } : {}),
-          ...(DATED.has(input.mutation) ? { clientCreatedAt: clock() } : {}),
+          ...(DATED.has(input.mutation) || (TIMED.has(input.mutation) && clockMeasuredRef.current) ? { clientCreatedAt: clock() } : {}),
         },
       });
     },

@@ -29,6 +29,7 @@ import {
   shiftDay,
   slotOf,
   startHourOf,
+  timesReplayed,
   waitBeforeStart,
 } from "./analytics";
 import { lineGross, loadSessionBilling, serviceDayWindow } from "./billing";
@@ -42,7 +43,7 @@ import { memberName, settingsOf } from "./service";
  * reste de l'historique se reconstruit à la main (`analytics:rebuild`), et une période qui mêle
  * deux versions le dit (`versions`).
  */
-export const METRICS_VERSION = 2;
+export const METRICS_VERSION = 3;
 
 /** Les commandes qui ne sont pas des ventes : pas encore acceptées, refusées, annulées (comptées nulle part). */
 const NOT_SOLD: ReadonlySet<Doc<"orders">["status"]> = new Set(["draft", "pending_payment", "pending_acceptance", "rejected", "cancelled"]);
@@ -285,6 +286,7 @@ async function orderFigures(ctx: ReadCtx, rows: Orders, from: number, products: 
   const byStation = new Map<Id<"prepStations">, { waitStart: number[]; prep: number[] }>();
   let tickets = 0;
   let unstarted = 0;
+  let replayed = 0;
   let fromGuests = 0;
   for (const { order, items, tickets: orderTickets } of rows) {
     if (order.channel === "guest") fromGuests += 1;
@@ -301,6 +303,7 @@ async function orderFigures(ctx: ReadCtx, rows: Orders, from: number, products: 
       if (t.status === "cancelled" || t.readyAt === undefined) continue;
       tickets += 1;
       if (readyWithoutStart(t)) unstarted += 1;
+      if (timesReplayed(t)) replayed += 1;
       const station = byStation.get(t.prepStationId) ?? { waitStart: [], prep: [] };
       byStation.set(t.prepStationId, station);
       for (const [key, value] of [["waitStart", waitBeforeStart(t)], ["prep", prepTime(t)], ["pass", passTime(t)]] as const) {
@@ -317,7 +320,7 @@ async function orderFigures(ctx: ReadCtx, rows: Orders, from: number, products: 
   }
   return {
     orders: { count: rows.length, fromGuests },
-    delays: { acceptance: histogramOf(acceptance), waitStart: histogramOf(all.waitStart), prep: histogramOf(all.prep), pass: histogramOf(all.pass), readyWithoutStart: unstarted, tickets },
+    delays: { acceptance: histogramOf(acceptance), waitStart: histogramOf(all.waitStart), prep: histogramOf(all.prep), pass: histogramOf(all.pass), readyWithoutStart: unstarted, replayed, tickets },
     stations: stations.sort((a, b) => a.name.localeCompare(b.name)),
   };
 }

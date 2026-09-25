@@ -21,12 +21,6 @@ import { advanceTicket } from "./lib/service";
 const IN_KITCHEN: readonly TicketStatus[] = ["recalled", "queued", "started"];
 
 /** Combien de bons prêts rester à l'écran : de quoi rappeler une erreur, pas un historique. */
-
-/**
- * Au-delà, un geste de cuisine n'a pas été envoyé en direct : la file l'a gardé pendant une
- * coupure (D-163, constante D-148). Un aller-retour normal prend moins d'une seconde.
- */
-const REPLAYED_GESTURE_MS = 15_000;
 export const READY_KEPT = 8;
 
 async function ticketsIn(ctx: ReadCtx, station: Doc<"prepStations">, status: TicketStatus) {
@@ -130,11 +124,7 @@ export const advance = mutation({
     const ticket = await getInVenue(ctx, args.ticketId, actor.venue._id, "Ce bon");
     if (actor.device?.stationId !== undefined && actor.device.stationId !== ticket.prepStationId) throw notFound("Ce bon");
     if (ticket.status === "held") throw invalid("Ce service n'a pas encore été envoyé en cuisine.");
-    const { changed } = await advanceTicket(ctx, ticket, args.action, actor.event);
-    // Arrivé bien après avoir été fait : un geste rejoué au retour du réseau. Ses délais mentent.
-    if (changed && args.clientCreatedAt !== undefined && Date.now() - args.clientCreatedAt > REPLAYED_GESTURE_MS && !ticket.timesFromReplay) {
-      await ctx.db.patch(ticket._id, { timesFromReplay: true });
-    }
+    const { changed } = await advanceTicket(ctx, ticket, args.action, actor.event, args.clientCreatedAt);
     return { changed };
   },
 });

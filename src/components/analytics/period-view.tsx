@@ -282,6 +282,11 @@ function Service({ data }: { data: Period }) {
           {unstartedShare} % des bons ont été marqués prêts sans avoir été commencés : ils ne comptent pas dans la préparation. Appuyer sur « Commencer » en cuisine rend ce délai juste.
         </p>
       ) : null}
+      {d.replayed > 0 ? (
+        <p className="text-sm text-muted-foreground" data-replayed>
+          {d.replayed} bon{d.replayed > 1 ? "s" : ""} sur {d.tickets} {d.replayed > 1 ? "ont" : "a"} eu un geste envoyé au retour du réseau, après une coupure : l'heure enregistrée est celle du retour, pas celle du geste. Ils ne comptent dans aucun délai.
+        </p>
+      ) : null}
       {data.stations.length > 1 ? (
         <div className="flex flex-col gap-2">
           <h3 className="text-sm font-medium">Par poste</h3>

@@ -345,6 +345,11 @@ function summary(names: string[]) {
  * être visuellement plus petite que sa zone active ») : 8 px au-dessus et au-dessous.
  */
 const HIT = "relative after:absolute after:inset-x-0 after:-inset-y-2 after:content-['']";
+/**
+ * La loupe et la langue, côte à côte : 44 px à l'œil, 56 px sous le doigt dans les DEUX sens. Les
+ * 12 px d'écart entre elles sont exactement partagés par leurs zones actives, sans chevauchement.
+ */
+const HIT_ICON = "relative size-11 shrink-0 rounded-full after:absolute after:-inset-1.5 after:content-['']";
 
 type ToolbarGroup = { key: string; name: string; summary: string; links: { href: string; name: string }[] };
 
@@ -387,13 +392,13 @@ function MenuToolbar(props: {
     <div ref={bar} className="sticky top-0 z-20 border-b bg-background">
       <div className="mx-auto max-w-[960px]">
         {groups.length > 1 ? <MenuTabs groups={groups} current={currentGroup} /> : null}
-        <div className="flex items-center gap-1 py-2 pr-2 pl-4">
+        <div className="flex items-center gap-3 py-2 pr-2 pl-4">
           <nav aria-label={t.sections} className="min-w-0 flex-1">
             {links.length > 1 && currentGroup ? <SectionPills links={currentGroup.links} current={current} /> : null}
           </nav>
           <Toggle
             size="lg"
-            className={cn("size-10 shrink-0 rounded-full", HIT)}
+            className={HIT_ICON}
             pressed={searching}
             onPressedChange={(on) => {
               setSearching(on);
@@ -407,7 +412,7 @@ function MenuToolbar(props: {
             {searching ? <XIcon /> : <SearchIcon />}
           </Toggle>
           {/* En haut, là où on la cherche : un client anglophone ne descend pas jusqu'au pied de page. */}
-          <Button type="button" variant="ghost" className={cn("size-10 shrink-0 rounded-full font-semibold", HIT)} onClick={props.onLocale} lang={locale === "fr" ? "en" : "fr"} aria-label={t.language}>
+          <Button type="button" variant="ghost" className={cn(HIT_ICON, "font-semibold")} onClick={props.onLocale} lang={locale === "fr" ? "en" : "fr"} aria-label={t.language}>
             {locale === "fr" ? "EN" : "FR"}
           </Button>
         </div>
@@ -429,7 +434,11 @@ function useStickyHeight(bar: React.RefObject<HTMLDivElement | null>): number {
       document.documentElement.style.setProperty("--guest-nav-h", `${h}px`);
     });
     observer.observe(el);
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      // La variable n'a de sens que sous cette barre : une navigation interne ne l'emporte pas.
+      document.documentElement.style.removeProperty("--guest-nav-h");
+    };
   }, [bar]);
   return height;
 }

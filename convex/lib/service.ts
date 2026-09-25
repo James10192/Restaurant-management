@@ -163,6 +163,12 @@ const STATUS_LABEL: Record<TicketStatus, string> = {
   cancelled: "annulé",
 };
 
+/**
+ * Au-delà, un geste de service n'a pas été envoyé en direct : la file l'a gardé pendant une
+ * coupure (D-163, constante D-148). Un aller-retour normal prend moins d'une seconde.
+ */
+export const REPLAYED_GESTURE_MS = 15_000;
+
 /** L'état qu'aurait déjà produit cette action : la rejouer (double appui, file hors ligne) est sans effet. */
 const ALREADY: Record<TicketAction, TicketStatus> = {
   fire: "queued",
@@ -183,6 +189,8 @@ export async function advanceTicket(
   ticket: Doc<"kitchenTickets">,
   action: TicketAction,
   actor: EventActor,
+  /** L'heure du geste sur l'appareil, calée sur le serveur ; posée par la file d'envoi, et seulement une fois l'horloge mesurée. */
+  clientCreatedAt?: number,
 ): Promise<{ changed: boolean; ticket: Doc<"kitchenTickets"> }> {
   const current = ticket.status as TicketStatus;
   if (current === ALREADY[action]) return { changed: false, ticket };
@@ -206,6 +214,9 @@ export async function advanceTicket(
     patch.servedAt = now;
     if (memberId) patch.servedByMemberId = memberId;
   }
+  // Arrivé bien après avoir été fait : un geste rejoué au retour du réseau, daté à la réception.
+  // Les délais du bon ne mesurent plus rien ; il sort des délais, et le compte le dit (D-164).
+  if (clientCreatedAt !== undefined && now - clientCreatedAt > REPLAYED_GESTURE_MS) patch.timesFromReplay = true;
   await ctx.db.patch(ticket._id, patch);
 
   // Les lignes du bon suivent. Une ligne annulée reste annulée ; une ligne servie reste servie
