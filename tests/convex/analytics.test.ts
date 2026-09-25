@@ -250,6 +250,39 @@ describe("les délais, honnêtes (D-143)", () => {
     expect([day.delays.prep.count, day.delays.replayed]).toEqual([0, 1]);
   });
 
+  test("une simple relance (réponse perdue, renvoyée par la file 17 s plus tard) ne marque rien", async () => {
+    const v = await venue();
+    const a = await tableWithOrder(v);
+    const t = (await ticketOf(v, a.orderId))._id;
+    await v.owner.as.mutation(api.kitchen.advance, { venueId: v.cocody, ticketId: t, action: "start", ageMs: 0 });
+    vi.advanceTimersByTime(3 * 60_000);
+    await v.owner.as.mutation(api.kitchen.advance, { venueId: v.cocody, ticketId: t, action: "ready", ageMs: 0 });
+    vi.advanceTimersByTime(17_000);
+    expect(await v.owner.as.mutation(api.kitchen.advance, { venueId: v.cocody, ticketId: t, action: "ready", ageMs: 17_000 })).toEqual({ changed: false });
+    const day = await v.owner.as.query(api.analytics.period, { venueId: v.cocody, from: DAY, to: DAY });
+    expect([day.delays.prep.count, day.delays.replayed]).toEqual([1, 0]);
+  });
+
+  test("un geste réellement faux refuse toujours, en disant l'état : bon annulé, jamais rappelé, rappelé mais pas servi", async () => {
+    const v = await venue();
+    const cancelled = await tableWithOrder(v);
+    const c = (await ticketOf(v, cancelled.orderId))._id;
+    await v.owner.as.mutation(api.kitchen.advance, { venueId: v.cocody, ticketId: c, action: "start", ageMs: 0 });
+    await v.owner.as.mutation(api.orders.cancelOrder, { venueId: v.cocody, orderId: cancelled.orderId, reason: "Table partie" });
+    await expectCode(v.owner.as.mutation(api.kitchen.advance, { venueId: v.cocody, ticketId: c, action: "start", ageMs: 0 }), "CONFLICT");
+    await expectCode(v.owner.as.mutation(api.kitchen.advance, { venueId: v.cocody, ticketId: c, action: "ready", ageMs: 0 }), "CONFLICT");
+
+    const live = await tableWithOrder(v, v.table2);
+    const t = (await ticketOf(v, live.orderId))._id;
+    await v.owner.as.mutation(api.kitchen.advance, { venueId: v.cocody, ticketId: t, action: "start", ageMs: 0 });
+    // Jamais rappelé : « Rappeler » un bon en préparation n'a pas eu lieu, il refuse.
+    await expectCode(v.owner.as.mutation(api.kitchen.advance, { venueId: v.cocody, ticketId: t, action: "recall", ageMs: 0 }), "CONFLICT");
+    await v.owner.as.mutation(api.kitchen.advance, { venueId: v.cocody, ticketId: t, action: "ready", ageMs: 0 });
+    await v.owner.as.mutation(api.kitchen.advance, { venueId: v.cocody, ticketId: t, action: "recall", ageMs: 0 });
+    // Rappelé : le porter n'a pas eu lieu.
+    await expectCode(v.waiter.as.mutation(api.orders.serveTicket, { venueId: v.cocody, ticketId: t, ageMs: 0 }), "CONFLICT");
+  });
+
   test("un « Servi » rejoué après une coupure ne mesure pas la passe, et se compte", async () => {
     const v = await venue();
     const a = await tableWithOrder(v);
