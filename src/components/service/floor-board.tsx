@@ -97,32 +97,32 @@ export function FloorBoard() {
         {/* Sur un téléphone, les files tiennent sur une ligne en colonnes ÉGALES (minmax(0, 1fr) : une
             colonne ne s'élargit pas pour son libellé), icône au-dessus d'un libellé court, compte dans
             le coin de l'onglet. Aucune file ne sort de l'écran — un onglet qu'on ne voit pas, on l'oublie. */}
-        <TabsList className="grid h-auto w-full grid-flow-col auto-cols-[minmax(0,1fr)] gap-0.5 p-1 sm:flex sm:h-9 sm:w-fit sm:gap-0 sm:p-[3px]">
+        <TabsList className="grid w-full grid-flow-col auto-cols-[minmax(0,1fr)] gap-0.5 p-1 group-data-horizontal/tabs:h-auto sm:flex sm:w-fit sm:gap-0 sm:p-[3px] sm:group-data-horizontal/tabs:h-9">
           <TabsTrigger value="tables" className={TAB}>
             <LayoutGrid />
-            <span className="max-w-full truncate">Tables</span>
+            <span className={LABEL}>Tables</span>
           </TabsTrigger>
           <TabsTrigger value="ready" className={TAB}>
             <ChefHat />
-            <span className="max-w-full truncate">À servir</span>
+            <span className={LABEL}>À servir</span>
             {readyCount > 0 ? <QueueBadge count={readyCount} age={oldest(ready?.tickets.map((t) => t.readyAt) ?? [])} /> : null}
           </TabsTrigger>
           <TabsTrigger value="requests" className={TAB}>
             <Bell />
-            <span className="max-w-full truncate">Demandes</span>
+            <span className={LABEL}>Demandes</span>
             {openRequests.length > 0 ? <QueueBadge count={openRequests.length} age={oldest(openRequests.map((r) => r.createdAt))} /> : null}
           </TabsTrigger>
           {scope.can("order.accept") ? (
             <TabsTrigger value="pending" className={TAB}>
               <Hand />
-              <span className="max-w-full truncate">À valider</span>
+              <span className={LABEL}>À valider</span>
               {pendingCount > 0 ? <QueueBadge count={pendingCount} age={oldest(pending?.map((o) => o.submittedAt) ?? [])} urgent /> : null}
             </TabsTrigger>
           ) : null}
           {scope.can("kitchen.read") ? (
             <TabsTrigger value="kitchen" className={TAB}>
               <Flame />
-              <span className="max-w-full truncate sm:hidden">Cuisine</span>
+              <span className={cn(LABEL, "sm:hidden")}>Cuisine</span>
               <span className="hidden sm:inline">En cuisine</span>
               {lateCount > 0 ? (
                 <Badge variant="destructive" className={COUNT}>
@@ -161,9 +161,10 @@ export function FloorBoard() {
 
 /** Un onglet de file : empilé sur un téléphone, en ligne à partir d'une tablette. */
 const TAB =
-  "relative h-14 min-w-0 flex-col gap-1 px-0.5 pt-2 pb-1.5 text-[0.7rem] leading-none sm:h-full sm:flex-row sm:gap-1.5 sm:px-2 sm:py-1 sm:text-sm sm:leading-normal";
-/** Le compte, en coin de l'onglet sur un téléphone, à côté du libellé ailleurs. */
-/** Dans le coin de l'onglet, jamais dehors : il ne mord ni sur le voisin ni sur le bord de la barre. */
+  "relative h-14 min-w-0 flex-col gap-1 px-0.5 py-1.5 text-[0.7rem] leading-tight sm:h-full sm:flex-row sm:gap-1.5 sm:px-2 sm:py-1 sm:text-sm sm:leading-normal";
+/** Coupé s'il le faut, jamais par le haut : l'interligne laisse la place à l'accent de « À ». */
+const LABEL = "max-w-full truncate py-px";
+/** Le compte, dans le coin de l'onglet sur un téléphone, jamais dehors ; à côté du libellé ailleurs. */
 const COUNT = "absolute top-1 right-1 h-4 min-w-4 rounded-full px-1 text-[0.625rem] leading-none tabular-nums sm:static sm:h-5 sm:text-xs";
 
 /**
