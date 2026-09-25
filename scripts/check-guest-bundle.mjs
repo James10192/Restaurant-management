@@ -10,8 +10,11 @@
  *
  * Plutôt que de deviner par quels imports il pourrait revenir — le `head`, le `loader` ou le
  * `validateSearch` de N'IMPORTE QUELLE route partent dans l'entrée commune, un import peut être
- * transitif —, on lit le build : le manifeste de TanStack Start dit quels fichiers chaque route
- * charge d'office, et aucun de ceux des pages client ne doit contenir une constante du calcul.
+ * transitif —, on lit le build. Le manifeste de TanStack Start donne, pour chaque route, les
+ * fichiers qu'elle précharge ; il ne liste pas ce qu'ils importent à leur tour. On suit donc la
+ * fermeture de leurs imports STATIQUES (`scripts/lib/static-imports.mjs`) : c'est ce que le
+ * téléphone télécharge avant d'afficher la page, et aucun de ces fichiers ne doit contenir une
+ * constante du calcul.
  *
  * Pages client : l'entrée commune (`__root__`), le menu public, la carte de table et l'aperçu,
  * avec leurs routes parentes. Ce qui se charge plus tard par import dynamique n'est pas couvert :
@@ -21,6 +24,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { staticClosure } from "./lib/static-imports.mjs";
 
 /** Une constante de la matrice sRGB → LMS d'OKLab, que le minifieur garde telle quelle. */
 const MARKER = "4122214708";
@@ -83,8 +87,10 @@ for (const id of Object.keys(routes).filter((id) => GUEST_ROUTE.test(id))) {
 const problems = [];
 for (const id of guestRoutes) {
   const route = routes[id];
-  const assets = new Set([...(route.preloads ?? []), ...(route.scripts ?? []).map((s) => s.attrs?.src).filter(Boolean)]);
-  for (const asset of assets) if (read(asset).includes(MARKER)) problems.push(`${id} charge ${asset}, qui contient le calcul de couleur OKLCH`);
+  const listed = [...(route.preloads ?? []), ...(route.scripts ?? []).map((s) => s.attrs?.src).filter(Boolean)];
+  for (const asset of staticClosure(listed, read)) {
+    if (read(asset).includes(MARKER)) problems.push(`${id} charge ${asset}, qui contient le calcul de couleur OKLCH`);
+  }
 }
 
 if (problems.length > 0) {

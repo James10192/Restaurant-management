@@ -22,6 +22,8 @@
  *    fichier supprimé ou renommé). Déplacer, c'est partir d'ici pour arriver là : une fonction
  *    déplacée sans s'allonger passe, une fonction neuve qui porte le nom d'une autre, restée en
  *    place, ne passe pas.
+ * Cas limite assumé : déplacer une fonction longue ET laisser dans l'ancien fichier une fonction
+ * courte du même nom complet la fait paraître créée à l'arrivée.
  * Le nom complet inclut le chemin d'imbrication (`Composant.sousFonction`) : sortir une fonction
  * de son parent change son nom, et elle paraît créée. Renommer une fonction longue aussi : c'est
  * voulu, le nom est ce qui la suit.

@@ -294,8 +294,9 @@ importent **exige** :
   en T7.a : l'écart de script mesuré n'était pas expliqué ; l'attribution a trouvé que le calcul
   OKLCH, dans un module partagé entre le `head()` des pages client et l'écran Apparence, était
   entré dans le paquet commun. `scripts/check-guest-bundle.mjs`, lancé par la CI après le build,
-  en garde la frontière sur l'artefact : aucun fichier que les pages client chargent d'office ne
-  contient le calcul, quel que soit l'import qui l'y aurait amené. Ce qui arrive plus tard par
+  en garde la frontière sur l'artefact : partant des fichiers que le manifeste liste pour chaque
+  page client, il suit la fermeture de leurs imports statiques, et aucun ne doit contenir le
+  calcul, quel que soit l'import qui l'y aurait amené. Ce qui arrive plus tard par
   import dynamique relève de la mesure. **Un import dans le `head()`, le `loader` ou le
   `validateSearch` de n'importe quelle route est un import pour chaque client.**
 
@@ -381,7 +382,7 @@ contourné :
 | `check:schema` | index en double, limites Convex, recopie d'organisation, table non documentée |
 | `check:permissions` | une permission présente dans le code OU dans la doc, pas dans les deux |
 | `check:sizes` | un fichier au-delà de 1000 lignes, une fonction ou un cas de test créé ou allongé au-delà de 80 |
-| CI « Guest bundle boundary » (`check-guest-bundle.mjs`, après le build) | le calcul de couleur OKLCH dans un fichier que les pages client chargent d'office |
+| CI « Guest bundle boundary » (`check-guest-bundle.mjs`, après le build) | le calcul de couleur OKLCH dans un fichier que les pages client chargent d'office, imports statiques suivis |
 | CI « Generated Convex files are committed » | `convex/_generated` non régénéré |
 | `pnpm test:e2e` | les parcours T0 à T7 |
 
