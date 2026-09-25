@@ -226,6 +226,69 @@ async function catalogFor(owner: Session, venueId: Id<"venues">, tag: string) {
   return { menuId, sectionId: sectionId!, productId, variantId, groupId, optionId, publicationId: publication!._id };
 }
 
+/** Le paiement en ligne de B : un compte Wave actif, une intention ouverte, une alerte, un rapprochement. */
+async function onlineAtB(w: World) {
+  const m = await moneyAtB(w);
+  return w.t.run(async (ctx) => {
+    const now = Date.now();
+    const member = (await ctx.db.query("organizationMembers").withIndex("by_org_user", (q) => q.eq("organizationId", w.b.organizationId).eq("userId", w.b.owner.userId)).unique())!;
+    const accountId = await ctx.db.insert("paymentProviderAccounts", {
+      venueId: w.b.venueId,
+      providerKey: "wave_ci",
+      country: "CI",
+      status: "active",
+      webhookPathId: "chemin-de-b-".padEnd(43, "0"),
+      secrets: { apiKey: "s1.1.faux.faux", webhookSecret: "s1.1.faux.faux" },
+      configuredByMemberId: member._id,
+      configuredAt: now,
+      updatedAt: now,
+    });
+    const intentId = await ctx.db.insert("paymentIntents", {
+      venueId: w.b.venueId,
+      checkId: m.checkId,
+      tableSessionId: m.service.sessionId,
+      providerAccountId: accountId,
+      provider: "wave_ci",
+      reference: "jp_reference_de_b",
+      providerRef: "cos-de-b",
+      amount: 1000,
+      currency: "XOF",
+      status: "processing",
+      target: "remainder",
+      createdCheck: false,
+      idempotencyKey: "intention-de-b-000001",
+      expiresAt: now + 1_800_000,
+      checkAttempts: 0,
+      isSimulation: false,
+      createdAt: now,
+      updatedAt: now,
+    });
+    const alertId = await ctx.db.insert("paymentAlerts", {
+      venueId: w.b.venueId,
+      kind: "overpaid_closed",
+      severity: "critical",
+      message: "Trop-perçu chez B",
+      dedupeKey: "alerte-de-b",
+      createdAt: now,
+    });
+    await ctx.db.insert("providerReconciliations", {
+      venueId: w.b.venueId,
+      providerAccountId: accountId,
+      dayUtc: "2026-09-24",
+      status: "done",
+      passes: 1,
+      lastRunAt: now,
+      matched: 3,
+      missingHere: 0,
+      missingAtProvider: 0,
+      amountMismatch: 0,
+      fees: 90,
+      checkoutTotal: 9000,
+    });
+    return { accountId, intentId, alertId };
+  });
+}
+
 /** Les deux formes de franchissement : l'établissement de B, puis le sien avec un objet de B. */
 async function bothRefused(viaForeignVenue: Promise<unknown>, viaCrossedId: Promise<unknown>) {
   await expectCode(viaForeignVenue, "NOT_FOUND");
@@ -1382,6 +1445,79 @@ const CASES: Record<string, (w: Awaited<ReturnType<typeof twoTenants>>) => Promi
       w.a.owner.as.mutation(api.checks.discount, { venueId: w.b.venueId, sessionId: s.sessionId, ...args }),
       w.a.owner.as.mutation(api.checks.discount, { venueId: w.a.venueId, sessionId: s.sessionId, ...args }),
     );
+  },
+  "onlinePayments.guestStart": async (w) => {
+    const b = await guestAtB(w);
+    expect(await w.t.action(api.onlinePayments.guestStart, { ...b.guest, venueSlug: "maquis-a-cocody", target: "remainder", idempotencyKey: "isolation-paiement-000001" })).toEqual({ ok: false, reason: "invalid_pass" });
+    expect(await w.t.run((ctx) => ctx.db.query("paymentIntents").collect())).toEqual([]);
+  },
+  "onlinePayments.guestCheck": async (w) => {
+    const b = await guestAtB(w);
+    await onlineAtB(w);
+    expect(await w.t.action(api.onlinePayments.guestCheck, { ...b.guest, venueSlug: "maquis-a-cocody" })).toEqual({ status: "none" });
+  },
+  "onlinePayments.cancel": async (w) => {
+    const o = await onlineAtB(w);
+    await bothRefused(
+      w.a.owner.as.mutation(api.onlinePayments.cancel, { venueId: w.b.venueId, intentId: o.intentId }),
+      w.a.owner.as.mutation(api.onlinePayments.cancel, { venueId: w.a.venueId, intentId: o.intentId }),
+    );
+    expect((await w.t.run((ctx) => ctx.db.get(o.intentId)))!.cancelRequestedAt).toBeUndefined();
+  },
+  "onlinePayments.alerts": async (w) => {
+    await onlineAtB(w);
+    await expectCode(w.a.owner.as.query(api.onlinePayments.alerts, { venueId: w.b.venueId }), "NOT_FOUND");
+    expect((await w.a.owner.as.query(api.onlinePayments.alerts, { venueId: w.a.venueId })).alerts).toEqual([]);
+  },
+  "onlinePayments.resolveAlert": async (w) => {
+    const o = await onlineAtB(w);
+    await bothRefused(
+      w.a.owner.as.mutation(api.onlinePayments.resolveAlert, { venueId: w.b.venueId, alertId: o.alertId, resolution: "Rendu au client" }),
+      w.a.owner.as.mutation(api.onlinePayments.resolveAlert, { venueId: w.a.venueId, alertId: o.alertId, resolution: "Rendu au client" }),
+    );
+    expect((await w.t.run((ctx) => ctx.db.get(o.alertId)))!.resolvedAt).toBeUndefined();
+  },
+  "onlinePayments.reconciliations": async (w) => {
+    await onlineAtB(w);
+    await expectCode(w.a.owner.as.query(api.onlinePayments.reconciliations, { venueId: w.b.venueId }), "NOT_FOUND");
+    expect(await w.a.owner.as.query(api.onlinePayments.reconciliations, { venueId: w.a.venueId })).toEqual([]);
+  },
+  "paymentAccounts.forVenue": async (w) => {
+    await onlineAtB(w);
+    await expectCode(w.a.owner.as.query(api.paymentAccounts.forVenue, { venueId: w.b.venueId }), "NOT_FOUND");
+    expect((await w.a.owner.as.query(api.paymentAccounts.forVenue, { venueId: w.a.venueId })).account).toBeNull();
+  },
+  "paymentAccounts.saveSecrets": async (w) => {
+    const o = await onlineAtB(w);
+    process.env.PAYMENT_SECRETS_KEY ??= btoa(String.fromCharCode(...new Uint8Array(32).fill(7)));
+    await expectCode(w.a.owner.as.action(api.paymentAccounts.saveSecrets, { venueId: w.b.venueId, apiKey: "wave_ci_prod_cle_de_l_intrus_000000" }), "NOT_FOUND");
+    expect((await w.t.run((ctx) => ctx.db.get(o.accountId)))!.secrets.apiKey).toBe("s1.1.faux.faux");
+  },
+  "paymentAccounts.testConnection": async (w) => {
+    await onlineAtB(w);
+    await expectCode(w.a.owner.as.action(api.paymentAccounts.testConnection, { venueId: w.b.venueId }), "NOT_FOUND");
+  },
+  "paymentAccounts.activate": async (w) => {
+    const o = await onlineAtB(w);
+    await w.t.run((ctx) => ctx.db.patch(o.accountId, { status: "draft" }));
+    await expectCode(w.a.owner.as.mutation(api.paymentAccounts.activate, { venueId: w.b.venueId }), "NOT_FOUND");
+    expect((await w.t.run((ctx) => ctx.db.get(o.accountId)))!.status).toBe("draft");
+  },
+  "paymentAccounts.disable": async (w) => {
+    const o = await onlineAtB(w);
+    await expectCode(w.a.owner.as.mutation(api.paymentAccounts.disable, { venueId: w.b.venueId }), "NOT_FOUND");
+    expect((await w.t.run((ctx) => ctx.db.get(o.accountId)))!.status).toBe("active");
+  },
+  "paymentAccounts.dropPreviousWebhookSecret": async (w) => {
+    const o = await onlineAtB(w);
+    await w.t.run((ctx) => ctx.db.patch(o.accountId, { secrets: { apiKey: "s1.1.faux.faux", webhookSecret: "s1.1.faux.faux", webhookSecretPrevious: "s1.1.vieux.vieux" } }));
+    await expectCode(w.a.owner.as.mutation(api.paymentAccounts.dropPreviousWebhookSecret, { venueId: w.b.venueId }), "NOT_FOUND");
+    expect((await w.t.run((ctx) => ctx.db.get(o.accountId)))!.secrets.webhookSecretPrevious).toBe("s1.1.vieux.vieux");
+  },
+  "paymentAccounts.rotateWebhookPath": async (w) => {
+    const o = await onlineAtB(w);
+    await expectCode(w.a.owner.as.mutation(api.paymentAccounts.rotateWebhookPath, { venueId: w.b.venueId }), "NOT_FOUND");
+    expect((await w.t.run((ctx) => ctx.db.get(o.accountId)))!.webhookPathId).toBe("chemin-de-b-".padEnd(43, "0"));
   },
   "payments.collect": async (w) => {
     const s = await withServiceB(w);

@@ -35,6 +35,7 @@ export function redactRoute(route: string): string {
   return route
     .replace(/\/invitation\/[^/?#]+/g, "/invitation/:jeton")
     .replace(/(\/r\/[^/?#]+)\/t\/[^/?#]+/g, "$1/t/:jeton")
+    .replace(/\/webhooks\/wave\/[^/?#]+/g, "/webhooks/wave/:chemin")
     .replace(/[?#].*$/, "");
 }
 

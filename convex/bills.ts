@@ -160,9 +160,10 @@ export const issue = mutation({
 });
 
 /** Un avoir lié : il corrige le ticket sans le réécrire (D-063). Appelé par le remboursement. */
-export async function issueCreditNote(ctx: MutationCtx, actor: ServiceActor, sale: Doc<"bills">, amount: number, reason: string): Promise<Id<"bills">> {
+/** `venue` et non l'acteur : un remboursement en ligne se confirme sans humain (D-123). */
+export async function issueCreditNote(ctx: MutationCtx, venue: Doc<"venues">, sale: Doc<"bills">, amount: number, reason: string): Promise<Id<"bills">> {
   const now = Date.now();
-  const number = await nextBillNumber(ctx, actor.venue, "credit_note", now);
+  const number = await nextBillNumber(ctx, venue, "credit_note", now);
   return ctx.db.insert("bills", {
     venueId: sale.venueId,
     checkId: sale.checkId,

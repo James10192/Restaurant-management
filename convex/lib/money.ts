@@ -144,3 +144,34 @@ export function formatMoney(m: Money, locale = "fr-CI"): string {
     maximumFractionDigits: CURRENCY_EXPONENT[m.currency],
   }).format(toDecimal(m));
 }
+
+/**
+ * Un montant tel qu'un fournisseur l'attend : une CHAÎNE décimale, dans l'unité principale.
+ * 5000 XOF → "5000" · 1250 EUR → "12.50". Wave refuse toute décimale en XOF (« Decimal places are
+ * not allowed for XOF currency amounts ») : l'exposant 0 n'en produit jamais.
+ */
+export function toProviderAmount(amount: number, currency: CurrencyCode): string {
+  if (!Number.isInteger(amount) || amount < 0) throw new MoneyError(`Montant invalide pour un fournisseur : ${amount}.`);
+  const exponent = CURRENCY_EXPONENT[currency];
+  if (exponent === 0) return String(amount);
+  const digits = String(amount).padStart(exponent + 1, "0");
+  return `${digits.slice(0, -exponent)}.${digits.slice(-exponent)}`;
+}
+
+/**
+ * Un montant renvoyé par un fournisseur, relu SANS flottant. « 12000 » et « 12000.00 » valent
+ * 12 000 XOF ; « 12000.5 » en XOF est refusé (`null`) : un demi-franc n'existe pas, et l'arrondir
+ * en silence ferait mentir la caisse. Toute autre forme est refusée.
+ */
+export function parseProviderAmount(value: unknown, currency: CurrencyCode): number | null {
+  if (typeof value !== "string" && typeof value !== "number") return null;
+  const text = typeof value === "number" ? (Number.isInteger(value) ? String(value) : "") : value.trim();
+  const match = /^(\d{1,15})(?:\.(\d{1,6}))?$/.exec(text);
+  if (!match) return null;
+  const exponent = CURRENCY_EXPONENT[currency];
+  const whole = match[1]!;
+  const fraction = (match[2] ?? "").replace(/0+$/, "");
+  if (fraction.length > exponent) return null;
+  const amount = Number(whole + fraction.padEnd(exponent, "0"));
+  return Number.isSafeInteger(amount) ? amount : null;
+}

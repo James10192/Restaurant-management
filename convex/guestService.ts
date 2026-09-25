@@ -24,6 +24,7 @@ import { APPROVAL_EXPIRE_MS, CART_TTL_MS, type LineProblem, type LineRequest } f
 import { rateLimiter } from "./lib/rateLimits";
 import { settingsOf, touchSession, writeOrderEvent } from "./lib/service";
 import { createOrder, priceRequest } from "./orders";
+import { guestPaymentView } from "./lib/guestPayment";
 
 export const CART_MAX_LINES = 30;
 /** Motif posé sur une commande que personne n'a validée à temps : le client la lit « expirée ». */
@@ -322,6 +323,8 @@ export const presence = query({
       /** Après la clôture : laisser un avis, une fois (D-105). */
       feedback: visit ? { done: visit.done } : null,
       topics: FEEDBACK_TOPICS,
+      /** Payer depuis la table (T5) : seulement un convive admis, sur un établissement qui l'a activé. */
+      payment: guest && !removed ? await guestPaymentView(ctx, resolved.venue, session, guest) : null,
     };
   },
 });

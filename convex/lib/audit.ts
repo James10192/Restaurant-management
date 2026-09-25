@@ -16,13 +16,16 @@ export type AuditEntry = {
   actorUserId?: Id<"users">;
   actorMemberId?: Id<"organizationMembers">;
   actorDeviceId?: Id<"trustedDevices">;
-  actorType?: "staff" | "device";
+  /** `system` : un geste sans humain — un paiement confirmé par le fournisseur (D-118). */
+  actorType?: "staff" | "device" | "system";
   action: string;
   resourceType: string;
   resourceId?: string;
   before?: unknown;
   after?: unknown;
   reason?: string;
+  /** `system` pour un webhook ou une tâche programmée ; `web` sinon. */
+  source?: "web" | "system";
 };
 
 export async function writeAudit(ctx: MutationCtx, entry: AuditEntry): Promise<void> {
@@ -39,7 +42,7 @@ export async function writeAudit(ctx: MutationCtx, entry: AuditEntry): Promise<v
     ...(entry.before !== undefined ? { before: entry.before } : {}),
     ...(entry.after !== undefined ? { after: entry.after } : {}),
     ...(entry.reason !== undefined ? { reason: entry.reason } : {}),
-    source: "web",
+    source: entry.source ?? "web",
     at: Date.now(),
   });
 }

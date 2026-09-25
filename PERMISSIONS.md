@@ -134,6 +134,7 @@ fichier ; les deux doivent rester alignés (un test le vérifie — voir §9).
 | `cash_register.open` | Ouvrir une session de caisse | venue |
 | `cash_register.close` | Clôturer, déclarer le compté — **y compris avec un écart** | venue |
 | `cash_register.adjust` | Corriger un écart — **toujours audité** | venue |
+| `payment.provider.manage` | Saisir et renouveler les clés du fournisseur de paiement en ligne — **jamais sous PIN**, propriétaire et administrateur par défaut *(D-117)* | venue |
 | `report.service_day.read` | Lire le rapport de fin de service — indépendante du module d'analyses financières, qu'un plan peut retirer | venue |
 
 ### Clients et fidélité

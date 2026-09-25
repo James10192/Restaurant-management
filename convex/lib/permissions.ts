@@ -122,6 +122,9 @@ export const PERMISSIONS = {
   "cash_register.adjust": { label: "Corriger un écart de caisse", group: "Encaissement", scope: "venue", sensitive: true, audited: true, requiresReason: true },
   // Le rapport de fin de service est la promesse de T3 (« qu'est-ce qui est entré, par qui ») :
   // il ne dépend pas du module d'analyses financières, qu'un plan peut retirer.
+  // Saisir les clés d'un fournisseur de paiement en ligne (D-117) : qui les détient peut encaisser
+  // et REMBOURSER au nom du restaurant. Jamais sous PIN ; par défaut, propriétaire et administrateur.
+  "payment.provider.manage": { label: "Configurer le paiement en ligne (clés du fournisseur)", group: "Encaissement", scope: "venue", sensitive: true, audited: true },
   "report.service_day.read": { label: "Lire le rapport de fin de service", group: "Encaissement", scope: "venue", sensitive: true },
 
   /* ── Clients ─────────────────────────────────────────────────────────── */

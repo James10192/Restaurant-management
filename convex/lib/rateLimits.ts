@@ -41,6 +41,11 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
   // Code de table (D-096) : cinq essais faux par QR et par 10 minutes. 10 000 codes : moins de
   // 1 % de chances sur une tablée de deux heures.
   guestCode: { kind: "fixed window", rate: 5, period: 10 * MINUTE },
+  // Paiement en ligne (D-119) : chaque création appelle Wave. Par convive, et par QR comme filet.
+  guestPayPerGuest: { kind: "fixed window", rate: 3, period: 10 * MINUTE },
+  guestPay: { kind: "fixed window", rate: 10, period: 10 * MINUTE },
+  // « J'ai payé, vérifier » : une relecture chez Wave par appui, bornée.
+  guestPayCheck: { kind: "fixed window", rate: 10, period: 10 * MINUTE },
   // Nouveaux convives, par tablée : une photo du QR ne doit pas remplir la table de faux invités.
   guestJoin: { kind: "fixed window", rate: 15, period: 10 * MINUTE },
 });

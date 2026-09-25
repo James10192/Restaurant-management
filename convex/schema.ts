@@ -350,8 +350,10 @@ export default defineSchema({
         v.object({
           providerKey: v.string(),
           isEnabled: v.boolean(),
-          /** Référence marchand chez le fournisseur. JAMAIS de secret ici. */
+          /** Hérité, jamais lu : le compte fournisseur vit dans `paymentProviderAccounts`. */
           merchantRef: v.optional(v.string()),
+          /** Le compte chez ce fournisseur (D-116). JAMAIS de secret ici. */
+          accountId: v.optional(v.id("paymentProviderAccounts")),
           sortOrder: v.number(),
         }),
       ),
@@ -1240,42 +1242,114 @@ export default defineSchema({
     .index("by_check", ["checkId"])
     .index("by_order_item", ["orderItemId"]), // vérifie qu'une ligne n'est pas allouée deux fois
 
-  /** Une intention n'est pas de l'argent. (T5 — paiement en ligne.) */
+  /**
+   * Un compte chez un fournisseur de paiement en ligne, PAR ÉTABLISSEMENT (D-116). Les secrets
+   * sont chiffrés (D-117) et ne sortent jamais d'une requête : seuls leurs 4 derniers caractères
+   * s'affichent. Le chemin du webhook est aléatoire, jamais l'identifiant Convex.
+   */
+  paymentProviderAccounts: defineTable({
+    venueId: v.id("venues"),
+    providerKey: v.literal("wave_ci"),
+    country: v.string(),
+    /** `draft` : saisi, pas encore prouvé · `active` : proposé aux clients · `disabled` : coupé. */
+    status: v.union(v.literal("draft"), v.literal("active"), v.literal("disabled")),
+    /** 32 octets aléatoires en base64url : la seule chose que l'adresse du webhook révèle. */
+    webhookPathId: v.string(),
+    secrets: v.object({
+      apiKey: v.optional(v.string()),
+      webhookSecret: v.optional(v.string()),
+      /** Encore accepté pendant une rotation, retiré ensuite. */
+      webhookSecretPrevious: v.optional(v.string()),
+      requestSigningSecret: v.optional(v.string()),
+    }),
+    apiKeyLast4: v.optional(v.string()),
+    webhookSecretLast4: v.optional(v.string()),
+    /** La clé a-t-elle le droit « Solde » ? Sans lui, pas de rapprochement automatique. */
+    balanceAccess: v.optional(v.boolean()),
+    lastConnectionTestAt: v.optional(v.number()),
+    lastConnectionOk: v.optional(v.boolean()),
+    /** Preuve que Wave joint notre adresse ET que le secret collé est le bon (D-128). */
+    lastTestEventAt: v.optional(v.number()),
+    lastSignatureFailureAt: v.optional(v.number()),
+    /** Échecs de signature sur l'heure en cours : au-delà de 5, le secret collé est probablement faux. */
+    signatureFailures: v.optional(v.object({ windowStart: v.number(), count: v.number() })),
+    configuredByMemberId: v.id("organizationMembers"),
+    configuredAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_venue", ["venueId"])
+    // Atteint par l'adresse du webhook, sans session : le chemin aléatoire EST la portée, comme un
+    // jeton (32 octets). Le compte trouvé porte son établissement ; rien d'autre n'est lu avant la
+    // vérification de signature.
+    .index("by_webhook_path", ["webhookPathId"])
+    .index("by_status", ["status"]),
+
+  /**
+   * Une intention n'est pas de l'argent (T5). Son montant est FIGÉ à la création, relu côté
+   * serveur (R14) ; tant qu'elle est ouverte, elle protège son addition (D-114).
+   */
   paymentIntents: defineTable({
     venueId: v.id("venues"),
     checkId: v.id("checks"),
     tableSessionId: v.id("tableSessions"),
+    providerAccountId: v.id("paymentProviderAccounts"),
     provider: v.string(),
+    /** Notre référence, aléatoire, envoyée comme `client_reference` : ni table, ni établissement. */
+    reference: v.string(),
+    /** L'identifiant de la session chez le fournisseur (`cos-…`). */
     providerRef: v.optional(v.string()),
+    launchUrl: v.optional(v.string()),
     amount: money,
-    /**
-     * Montant réellement accepté par le fournisseur. Certains imposent un pas (multiple de 5)
-     * et ARRONDISSENT SANS PRÉVENIR : sans ce champ, l'écart disparaît et la caisse ne tombe
-     * plus juste. On arrondit soi-même au supérieur avant l'appel, et on compare au retour.
-     */
+    /** Montant réellement accepté par le fournisseur, s'il diffère (D-028). */
     acceptedAmount: v.optional(money),
     currency: v.string(),
     status: v.union(
-      v.literal("created"),
+      /** Le bail : une action est en train de créer la session chez le fournisseur. */
+      v.literal("initializing"),
+      /** La session existe chez le fournisseur, le client peut payer. */
       v.literal("processing"),
-      v.literal("awaiting_confirmation"),
       v.literal("succeeded"),
+      /** Aucune session n'a pu être créée. */
       v.literal("failed"),
       v.literal("expired"),
+      /** Annulée par le personnel, session expirée chez le fournisseur. */
+      v.literal("cancelled"),
     ),
-    idempotencyKey: v.string(),
+    /** Ce que le payeur règle : le reste de la table, ou ses articles détachés (D-113). */
+    target: v.union(v.literal("remainder"), v.literal("my_items")),
+    /** L'addition « Convive N » a été créée POUR cette intention : défaite si elle expire impayée. */
+    createdCheck: v.boolean(),
     guestSessionId: v.optional(v.id("guestSessions")),
     createdByMemberId: v.optional(v.id("organizationMembers")),
-    redirectUrl: v.optional(v.string()),
+    idempotencyKey: v.string(),
+    initLeaseUntil: v.optional(v.number()),
     expiresAt: v.number(),
+    /** Rattrapage (D-120) : quand revérifier, et combien de fois c'est déjà fait. */
+    nextCheckAt: v.optional(v.number()),
+    checkAttempts: v.number(),
     lastCheckedAt: v.optional(v.number()),
+    cancelRequestedAt: v.optional(v.number()),
+    cancelRequestedByMemberId: v.optional(v.id("organizationMembers")),
+    lastErrorCode: v.optional(v.string()),
     failureReason: v.optional(v.string()),
+    paymentId: v.optional(v.id("payments")),
+    providerTransactionId: v.optional(v.string()),
+    paidAt: v.optional(v.number()),
+    isSimulation: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
   })
-    .index("by_check", ["checkId"])
-    .index("by_provider_ref", ["provider", "providerRef"]) // chemin du webhook
+    .index("by_check_status", ["checkId", "status"])
+    .index("by_session_status", ["tableSessionId", "status"])
+    // Le webhook résout par notre référence DANS le compte qui a signé : le compte est la portée
+    // (il appartient à un seul établissement). Un secret d'un autre restaurant ne désigne rien ici.
+    .index("by_account_reference", ["providerAccountId", "reference"])
+    .index("by_account_provider_ref", ["providerAccountId", "providerRef"])
     // Par établissement, jamais globale (D-064).
     .index("by_venue_idempotency", ["venueId", "idempotencyKey"])
-    .index("by_status_expires", ["status", "expiresAt"]),
+    .index("by_guest_status", ["guestSessionId", "status"])
+    .index("by_status_next_check", ["status", "nextCheckAt"])
+    .index("by_venue_createdAt", ["venueId", "createdAt"]),
 
   /** De l'argent réellement reçu. La table la plus sensible du produit. Jamais supprimée. */
   payments: defineTable({
@@ -1289,6 +1363,8 @@ export default defineSchema({
     /** Référence de transaction, facultative en saisie manuelle. */
     providerRef: v.optional(v.string()),
     paymentIntentId: v.optional(v.id("paymentIntents")),
+    /** Paiement en ligne : l'identifiant de transaction chez le fournisseur (rapprochement, D-121). */
+    providerTransactionId: v.optional(v.string()),
     /** Ce qui s'impute sur l'addition. */
     amount: money,
     tipAmount: money,
@@ -1330,6 +1406,8 @@ export default defineSchema({
     .index("by_venue_voidedAt", ["venueId", "voidedAt"])
     .index("by_venue_method_createdAt", ["venueId", "method", "createdAt"])
     .index("by_provider_ref", ["provider", "providerRef"])
+    // Un paiement au plus par intention : c'est ce qui rend la confirmation rejouable (D-118).
+    .index("by_intent", ["paymentIntentId"])
     // Par établissement, jamais globale (D-064).
     .index("by_venue_idempotency", ["venueId", "idempotencyKey"]),
 
@@ -1349,32 +1427,122 @@ export default defineSchema({
     approvedByMemberId: v.optional(v.id("organizationMembers")),
     provider: v.optional(v.string()),
     providerRef: v.optional(v.string()),
+    /** Remboursement en ligne refusé par le fournisseur : son code, jamais un message libre. */
+    failureCode: v.optional(v.string()),
+    completedAt: v.optional(v.number()),
     idempotencyKey: v.string(),
     isSimulation: v.boolean(),
     createdAt: v.number(),
   })
     .index("by_payment", ["paymentId"])
+    .index("by_status_createdAt", ["status", "createdAt"])
     .index("by_venue_createdAt", ["venueId", "createdAt"])
     .index("by_register_session", ["cashRegisterSessionId"])
     .index("by_venue_idempotency", ["venueId", "idempotencyKey"]),
 
-  /** La table qui rend l'idempotence des webhooks possible (R16). */
+  /**
+   * Un webhook reçu, SIGNATURE VÉRIFIÉE (R16, D-118). Minimal : ce qu'il faut pour dédoublonner
+   * et relier, jamais le corps libre — il porterait le nom du commerce, des adresses, et n'aide à
+   * rien qu'une empreinte ne prouve.
+   */
   webhookEvents: defineTable({
+    providerAccountId: v.id("paymentProviderAccounts"),
+    venueId: v.id("venues"),
     provider: v.string(),
     providerEventId: v.string(),
     eventType: v.string(),
-    signatureValid: v.boolean(),
-    payload: v.any(),
-    processedAt: v.optional(v.number()),
-    processingResult: v.optional(v.string()),
+    providerRef: v.optional(v.string()),
+    reference: v.optional(v.string()),
+    amount: v.optional(money),
+    currency: v.optional(v.string()),
+    /** SHA-256 du corps brut. */
+    bodyHash: v.string(),
+    processingResult: v.string(),
     relatedIntentId: v.optional(v.id("paymentIntents")),
     receivedAt: v.number(),
     replayCount: v.number(),
+    lastReplayAt: v.optional(v.number()),
   })
-    // Portée = le fournisseur : un webhook arrive avant qu'on sache à quel tenant il appartient.
-    .index("by_provider_event", ["provider", "providerEventId"])
-    .index("by_processed", ["processedAt"])
-    .index("by_provider_received", ["provider", "receivedAt"]),
+    // Dédoublonnage par compte : deux restaurants ne partagent pas l'espace des événements.
+    .index("by_account_event", ["providerAccountId", "providerEventId"])
+    .index("by_venue_received", ["venueId", "receivedAt"]),
+
+  /**
+   * Le rapprochement d'un jour UTC avec le relevé du fournisseur (D-121). Deux passes : J-1 puis
+   * J-2 ; une transaction absente après la seconde est « en retard ».
+   */
+  providerReconciliations: defineTable({
+    venueId: v.id("venues"),
+    providerAccountId: v.id("paymentProviderAccounts"),
+    dayUtc: v.string(),
+    status: v.union(v.literal("done"), v.literal("unavailable"), v.literal("failed")),
+    passes: v.number(),
+    lastRunAt: v.number(),
+    /** `unavailable` : clé sans droit « Solde ». `failed` : fournisseur injoignable. */
+    failureCode: v.optional(v.string()),
+    matched: v.number(),
+    missingHere: v.number(),
+    missingAtProvider: v.number(),
+    amountMismatch: v.number(),
+    /** Commissions du jour, en unité mineure : Wave les prélève sur le portefeuille. */
+    fees: money,
+    checkoutTotal: money,
+  })
+    .index("by_account_day", ["providerAccountId", "dayUtc"])
+    .index("by_venue_day", ["venueId", "dayUtc"]),
+
+  reconciliationItems: defineTable({
+    venueId: v.id("venues"),
+    reconciliationId: v.id("providerReconciliations"),
+    kind: v.union(v.literal("matched"), v.literal("missing_here"), v.literal("missing_at_provider"), v.literal("amount_mismatch")),
+    providerTransactionId: v.optional(v.string()),
+    providerRef: v.optional(v.string()),
+    providerAmount: v.optional(money),
+    fee: v.optional(money),
+    ourAmount: v.optional(money),
+    paymentId: v.optional(v.id("payments")),
+    refundId: v.optional(v.id("refunds")),
+    at: v.number(),
+  })
+    .index("by_reconciliation", ["reconciliationId"])
+    .index("by_payment", ["paymentId"]),
+
+  /**
+   * Ce qu'un humain doit regarder, et que personne n'a encore traité : trop-perçu sur une table
+   * close, montant ou devise inattendus, signature refusée en série, écart de rapprochement.
+   */
+  paymentAlerts: defineTable({
+    venueId: v.id("venues"),
+    kind: v.union(
+      v.literal("overpaid_closed"),
+      v.literal("amount_mismatch"),
+      v.literal("currency_mismatch"),
+      v.literal("foreign_event"),
+      v.literal("signature_failures"),
+      v.literal("provider_unreachable"),
+      v.literal("missing_here"),
+      v.literal("missing_at_provider"),
+      v.literal("refund_failed"),
+    ),
+    severity: v.union(v.literal("info"), v.literal("warning"), v.literal("critical")),
+    /** Une phrase lisible, sans donnée de payeur. */
+    message: v.string(),
+    amount: v.optional(money),
+    currency: v.optional(v.string()),
+    intentId: v.optional(v.id("paymentIntents")),
+    paymentId: v.optional(v.id("payments")),
+    refundId: v.optional(v.id("refunds")),
+    tableSessionId: v.optional(v.id("tableSessions")),
+    providerTransactionId: v.optional(v.string()),
+    /** Une alerte ne se répète pas : même clé, même alerte. */
+    dedupeKey: v.string(),
+    createdAt: v.number(),
+    resolvedAt: v.optional(v.number()),
+    resolvedByMemberId: v.optional(v.id("organizationMembers")),
+    resolution: v.optional(v.string()),
+  })
+    .index("by_venue_open", ["venueId", "resolvedAt"])
+    .index("by_venue_dedupe", ["venueId", "dedupeKey"]),
 
   /** Un tiroir physique (mode `central`). Le premier, « Caisse principale », se crée seul. */
   cashRegisters: defineTable({
@@ -1696,7 +1864,11 @@ export default defineSchema({
     .index("by_resource", ["resourceType", "resourceId"])
     .index("by_actor_at", ["actorUserId", "at"]),
 
-  /** Le garde-fou central : une seconde requête renvoie le premier résultat (D-010). */
+  /**
+   * OBSOLÈTE — jamais lue ni écrite. Son index global contredit D-064 : l'idempotence vit dans
+   * chaque table, par établissement (`by_venue_idempotency`). Gardée tant qu'une migration ne l'a
+   * pas vidée sur les déploiements existants ; aucun code nouveau ne doit l'utiliser.
+   */
   idempotencyKeys: defineTable({
     key: v.string(),
     scope: v.string(),

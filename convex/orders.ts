@@ -18,6 +18,7 @@ import { mutation, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { writeAudit } from "./lib/audit";
 import { lineGross, loadSessionBilling, negativeCheck } from "./lib/billing";
+import { assertIntentsStillCovered } from "./lib/intents";
 import { getInVenue } from "./lib/catalogAccess";
 import { conflict, forbidden, invalid } from "./lib/errors";
 import type { MutationCtx, ReadCtx } from "./lib/guards";
@@ -552,6 +553,8 @@ async function assertNotPaid(ctx: MutationCtx, sessionId: Id<"tableSessions">, i
   if (negativeCheck(after)) {
     throw conflict("Ce qui est annulé est déjà encaissé : remboursez d'abord, puis annulez.");
   }
+  // Un paiement en ligne en cours porte un montant figé : l'annulation ne le rendrait pas trop grand (D-114).
+  await assertIntentsStillCovered(ctx, session._id, after);
 }
 
 async function cancelLine(

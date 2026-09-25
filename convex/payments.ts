@@ -17,6 +17,7 @@
 
 import { v } from "convex/values";
 import { mutation } from "./_generated/server";
+import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { writeAudit } from "./lib/audit";
 import { closingState, loadSessionBilling } from "./lib/billing";
@@ -24,7 +25,8 @@ import { getInVenue } from "./lib/catalogAccess";
 import { conflict, invalid, notFound } from "./lib/errors";
 import type { MutationCtx } from "./lib/guards";
 import { requireServiceMutation, type ServiceActor } from "./lib/serviceActor";
-import { settingsOf } from "./lib/service";
+import { isOpenSession, settingsOf } from "./lib/service";
+import { expireOpenIntentsOf } from "./lib/intents";
 import { cashModeOf, memberOf, requireAmount, requireReason, resolveCashSession } from "./cash";
 import { assertBillable, ensureRemainder } from "./checks";
 import { issueCreditNote } from "./bills";
@@ -132,46 +134,115 @@ export async function applyPayment(ctx: MutationCtx, actor: ServiceActor, sessio
   }
 
   const check = target.check ?? (await ensureRemainder(ctx, session, member));
+  const paymentId = await insertPayment(ctx, {
+    session,
+    check,
+    method: input.method,
+    amount,
+    ...(wallet ? { wallet } : {}),
+    ...(providerRef ? { providerRef } : {}),
+    ...(receivedAmount !== undefined ? { receivedAmount } : {}),
+    changeAmount,
+    ...(cashRegisterSessionId ? { cashRegisterSessionId } : {}),
+    idempotencyKey: input.idempotencyKey,
+    by: { kind: "staff", actor, member },
+  });
+  // Une addition soldée au comptoir ferme les sessions de paiement en ligne encore ouvertes sur
+  // elle : sinon le client pourrait payer une seconde fois ce que la caisse vient d'encaisser (D-114).
+  if (target.balance.due - amount <= 0) await expireOpenIntentsOf(ctx, check._id, "settled_elsewhere");
+  return { ok: true, paymentId, due: target.balance.due - amount, changeAmount };
+}
+
+export type PaymentOrigin =
+  | { kind: "staff"; actor: ServiceActor; member: Doc<"organizationMembers"> }
+  | { kind: "online"; organizationId: Id<"organizations">; intentId: Id<"paymentIntents">; guestSessionId?: Id<"guestSessions"> };
+
+/**
+ * Le cœur commun des deux voies d'argent (D-110) : insérer le paiement, faire avancer la table,
+ * éteindre une dette recouvrée, journaliser. Toutes les vérifications (dû, caisse, portefeuille,
+ * signature) sont faites AVANT, par la voie qui appelle : le comptoir (`applyPayment`) ou le
+ * paiement en ligne confirmé (`confirmIntent`).
+ */
+export async function insertPayment(
+  ctx: MutationCtx,
+  p: {
+    session: Doc<"tableSessions">;
+    check: Doc<"checks">;
+    method: Doc<"payments">["method"];
+    amount: number;
+    wallet?: string;
+    provider?: string;
+    providerRef?: string;
+    providerTransactionId?: string;
+    receivedAmount?: number;
+    changeAmount?: number;
+    cashRegisterSessionId?: Id<"cashRegisterSessions">;
+    idempotencyKey: string;
+    by: PaymentOrigin;
+  },
+): Promise<Id<"payments">> {
+  const { session, check } = p;
+  const recovering = session.status === "closed_with_debt" && session.debtSettledAt === undefined;
   const now = Date.now();
+  const changeAmount = p.changeAmount ?? 0;
   const paymentId = await ctx.db.insert("payments", {
     venueId: session.venueId,
     checkId: check._id,
     tableSessionId: session._id,
-    method: input.method,
-    ...(wallet ? { wallet } : {}),
-    ...(providerRef ? { providerRef } : {}),
-    amount,
+    method: p.method,
+    ...(p.wallet ? { wallet: p.wallet } : {}),
+    ...(p.provider ? { provider: p.provider } : {}),
+    ...(p.providerRef ? { providerRef: p.providerRef } : {}),
+    ...(p.providerTransactionId ? { providerTransactionId: p.providerTransactionId } : {}),
+    ...(p.by.kind === "online" ? { paymentIntentId: p.by.intentId } : {}),
+    amount: p.amount,
     tipAmount: 0,
     currency: session.currency,
     status: "succeeded",
-    collectedByMemberId: member._id,
-    ...(actor.device ? { deviceId: actor.device._id } : {}),
-    ...(cashRegisterSessionId ? { cashRegisterSessionId } : {}),
-    ...(receivedAmount !== undefined ? { receivedAmount } : {}),
+    ...(p.by.kind === "staff" ? { collectedByMemberId: p.by.member._id } : {}),
+    ...(p.by.kind === "staff" && p.by.actor.device ? { deviceId: p.by.actor.device._id } : {}),
+    ...(p.by.kind === "online" && p.by.guestSessionId ? { guestSessionId: p.by.guestSessionId } : {}),
+    ...(p.cashRegisterSessionId ? { cashRegisterSessionId: p.cashRegisterSessionId } : {}),
+    ...(p.receivedAmount !== undefined ? { receivedAmount: p.receivedAmount } : {}),
     ...(changeAmount > 0 ? { changeAmount } : {}),
-    idempotencyKey: input.idempotencyKey,
+    idempotencyKey: p.idempotencyKey,
     isSimulation: session.isSimulation,
     createdAt: now,
   });
   if (recovering) {
     const { owed } = await closingState(ctx, await loadSessionBilling(ctx, session));
     if (owed === 0) await ctx.db.patch(session._id, { debtSettledAt: now });
-  } else {
+  } else if (isOpenSession(session)) {
     await ctx.db.patch(session._id, {
       lastActivityAt: now,
       ...(session.status === "settling" ? {} : { status: "settling" as const }),
     });
   }
-  await writeAudit(ctx, {
-    organizationId: actor.organization._id,
-    venueId: actor.venue._id,
-    ...actor.audit,
-    action: recovering ? "payment.debt_recovery" : "payment.collect",
-    resourceType: "payment",
-    resourceId: paymentId,
-    after: { method: input.method, wallet: wallet ?? null, amount, check: check.reference },
-  });
-  return { ok: true, paymentId, due: target.balance.due - amount, changeAmount };
+  const after = { method: p.method, wallet: p.wallet ?? null, provider: p.provider ?? null, amount: p.amount, check: check.reference };
+  const action = recovering ? "payment.debt_recovery" : p.by.kind === "online" ? "payment.online_confirmed" : "payment.collect";
+  if (p.by.kind === "staff") {
+    await writeAudit(ctx, {
+      organizationId: p.by.actor.organization._id,
+      venueId: p.by.actor.venue._id,
+      ...p.by.actor.audit,
+      action,
+      resourceType: "payment",
+      resourceId: paymentId,
+      after,
+    });
+  } else {
+    await writeAudit(ctx, {
+      organizationId: p.by.organizationId,
+      venueId: session.venueId,
+      actorType: "system",
+      source: "system",
+      action,
+      resourceType: "payment",
+      resourceId: paymentId,
+      after,
+    });
+  }
+  return paymentId;
 }
 
 /** Encaisser. `checkId: null` = le reste de la table. */
@@ -231,6 +302,9 @@ export const voidPayment = mutation({
     const payment = await getInVenue(ctx, args.paymentId, actor.venue._id, "Ce paiement");
     if (payment.status === "voided") return;
     if (payment.status !== "succeeded") throw conflict("Ce paiement a déjà été remboursé : il ne s'annule plus.");
+    // Un paiement en ligne est de l'argent RÉELLEMENT reçu par le fournisseur : l'annuler l'effacerait
+    // des comptes sans le rendre. On le rembourse (D-123).
+    if (payment.paymentIntentId) throw conflict("Un paiement en ligne ne s'annule pas : remboursez-le.");
     if (payment.collectedByMemberId === member._id) {
       throw conflict("On n'annule pas son propre encaissement : demandez à un responsable.");
     }
@@ -304,14 +378,23 @@ export const refund = mutation({
     const amount = requireAmount(args.amount, "Le montant remboursé");
     const payment = await getInVenue(ctx, args.paymentId, actor.venue._id, "Ce paiement");
     if (payment.status === "voided") throw conflict("Ce paiement est annulé : il n'y a rien à rembourser.");
+    // R19 compte les remboursements EN COURS : deux remboursements en ligne simultanés ne
+    // dépassent pas l'encaissé à eux deux (D-123).
     const previous = (await ctx.db
       .query("refunds")
       .withIndex("by_payment", (q) => q.eq("paymentId", payment._id))
-      .collect()).filter((r) => r.status === "succeeded");
+      .collect()).filter((r) => r.status === "succeeded" || r.status === "pending");
     const already = previous.reduce((s, r) => s + r.amount, 0);
     if (amount > payment.amount - already) throw conflict("On ne rembourse pas plus que ce qui a été encaissé.");
+    const online = payment.paymentIntentId !== undefined && payment.provider !== undefined && payment.providerRef !== undefined;
     // Un paiement en espèces se rend en espèces, « par le même moyen » compris : il faut la caisse.
     const method = args.method === "cash" ? "cash" : payment.method;
+    if (online && args.method === "original") {
+      // Wave ne rembourse qu'en TOTALITÉ (D-123) : pas d'arrondi silencieux au total.
+      if (previous.length > 0 || amount !== payment.amount) {
+        throw conflict("Wave ne rembourse que la totalité d'un paiement : remboursez une partie en espèces, depuis une caisse.");
+      }
+    }
     let cashRegisterSessionId: Id<"cashRegisterSessions"> | undefined;
     if (method === "cash") {
       if (!args.registerSessionId) throw invalid("Choisissez la caisse d'où sort l'argent.");
@@ -329,15 +412,27 @@ export const refund = mutation({
       method,
       ...(cashRegisterSessionId ? { cashRegisterSessionId } : {}),
       reason,
-      status: "succeeded",
+      // En ligne : « en cours » tant que le fournisseur n'a pas rendu l'argent. L'avoir et le statut
+      // du paiement suivent SA réponse, pas la nôtre.
+      status: online && args.method === "original" ? "pending" : "succeeded",
+      ...(online && args.method === "original" ? { provider: payment.provider, providerRef: payment.providerRef } : {}),
       requestedByMemberId: member._id,
       idempotencyKey: args.idempotencyKey,
       isSimulation: session?.isSimulation ?? false,
       createdAt: now,
     });
-    await ctx.db.patch(payment._id, { status: already + amount === payment.amount ? "refunded" : "partially_refunded" });
-    const sale = await saleBillFor(ctx, payment.checkId);
-    if (sale) await issueCreditNote(ctx, actor, sale, amount, reason);
+    if (online && args.method === "original") {
+      await ctx.scheduler.runAfter(0, internal.onlinePayments.executeRefund, { refundId });
+    } else {
+      const settled = previous.filter((r) => r.status === "succeeded").reduce((s, r) => s + r.amount, 0);
+      await ctx.db.patch(payment._id, { status: settled + amount >= payment.amount ? "refunded" : "partially_refunded" });
+      const sale = await saleBillFor(ctx, payment.checkId);
+      if (sale) await issueCreditNote(ctx, actor.venue, sale, amount, reason);
+      // Un trop-perçu rendu en espèces n'est plus à rendre.
+      for (const alert of await ctx.db.query("paymentAlerts").withIndex("by_venue_dedupe", (q) => q.eq("venueId", actor.venue._id).eq("dedupeKey", `overpaid:${payment._id}`)).collect()) {
+        if (alert.resolvedAt === undefined) await ctx.db.patch(alert._id, { resolvedAt: now, resolvedByMemberId: member._id, resolution: "refunded" });
+      }
+    }
     await writeAudit(ctx, {
       organizationId: actor.organization._id,
       venueId: actor.venue._id,

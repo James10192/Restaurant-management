@@ -17,6 +17,7 @@ import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { writeAudit } from "./lib/audit";
 import { closingState, formatAmount, loadSessionBilling } from "./lib/billing";
+import { assertNoOpenIntent } from "./lib/intents";
 import { getInVenue } from "./lib/catalogAccess";
 import { conflict, invalid, notFound } from "./lib/errors";
 import { memberCoversVenue, type MutationCtx, type ReadCtx } from "./lib/guards";
@@ -174,6 +175,9 @@ export const close = mutation({
     if (!isOpenSession(session)) return; // déjà clôturée : rejouer ne fait rien
     const orders = await ordersOf(ctx, session._id);
     assertNothingPending(orders);
+    // Un client en train de payer en ligne : clôturer maintenant ferait arriver son argent sur une
+    // table close (D-114).
+    await assertNoOpenIntent(ctx, session._id);
     const { owed, overpaid } = await closingState(ctx, await loadSessionBilling(ctx, session));
     if (owed > 0) throw conflict(`Il reste ${formatAmount(owed, session.currency)} à encaisser sur cette table. Encaissez, ou clôturez avec un impayé.`);
     if (overpaid > 0) throw conflict(`Le client a payé ${formatAmount(overpaid, session.currency)} de plus que l'addition : remboursez la différence avant de clôturer.`);
@@ -212,6 +216,7 @@ export const closeWithDebt = mutation({
     if (reason.length < 5 || reason.length > 300) throw invalid("Le motif est obligatoire (5 caractères au moins).");
     const orders = await ordersOf(ctx, session._id);
     assertNothingPending(orders);
+    await assertNoOpenIntent(ctx, session._id);
     const { owed, overpaid } = await closingState(ctx, await loadSessionBilling(ctx, session));
     if (overpaid > 0) throw conflict(`Une addition a été trop payée de ${formatAmount(overpaid, session.currency)} : remboursez la différence d'abord.`);
     if (owed <= 0) throw conflict("Il n'y a pas d'impayé sur cette table : clôturez-la normalement.");

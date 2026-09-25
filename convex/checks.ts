@@ -17,6 +17,7 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { writeAudit } from "./lib/audit";
+import { assertNoOpenIntent } from "./lib/intents";
 import { loadSessionBilling, takeShare, lineGross, type BillingCheck, type SessionBilling } from "./lib/billing";
 import { getInVenue } from "./lib/catalogAccess";
 import { conflict, invalid, notFound } from "./lib/errors";
@@ -26,7 +27,7 @@ import { isOpenSession, memberName, settingsOf } from "./lib/service";
 import { cashModeOf, memberOf, registerName, requireAmount, requireReason, resolveCashSession } from "./cash";
 
 /** « TS-2026-000123-2 » : la session, puis le rang de l'addition dans la session. */
-async function nextCheckReference(ctx: ReadCtx, session: Doc<"tableSessions">): Promise<string> {
+export async function nextCheckReference(ctx: ReadCtx, session: Doc<"tableSessions">): Promise<string> {
   const existing = await ctx.db
     .query("checks")
     .withIndex("by_session", (q) => q.eq("tableSessionId", session._id))
@@ -35,7 +36,8 @@ async function nextCheckReference(ctx: ReadCtx, session: Doc<"tableSessions">): 
 }
 
 /** Le « reste de la table » matérialisé : il faut un identifiant pour y rattacher un paiement. */
-export async function ensureRemainder(ctx: MutationCtx, session: Doc<"tableSessions">, member: Doc<"organizationMembers">): Promise<Doc<"checks">> {
+/** `member` absent : matérialisé par un paiement en ligne, sans humain (D-118). */
+export async function ensureRemainder(ctx: MutationCtx, session: Doc<"tableSessions">, member: Doc<"organizationMembers"> | null): Promise<Doc<"checks">> {
   const checks = await ctx.db
     .query("checks")
     .withIndex("by_session", (q) => q.eq("tableSessionId", session._id))
@@ -49,7 +51,7 @@ export async function ensureRemainder(ctx: MutationCtx, session: Doc<"tableSessi
     kind: "remainder",
     status: "open",
     currency: session.currency,
-    createdByMemberId: member._id,
+    ...(member ? { createdByMemberId: member._id } : {}),
     createdAt: Date.now(),
   });
   return (await ctx.db.get(id))!;
@@ -238,6 +240,8 @@ export const split = mutation({
     const billing = await loadSessionBilling(ctx, session);
     const rest = billing.checks.find((c) => c.kind === "remainder");
     if (!rest) throw conflict("Il ne reste rien à partager sur cette table.");
+    // Détacher des lignes baisse le dû du reste : pas pendant qu'un client le paie en ligne (D-114).
+    if (rest.check) await assertNoOpenIntent(ctx, session._id, rest.check._id);
     const restComped = new Set(rest.adjustments.filter((a) => a.type === "comp").map((a) => a.orderItemId));
     const shares: { item: Doc<"orderItems">; quantity: number; amount: number }[] = [];
     const seen = new Set<Id<"orderItems">>();
@@ -293,6 +297,7 @@ export const unsplit = mutation({
     if (check.kind !== "allocated" || check.frozenAt !== undefined) throw conflict("Cette addition ne se défait pas.");
     const session = (await ctx.db.get(check.tableSessionId))!;
     assertBillable(session);
+    await assertNoOpenIntent(ctx, session._id, check._id);
     const payments = await ctx.db
       .query("payments")
       .withIndex("by_check", (q) => q.eq("checkId", check._id))
@@ -333,6 +338,7 @@ async function adjustmentTarget(ctx: MutationCtx, actor: ServiceActor, sessionId
   assertBillable(session);
   let billing = await loadSessionBilling(ctx, session);
   let target = findCheck(billing, checkId);
+  if (target.check) await assertNoOpenIntent(ctx, session._id, target.check._id);
   let check = target.check;
   if (!check) {
     check = await ensureRemainder(ctx, session, member);

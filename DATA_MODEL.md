@@ -763,15 +763,44 @@ n'annule, n'offre ni ne détache ce qui est déjà payé.
 reste de la table », et celui qui prend le dernier morceau prend exactement ce qui reste. Aucun franc
 ne disparaît.
 
+### `paymentProviderAccounts`
+**Objectif.** Le compte d'un établissement chez son fournisseur de paiement en ligne (T5, D-116).
+Un par établissement ; seul Wave Côte d'Ivoire en T5.
+**Champs** : `venueId`, `providerKey` (`wave_ci`), `country`, `status` (`draft` · `active` ·
+`disabled`), `webhookPathId` (32 octets aléatoires : la seule chose que l'adresse du webhook révèle,
+jamais l'identifiant Convex), `secrets` (`apiKey?`, `webhookSecret?`, `webhookSecretPrevious?`,
+`requestSigningSecret?` — **tous chiffrés** AES-256-GCM, D-117), `apiKeyLast4?`,
+`webhookSecretLast4?`, `balanceAccess?`, `lastConnectionTestAt?`, `lastConnectionOk?`,
+`lastTestEventAt?` (preuve que Wave joint Joliba avec le bon secret), `lastSignatureFailureAt?`,
+`signatureFailures?`, `configuredByMemberId`, `configuredAt`, `updatedAt`.
+**Index** : `by_venue` · `by_webhook_path` (le chemin aléatoire **est** la portée, comme un jeton) ·
+`by_status` (rapprochement quotidien)
+**Permissions** : `payment.provider.manage` — jamais sous PIN. **Aucune requête ne renvoie un
+secret** : quatre caractères, des dates, des booléens.
+**Cycle** : `draft` → `active` seulement une fois prouvé (connexion testée **et** événement de test
+reçu, D-128) → `disabled`. Des secrets neufs remettent un compte actif en `draft`.
+
 ### `paymentIntents`
-**Objectif.** Une intention de paiement en ligne (T5), avant toute certitude : **une intention n'est
-pas de l'argent**.
-**Champs** : `venueId`, `checkId`, `tableSessionId`, `provider`, `providerRef?`, `amount`, `currency`,
-`acceptedAmount?` (montant réellement accepté — certains arrondissent en silence, D-028), `status`
-(`created`/`processing`/`awaiting_confirmation`/`succeeded`/`failed`/`expired`), `idempotencyKey`,
-`guestSessionId?`, `createdByMemberId?`, `redirectUrl?`, `expiresAt`, `lastCheckedAt?`, `failureReason?`.
-**Index** : `by_check` · `by_provider_ref ["provider","providerRef"]` · `by_venue_idempotency
-["venueId","idempotencyKey"]` (**par établissement**, D-064) · `by_status_expires`
+**Objectif.** Une intention de paiement en ligne, avant toute certitude : **une intention n'est pas
+de l'argent**. Son montant est **figé** à la création, relu côté serveur (R14) ; tant qu'elle est
+ouverte, elle protège son addition (D-114).
+**Champs** : `venueId`, `checkId`, `tableSessionId`, `providerAccountId`, `provider`, `reference`
+(la nôtre, aléatoire, envoyée comme `client_reference` : ni table ni établissement), `providerRef?`
+(la session Wave), `launchUrl?`, `amount`, `acceptedAmount?` (D-028), `currency`, `status`
+(`initializing` · `processing` · `succeeded` · `failed` · `expired` · `cancelled`), `target`
+(`remainder` · `my_items`, D-113), `createdCheck` (l'addition « Convive N » a été créée pour elle :
+défaite si elle expire impayée), `guestSessionId?`, `createdByMemberId?`, `idempotencyKey`,
+`initLeaseUntil?` (bail de 60 s pendant la création chez le fournisseur, D-119), `expiresAt`,
+`nextCheckAt?`, `checkAttempts`, `lastCheckedAt?` (rattrapage, D-120), `cancelRequestedAt?`,
+`cancelRequestedByMemberId?`, `lastErrorCode?`, `failureReason?`, `paymentId?`,
+`providerTransactionId?`, `paidAt?`, `isSimulation`, `createdAt`, `updatedAt`.
+**Index** : `by_check_status` · `by_session_status` (gardes D-114) · `by_account_reference` et
+`by_account_provider_ref` (le webhook résout **dans le compte qui a signé**) ·
+`by_venue_idempotency` (**par établissement**, D-064) · `by_guest_status` · `by_status_next_check`
+(rattrapage) · `by_venue_createdAt`
+**Cycle** : `initializing` → `processing` → `succeeded` | `expired` | `cancelled` ; `failed` si
+aucune session n'a pu être créée. Un état ne recule jamais ; un paiement confirmé après une
+expiration ou une annulation l'emporte (l'argent a été reçu, D-115).
 
 ### `payments`
 **Objectif.** De l'argent réellement reçu. La table la plus sensible du produit.
@@ -782,12 +811,13 @@ pas de l'argent**.
 | `method` | `cash`/`mobile_money`/`card`/`external_terminal`/`transfer`/`other` | **l'espèce est de première classe** *(D-019)* |
 | `wallet?` | string | Mobile Money : le portefeuille qui a reçu (« Wave ») — **obligatoire** en saisie : c'est lui que le gérant rapproche |
 | `provider?`, `providerRef?` | string | référence de transaction, facultative en saisie manuelle |
-| `paymentIntentId?` | Id | T5 |
+| `paymentIntentId?` | Id | paiement en ligne : l'intention qu'il solde (T5) |
+| `providerTransactionId?` | string | paiement en ligne : la transaction chez le fournisseur, pour le rapprochement (D-121) |
 | `amount`, `tipAmount`, `currency` | | `amount` = ce qui s'impute sur l'addition ; `tipAmount` reste 0 (D-027) |
 | `status` | `succeeded`/`voided`/`refunded`/`partially_refunded` | un paiement n'existe que s'il a réussi |
 | `collectedByMemberId?` | Id | **qui a encaissé** — un membre, PIN compris ; exigé par la mutation pour toute saisie |
 | `deviceId?` | Id | l'appareil enrôlé, sous PIN |
-| `guestSessionId?` | Id | T5 |
+| `guestSessionId?` | Id | paiement en ligne : le convive qui a payé depuis son téléphone |
 | `cashRegisterSessionId?` | Id | la caisse où l'espèce est entrée — ou d'où la monnaie est sortie |
 | `receivedAmount?`, `changeAmount?` | number | remis, et monnaie **réellement** rendue en espèces |
 | `idempotencyKey` | string | |
@@ -797,12 +827,15 @@ pas de l'argent**.
 
 **Index** : `by_check` · `by_venue_createdAt` (journal, rapport) · `by_register_session` (attendu de
 clôture) · `by_venue_voidedAt` (le rapport date une annulation à son jour, D-089) ·
-`by_venue_method_createdAt` · `by_provider_ref` · `by_venue_idempotency` (**par
+`by_venue_method_createdAt` · `by_provider_ref` (un paiement **par session du fournisseur** : c'est
+ce qui rend la confirmation en ligne rejouable) · `by_intent` · `by_venue_idempotency` (**par
 établissement**, D-064 — l'index était global)
 **Permissions** : `payment.read` / `collect` (PIN) / `void` (compte).
 **Cycle** : créé **succeeded** → éventuellement `voided` (saisie erronée, tant que caisse ouverte,
-aucun ticket, table ouverte, et jamais par son propre auteur) ou `refunded`. **Jamais supprimé**
-*(R18)*.
+aucun ticket, table ouverte, et jamais par son propre auteur — **jamais pour un paiement en ligne**,
+qui se rembourse, D-123) ou `refunded`. **Jamais supprimé** *(R18)*.
+**Paiement en ligne** *(D-124)* : `method: mobile_money`, `provider: wave_ci`, sans portefeuille,
+sans caisse ni encaisseur ; il s'enregistre **même sur une table close ou au-delà du dû** (D-115).
 
 > Le paiement mixte — 15 000 en espèces et 20 000 en Mobile Money sur la même addition — se
 > représente naturellement : **deux lignes**, même `checkId`. Le partage égal et « chacun paie tant »
@@ -811,22 +844,60 @@ aucun ticket, table ouverte, et jamais par son propre auteur) ou `refunded`. **J
 ### `refunds`
 **Champs** : `venueId`, `paymentId`, `checkId`, `amount`, `method` (espèces, ou le moyen d'origine),
 `cashRegisterSessionId?` (espèces : **le tiroir qui paie**, choisi explicitement), `reason`
-(**obligatoire**), `status`, `requestedByMemberId`, `approvedByMemberId?`, `provider?`, `providerRef?`,
-`idempotencyKey`, `isSimulation`, `createdAt`.
-**Index** : `by_payment` · `by_venue_createdAt` · `by_register_session` · `by_venue_idempotency`
+(**obligatoire**), `status` (`pending` : remboursement en ligne en attente du fournisseur),
+`requestedByMemberId`, `approvedByMemberId?`, `provider?`, `providerRef?`, `failureCode?`,
+`completedAt?`, `idempotencyKey`, `isSimulation`, `createdAt`.
+**Index** : `by_payment` · `by_venue_createdAt` · `by_register_session` · `by_venue_idempotency` ·
+`by_status_createdAt` (rejouer un remboursement en ligne resté en attente)
 **Permissions** : `payment.refund` (compte seulement). **Toujours auditée.**
-**Invariant** : la somme des remboursements d'un paiement ne peut excéder son montant *(R19)*. Un
+**Invariant** : la somme des remboursements d'un paiement — **en attente comprise** (D-123) — ne peut
+excéder son montant *(R19)*. Un paiement en ligne se rembourse **en totalité** par le fournisseur, ou
+en partie **en espèces** depuis une caisse. Un
 remboursement ne rouvre pas le dû : il réduit la recette. Si un ticket existait, un **avoir** lié le
 corrige.
 
 ### `webhookEvents`
-**Objectif.** La mémoire des notifications reçues d'un fournisseur. **C'est cette table qui rend
-l'idempotence possible** *(R16)*.
-**Champs** : `provider`, `providerEventId` (**unique**), `eventType`, `signatureValid`, `payload`,
-`processedAt?`, `processingResult?`, `relatedIntentId?`, `receivedAt`, `replayCount`.
-**Index** : `by_provider_event ["provider","providerEventId"]` (unicité — le cœur du mécanisme) ·
-`by_processed ["processedAt"]` (rattrapage) · `by_provider_received ["provider","receivedAt"]`
-**Cycle** : reçu → traité. **Un second passage du même `providerEventId` ne produit aucun effet.**
+**Objectif.** La mémoire des notifications reçues d'un fournisseur, **signature vérifiée**. C'est
+cette table qui rend l'idempotence possible *(R16, D-118)*.
+**Champs** : `providerAccountId`, `venueId`, `provider`, `providerEventId`, `eventType`,
+`providerRef?`, `reference?`, `amount?`, `currency?`, `bodyHash` (SHA-256 du corps brut),
+`processingResult`, `relatedIntentId?`, `receivedAt`, `replayCount`, `lastReplayAt?`.
+**Pas de corps libre** : il porterait le nom du commerce et des adresses, et n'aide à rien qu'une
+empreinte ne prouve. Un événement à la signature refusée n'est **pas** enregistré (un compteur
+d'échecs sur le compte suffit).
+**Index** : `by_account_event ["providerAccountId","providerEventId"]` (unicité **par compte** — le
+cœur du mécanisme) · `by_venue_received`
+**Cycle** : reçu et traité dans la même mutation. **Un second passage du même événement ne produit
+aucun effet**, et reçoit quand même 200.
+
+### `providerReconciliations` / `reconciliationItems`
+**Objectif.** Le rapprochement d'un jour UTC avec le relevé du fournisseur (D-121) : une ligne par
+compte et par jour, et le classement de chaque transaction.
+**Champs** (`providerReconciliations`) : `venueId`, `providerAccountId`, `dayUtc`, `status` (`done` ·
+`unavailable` — clé sans droit « Solde » · `failed`), `passes` (J-1 puis J-2), `lastRunAt`,
+`failureCode?`, `matched`, `missingHere`, `missingAtProvider`, `amountMismatch`, `fees`,
+`checkoutTotal`.
+**Champs** (`reconciliationItems`) : `venueId`, `reconciliationId`, `kind` (`matched` ·
+`missing_here` · `missing_at_provider` · `amount_mismatch`), `providerTransactionId?`,
+`providerRef?`, `providerAmount?`, `fee?`, `ourAmount?`, `paymentId?`, `refundId?`, `at`.
+**Index** : `by_account_day` · `by_venue_day` · `by_reconciliation` · `by_payment` (l'indicateur
+« versé / en attente / en retard », D-122)
+**Jamais** le numéro ni le nom du payeur, que le relevé contient pourtant.
+**Cycle** : une passe réécrit les lignes de son jour ; un absent au relevé n'est « en retard »
+qu'après la seconde passe.
+
+### `paymentAlerts`
+**Objectif.** Ce qu'un humain doit regarder et que personne n'a encore traité : trop-perçu à rendre
+(y compris sur une table close), montant ou devise inattendus, événement qui désigne une intention
+inconnue, signatures refusées en série, fournisseur injoignable, écart de rapprochement,
+remboursement refusé.
+**Champs** : `venueId`, `kind`, `severity` (`info` · `warning` · `critical`), `message` (sans donnée
+de payeur), `amount?`, `currency?`, `intentId?`, `paymentId?`, `refundId?`, `tableSessionId?`,
+`providerTransactionId?`, `dedupeKey` (une même cause ne crie qu'une fois), `createdAt`,
+`resolvedAt?`, `resolvedByMemberId?`, `resolution?`.
+**Index** : `by_venue_open ["venueId","resolvedAt"]` · `by_venue_dedupe`
+**Permissions** : lecture `payment.read` ; traitement `payment.refund` (compte, motif écrit). Un
+trop-perçu remboursé se résout de lui-même.
 
 ### `cashRegisters` / `cashRegisterSessions` / `cashMovements`
 **Objectif.** La caisse physique, ses ouvertures, et ce qui y entre ou en sort hors paiements.
@@ -970,12 +1041,10 @@ annulation) déclenche la reconstruction du jour concerné, ce que `sourceVersio
 volumineux sont réduits aux champs modifiés (§53).
 
 ### `idempotencyKeys`
-**Objectif.** Le garde-fou central du produit *(D-010, R7, R16)*.
-**Champs** : `key` (**unique**), `scope`, `organizationId?`, `resultRef?`, `status`
-(`in_progress`/`completed`/`failed`), `createdAt`, `expiresAt`.
-**Index** : `by_key ["key"]` · `by_expires ["expiresAt"]` (purge)
-**Cycle** : créée à l'entrée de la mutation, complétée à la sortie, purgée après expiration. Une
-seconde requête portant la même clé **renvoie le premier résultat** au lieu de refaire le travail.
+**Obsolète — jamais lue ni écrite.** Son index global `by_key` contredit D-064 : l'idempotence vit
+dans chaque table, **par établissement** (`by_venue_idempotency` sur `payments`, `refunds`,
+`paymentIntents`, `orders`…). Gardée tant qu'une migration ne l'a pas vidée sur les déploiements
+existants ; aucun code nouveau ne doit l'utiliser.
 
 ### `bugReports`
 **Objectif.** Le signalement depuis l'application, avec son contexte (§47) — une des rares
