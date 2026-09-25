@@ -83,7 +83,10 @@ jobs:
       # Seulement sur une pull request : sur main, il n'y a pas de base à laquelle comparer.
       - name: Sizes against the base branch
         if: github.event_name == 'pull_request'
-        run: node scripts/check-sizes.mjs "origin/${{ github.base_ref }}"
+        # La branche de base passe par l'environnement, jamais interpolée dans le script shell.
+        env:
+          BASE: ${{ github.base_ref }}
+        run: node scripts/check-sizes.mjs "origin/$BASE"
 
       # Isolation multi-tenant (porte de sortie de T0), verrous, portée, plan tarifaire.
       - name: Unit and isolation tests

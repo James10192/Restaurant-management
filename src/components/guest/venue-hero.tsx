@@ -83,7 +83,7 @@ function Description({ text, labels }: { text: string; labels: { more: string; l
           aria-expanded={expanded}
           aria-controls="venue-description"
           onClick={() => setExpanded((v) => !v)}
-          // Petit à l'œil, 56 px sous le doigt (DESIGN §11) : la zone active déborde du texte.
+          // Petit à l'œil, 56 px sous le doigt (DESIGN §4, R-D4) : la zone active déborde du texte.
           className="relative mt-0.5 -ml-1 rounded px-1 py-1 text-sm font-semibold text-foreground underline underline-offset-4 outline-none after:absolute after:-inset-x-2 after:-inset-y-3.5 after:content-[''] focus-visible:ring-[3px] focus-visible:ring-ring/50"
         >
           {expanded ? labels.less : labels.more}

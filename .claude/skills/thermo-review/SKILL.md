@@ -17,7 +17,7 @@ de Joliba, et les détecteurs, tirés des défauts réellement rencontrés de T0
 | Revue | Question posée | Sortie |
 |---|---|---|
 | `pnpm check` + CI | **Les invariants tiennent-ils ?** Types, gardes, montants, schéma, permissions, tailles, tests | Vert ou rouge |
-| Revue adverse (agent `critique-transversale`) | **La décision est-elle la bonne ?** Avant d'écrire | Arbitrages, `D-xxx` |
+| Revue adverse (un sous-agent contradicteur) | **La décision est-elle la bonne ?** Avant d'écrire | Arbitrages, `D-xxx` |
 | **Thermo-nucléaire** | **Fallait-il l'écrire — et fallait-il le faire ainsi ?** Après avoir écrit | **Verdict `PASS` / `BLOCK`** |
 
 La thermo ne remplace ni la CI ni la revue adverse. **Un contrôle qu'une machine applique ne
@@ -36,8 +36,8 @@ repère : **la bonne solution paraît évidente après coup.**
 
 Sur ce dépôt, le coup de judo prend presque toujours l'une de ces formes :
 
-- **Ça existe déjà.** `grep` avant d'écrire une ligne. `convex/lib/` porte quarante modules : une
-  règle métier y a souvent déjà sa fonction.
+- **Ça existe déjà.** `grep` avant d'écrire une ligne. `convex/lib/` porte des dizaines de modules :
+  une règle métier y a souvent déjà sa fonction.
 - **Le canal est déjà là.** Vécu en T7.a : l'aperçu recevait le logo par `postMessage` alors que
   la requête réactive du cadre le portait déjà — un canal, un validateur et un repli supprimés.
 - **Le besoin réel était plus petit.** Reformule ce que la proposition cherche à obtenir **sans
@@ -48,7 +48,7 @@ Sur ce dépôt, le coup de judo prend presque toujours l'une de ces formes :
   |---|---|
   | Afficher un montant | `formatMoney` (`convex/lib/money.ts`) — seule exception : `formatListDigits`, pour la liste de la carte client (D-166) |
   | Calculer sur un montant | `money`, `add`, `subtract`, `splitEvenly`, `percentOf`, `roundUpToStep` — entiers, exposant dérivé (ADR 0003) |
-  | Garder une fonction publique | `requirePermission`, `requireOrganizationMember`, `requireServiceActor`… (`convex/lib/guards.ts`) |
+  | Garder une fonction publique | `requirePermission`, `requireOrganizationMember`, … (`convex/lib/guards.ts`) ; `requireServiceActor` pour un appareil partagé ou un geste de service (`convex/lib/serviceActor.ts`) |
   | Refuser proprement | `invalid`, `forbidden` (`convex/lib/errors.ts`) |
   | Tracer un acte | `writeAudit` (`convex/lib/audit.ts`) |
   | Ce que voit le client | `publicVenue`, `loadPublishedMenus`, `loadLiveAvailability` (`convex/lib/guestMenu.ts`) |
@@ -123,8 +123,8 @@ Agent(
 >
 > **Tu as le droit et le devoir d'utiliser :** la recherche internet (axe 9 : toute affirmation
 > sur le monde extérieur porte sa source) ; les commandes en lecture seule (`git`, `grep`,
-> `pnpm -s typecheck`, `pnpm -s test`, `pnpm -s check`) ; l'agent `critique-transversale` pour un
-> second angle sur un parcours entier.
+> `pnpm -s typecheck`, `pnpm -s test`, `pnpm -s check`, `node scripts/check-sizes.mjs <base>`) ; un
+> sous-agent contradicteur pour un second angle sur un parcours entier.
 >
 > Tu ne démarres ni serveur ni parcours de bout en bout. Pour les axes 10 et 12, **exige la preuve
 > plutôt que de la produire** : dis quelle capture (`E2E_SCREENSHOTS`), quel parcours
@@ -136,6 +136,10 @@ Agent(
 > seule : tu n'écris, ne commites ni ne pousses rien.
 >
 > **Rends un verdict `PASS` ou `BLOCK`**, puis les constats classés, chacun avec sa correction.
+
+L'agent `critique-transversale` que cite la version KLASSCI **n'existe pas dans ce dépôt** : il
+vit dans `KLASSCIv2/.claude/agents/` et parle de KLASSCI. Pour un second angle, lance un sous-agent
+général avec un brief de contradicteur.
 
 ### Si le sous-agent est indisponible
 
@@ -282,13 +286,15 @@ importent **exige** :
 
 - une mesure `scripts/measure-guest.mjs`, rejouée et publiée dans `docs/perf/` ;
 - **l'attribution** de tout écart de script, fichier par fichier, contre le build de la base. Vécu
-  en T7.a : +5 Ko inexpliqués venaient d'un module partagé entre le `head()` d'une page client et
-  un écran de gestion — tout le calcul OKLCH était entré dans le paquet commun. **Un import dans
+  en T7.a : l'écart de script mesuré n'était pas expliqué ; l'attribution a trouvé que le calcul
+  OKLCH, dans un module partagé entre le `head()` des pages client et l'écran Apparence, était
+  entré dans le paquet commun. Le test `tests/scripts/guest-bundle-boundary.test.ts` en garde la
+  frontière. **Un import dans
   `head()` ou dans une route client est un import pour chaque client.**
 
 Pour tout écran : **une capture réelle** (`E2E_SCREENSHOTS`), pas une maquette ; les six états
 (chargement, vide, erreur, partiel, hors ligne, succès) ; 390 px de large sans défilement
-horizontal ; des cibles de 56 px sous le doigt (DESIGN §11) ; shadcn/ui officiel, rien de refait à
+horizontal ; des cibles de 56 px sous le doigt (DESIGN §4, R-D4) ; shadcn/ui officiel, rien de refait à
 la main ; la couleur du restaurant **seulement** sur le « + » et la section lue (D-166).
 
 **Le test qui tranche :** un serveur qui n'a jamais vu cet écran, un plateau à la main, sait-il

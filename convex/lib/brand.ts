@@ -17,16 +17,15 @@
  * saisie ET le résultat ; la page client ne fait aucun calcul.
  */
 
+// Pas de ré-export d'ici : une page client qui importerait le thème par ce module tirerait tout
+// le calcul OKLCH dans le paquet de chaque client (D-166). Elle importe `brandTheme` directement.
+import { BRAND_FOREGROUND, HEX_PATTERN } from "./brandTheme";
+
 /** La couleur Joliba (D-059), quand l'établissement n'en a choisi aucune (D-151). */
 export const JOLIBA_BRAND = "#044e5a";
 
-import { BRAND_FOREGROUND, HEX_PATTERN } from "./brandTheme";
-
-export { brandThemeCss, HEX_PATTERN } from "./brandTheme";
-
-/** Le fond de la carte client (`--background`) et le texte posé sur la couleur (`--primary-foreground`). */
+/** Le fond de la carte client (`--background`). Le texte posé sur la couleur vient de `brandTheme`. */
 const BACKGROUND = "#ffffff";
-const FOREGROUND = BRAND_FOREGROUND;
 const MIN_CONTRAST = 4.5;
 
 export type BrandColor = {
@@ -83,7 +82,7 @@ export function contrastRatio(a: Rgb, b: Rgb): number {
 
 export function worstContrast(color: Rgb): number {
   const background = hexToRgb(BACKGROUND);
-  const foreground = hexToRgb(FOREGROUND);
+  const foreground = hexToRgb(BRAND_FOREGROUND);
   // Le navigateur mélange l'opacité dans l'espace sRGB encodé : c'est ce mélange qu'on mesure.
   const fade = (f: number, c: number) => 0.8 * f + 0.2 * c;
   const faded: Rgb = [fade(foreground[0], color[0]), fade(foreground[1], color[1]), fade(foreground[2], color[2])];

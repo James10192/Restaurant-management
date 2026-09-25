@@ -350,7 +350,7 @@ function summary(names: string[]) {
  * le soir, les boissons) ajoutent un étage d'étiquettes au-dessus.
  */
 /**
- * Une zone active de 56 px autour d'un contrôle qui en paraît 40 (DESIGN §11 : « une cible peut
+ * Une zone active de 56 px autour d'un contrôle qui en paraît 40 (DESIGN §4, R-D4 : « une cible peut
  * être visuellement plus petite que sa zone active ») : 8 px au-dessus et au-dessous.
  */
 const HIT = "relative after:absolute after:inset-x-0 after:-inset-y-2 after:content-['']";

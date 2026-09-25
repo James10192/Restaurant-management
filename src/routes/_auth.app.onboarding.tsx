@@ -5,7 +5,7 @@ import { CircleAlert, Coins } from "lucide-react";
 import { api } from "../../convex/_generated/api";
 import { COUNTRIES, type CountryCode } from "../../convex/lib/countries";
 import { VENUE_TYPE_LABELS, type VenueType } from "../../convex/lib/validators";
-import { LoadingState, PermissionDeniedState } from "~/components/app/states";
+import { EmptyState, LoadingState, PermissionDeniedState } from "~/components/app/states";
 import { useWorkspace } from "~/components/app/workspace";
 import { FormField } from "~/components/app/form-field";
 import { PendingButton } from "~/components/app/pending-button";
@@ -165,7 +165,17 @@ function BrandStep() {
   const navigate = useNavigate();
   // La nouvelle organisation vient d'être choisie : ses droits arrivent après un aller-retour.
   if (w.status !== "ready") return <LoadingState />;
-  if (!w.venue || !w.canInVenue("venue.manage")) return <PermissionDeniedState venue={w.venue?.name} permission="Configurer l'établissement" />;
+  // Sans établissement il n'y a pas de carte à habiller : ce n'est pas un refus, c'est un vide.
+  if (!w.venue) {
+    return (
+      <EmptyState
+        title="Aucun établissement pour l'instant"
+        description="La marque s'applique à la carte d'un établissement. Vous la choisirez dans Réglages › Apparence dès qu'il existera."
+        action={<Button onClick={() => void navigate({ to: "/app" })}>Continuer</Button>}
+      />
+    );
+  }
+  if (!w.canInVenue("venue.manage")) return <PermissionDeniedState venue={w.venue.name} permission="Configurer l'établissement" />;
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
       <div className="flex flex-wrap items-end justify-between gap-4">

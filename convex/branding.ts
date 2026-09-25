@@ -14,7 +14,8 @@ import { action, internalMutation, internalQuery, mutation, query } from "./_gen
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { writeAudit } from "./lib/audit";
-import { HEX_PATTERN, JOLIBA_BRAND, normalizeHex, resolveBrandColor, type StoredBrandColor } from "./lib/brand";
+import { JOLIBA_BRAND, normalizeHex, resolveBrandColor, type StoredBrandColor } from "./lib/brand";
+import { HEX_PATTERN } from "./lib/brandTheme";
 import { invalid } from "./lib/errors";
 import { loadLiveAvailability, loadPublishedMenus, publicVenue } from "./lib/guestMenu";
 import { requirePermission, type ReadCtx, type VenueActor } from "./lib/guards";

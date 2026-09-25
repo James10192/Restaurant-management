@@ -101,6 +101,19 @@
     "after_kb": 152.2,
     "delta_kb": 1.1,
     "cause": "déclarations des deux nouvelles routes (/apercu, /app/settings/apparence) dans l'entrée commune, squelette de fiche (0,2 Ko), chiffres sans devise. Un premier build en ajoutait 2,1 : le calcul OKLCH de resolveBrandColor était entré dans l'entrée commune parce que brand.ts servait à la fois au head() des pages client et à l'écran Apparence ; le thème vit maintenant à part (convex/lib/brandTheme.ts) et le calcul n'est plus que dans le paquet de l'écran Apparence.",
-    "measured_script_note": "Le script mesuré (147 Ko) compte aussi les paquets chargés après l'hydratation jusqu'à load + 1 s, et vient d'un autre jeu de démonstration que la mesure UI.7 : l'écart de 4 Ko avec 143 n'est pas imputable à cette tranche au-delà des 1,1 Ko ci-dessus."
+    "table_route": {
+      "method": "carte de table /r/<établissement>/t/<jeton>, même jeu de démonstration et même backend, build de cf1dae8 contre celui-ci, service worker bloqué : tous les scripts demandés jusqu'à load + 1 s, relus sur disque et compressés gzip -9",
+      "before_kb": 220.0,
+      "after_kb": 221.2,
+      "delta_kb": 1.2,
+      "by_chunk_kb": {
+        "index (entrée commune : déclarations des deux nouvelles routes)": 0.4,
+        "morceau partagé des pages client (sw 8,7 → sw 0,2 + venue-hero 9,0 : plaque du logo, ligne « Prix en F CFA »)": 0.5,
+        "skeleton (squelette de fiche)": 0.2,
+        "money (formatListDigits, currencySymbol)": 0.1,
+        "table-ordering, input-otp": 0.2
+      },
+      "why_the_measure_says_147": "measure-guest compte les octets transférés (brotli) jusqu'à load + 1 s, et la mesure UI.7 (143) venait d'un autre jeu de démonstration : la liste des morceaux arrivés avant cette borne n'est pas la même d'un jeu à l'autre. À jeu égal, l'écart imputable à cette tranche est de 1,2 Ko."
+    }
   }
 }
