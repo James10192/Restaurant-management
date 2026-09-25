@@ -283,6 +283,17 @@ section lue, devise écrite une fois, vignettes de 20 Ko. Ni gabarits, ni police
 restaurant ; la couverture attend que la carte revienne dans son budget. Au déploiement :
 `npx convex run migrations:resetSeededBranding`.
 
+**T7.b — Progression dérivée** *(D-176, D-177, D-179)* — **livrée** : `/app/onboarding` devient le
+tableau de mise en service dès que l'organisation existe — sept étapes en quatre groupes, chacune
+lue sur la donnée qui la prouve, grisée avec qui peut la faire quand on n'en a pas le droit ;
+l'accueil montre l'avancement. `onboarding:funnel` mesure la porte de sortie. Au déploiement :
+`npx convex run migrations:dropOnboardingCompletedSteps`, et `VITE_SUPPORT_WHATSAPP` pour le bouton
+d'aide.
+
+**Suite de T7** *(D-168 à D-175, D-178)* : c — le jumeau de simulation et « Tout effacer » ; d — le
+client joué par un vrai QR ; e — le parcours guidé ; f — la simulation sous PIN sur l'appareil
+partagé. D-168 contredit §5.2 de l'architecture d'information : à confirmer avant c.
+
 > Cette tranche décide du coût d'acquisition. Tant qu'elle n'est pas faite, chaque client coûte une
 > installation accompagnée.
 

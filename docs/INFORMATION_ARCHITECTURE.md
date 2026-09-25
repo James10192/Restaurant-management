@@ -1890,7 +1890,8 @@ bonne nouvelle, formulée comme telle.
 **Appareil** : desktop et mobile, à égalité — la mise en service se fait en plusieurs fois, entre
 deux services.
 **Permissions** : `venue.manage` pour la plupart des étapes ; chaque étape porte **la permission de
-l'écran qu'elle ouvre** et se masque si l'utilisateur ne l'a pas.
+l'écran qu'elle ouvre**. Sans elle, l'étape est **grisée avec qui peut la faire**, jamais masquée
+(D-176).
 
 **Header** : nom de l'établissement · **barre de progression** (« 4 étapes sur 7 ») · **Ignorer pour
 l'instant**, toujours disponible.
@@ -1910,8 +1911,10 @@ découragent, quatre groupes qui disent *pourquoi* avancent.
 | **3. Votre salle** | ⑤ Zones et tables ⑥ **Imprimer les QR** | Les clients peuvent scanner | `table.manage`, `table.qr.manage` |
 | **4. Votre équipe** | ⑦ Inviter un collègue avec un rôle limité | Le service tourne à plusieurs | `team.manage` |
 
-Chaque étape affiche **le temps réaliste** qu'elle prend (« ~10 min ») et son état : à faire, en
-cours, faite. `venues.onboardingCompletedSteps` porte cet état.
+Chaque étape affiche **le temps réaliste** qu'elle prend (« ~10 min ») et son état : à faire,
+sautée, faite. **L'état se dérive des données** (D-176) : ⑥ devient « premier client scanné », que
+prouve le QR ; seuls les modes de service confirmés et les étapes sautées sont stockés
+(`venues.onboarding`).
 
 **Deux blocs supplémentaires, en bas**
 - **Essayez sans risque** → `/app/onboarding/simulation` (§5.2). Proposé **dès que la carte est
@@ -1936,7 +1939,7 @@ les fera** — les masquer donnerait une progression fausse. *Hors ligne* : cerc
 **Mobile** : une étape par écran, progression collante en haut.
 **Desktop** : la liste des étapes à gauche, l'étape en cours à droite, sans quitter la page.
 
-**Données** : `venues.onboardingCompletedSteps` · `venueSettings` · `menus by_venue_status` ·
+**Données** : `venues.onboarding` · `venueSettings` · `menus by_venue_status` ·
 `menuPublications by_venue_current` · `restaurantTables by_venue_number` ·
 `tableQrCodes by_venue_status` · `organizationMembers by_org_status`.
 

@@ -34,6 +34,14 @@ par une liste « À régulariser » (déjà préparée · envoyer maintenant · 
 6 heures est refusé au rejeu. La file vit en IndexedDB, part une opération à la fois, et l'état du
 serveur gagne toujours. Chaque appareil mesure ses coupures.
 
+**Limite connue (2026-09-25)** : un geste n'est durable qu'une fois sa transaction IndexedDB
+terminée. Entre le toucher et cette fin — quelques millisecondes, une base ouverte à chaque
+opération (`src/lib/outbox.ts`) — un rechargement de page le perd. La perte se voit : au
+rechargement, le bon réapparaît dans son état d'avant et le cuisinier retape. Une navigation interne
+ne décharge pas la page. Piste : garder une connexion IndexedDB ouverte, ce qui raccourcit la
+fenêtre et le délai avant « Envoi… ». Trouvé par la CI (t6), qui changeait d'écran 2 ms après le
+clic.
+
 **Le pair-à-pair sur réseau local est différé**, et présenté comme un arbitrage d'investissement.
 
 ## Conséquences

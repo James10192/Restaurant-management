@@ -133,12 +133,12 @@ function StepRow({ step, venueId }: { step: Step; venueId: Id<"venues"> }) {
         <Icon aria-hidden="true" className={step.state === "done" ? "text-primary" : "text-muted-foreground"} />
       </ItemMedia>
       <ItemContent className="min-w-48">
-        <ItemTitle className="line-clamp-none">
-          {meta.label}
+        <div className="flex flex-wrap items-center gap-2">
+          <ItemTitle className="line-clamp-none">{meta.label}</ItemTitle>
           <Badge variant={step.state === "done" ? "default" : "secondary"}>{STATE_LABEL[step.state]}</Badge>
-        </ItemTitle>
+        </div>
         <ItemDescription>
-          {step.allowed ? `${meta.why} Environ ${meta.minutes} min.` : whoCanText(step)}
+          {!step.allowed ? whoCanText(step) : step.state === "done" ? meta.why : `${meta.why} Environ ${meta.minutes} min.`}
         </ItemDescription>
       </ItemContent>
       {step.allowed && step.state !== "done" ? <StepActions step={step} venueId={venueId} /> : null}
@@ -171,7 +171,7 @@ function StepActions({ step, venueId }: { step: Step; venueId: Id<"venues"> }) {
   const skipped = step.state === "skipped";
   return (
     <ItemActions className="w-full flex-wrap sm:w-auto">
-      <Button asChild variant={skipped ? "outline" : "default"} size="sm">
+      <Button asChild variant="outline" size="sm">
         <Link to={STEP_ROUTE[step.key]}>{step.key === "service" ? "Vérifier" : "Ouvrir"}</Link>
       </Button>
       {step.key === "service" && !skipped ? (
