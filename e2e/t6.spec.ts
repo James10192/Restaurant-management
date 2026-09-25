@@ -70,6 +70,11 @@ test("le gérant voit le service en direct, puis comprend sa journée", async ({
   await expect(ticket.getByText("En retard")).toBeVisible({ timeout: 20_000 });
   await expect(page.getByRole("tab", { name: /[Cc]uisine.*en retard/ })).toBeVisible();
   await shot(page, "t6-01-en-cuisine-en-retard");
+  // L'horloge revient à l'heure du serveur : 25 minutes d'avance, le client croit sa connexion (et
+  // sa session) expirée, passe « hors ligne » et garde les gestes de cuisine pour lui. La suite se
+  // joue à l'heure vraie.
+  await page.clock.setSystemTime(new Date());
+  await page.reload();
 
   // ── Prêt, puis servi ──
   await page.goto("/app/cuisine");

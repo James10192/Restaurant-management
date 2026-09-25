@@ -17,7 +17,17 @@ const pub = await webcrypto.subtle.exportKey("jwk", publicKey);
 const jwks = { keys: [{ kty: pub.kty, crv: pub.crv, x: pub.x, y: pub.y, kid, alg: "ES256", use: "sig" }] };
 
 if (process.argv.includes("--apply")) {
-  const run = (name, value) => execFileSync("pnpm", ["exec", "convex", "env", "set", name, value], { stdio: ["ignore", "ignore", "inherit"] });
+  // Un conflit d'écriture transitoire (`convex dev` qui déploie en même temps, en CI) se réessaie.
+  const run = (name, value) => {
+    for (const delay of [1, 2, 4, 8, 16, 0]) {
+      try {
+        return execFileSync("pnpm", ["exec", "convex", "env", "set", name, value], { stdio: ["ignore", "ignore", "inherit"] });
+      } catch (e) {
+        if (delay === 0) throw e;
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delay * 1000);
+      }
+    }
+  };
   run("OPERATOR_JWT_PRIVATE_KEY", JSON.stringify(priv));
   run("OPERATOR_JWKS", JSON.stringify(jwks));
   console.log(`Clés posées (kid ${kid}). Redéployez pour que la configuration d'authentification les lise.`);
