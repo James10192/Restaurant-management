@@ -41,6 +41,18 @@ async function ownerPage(browser: Browser): Promise<Page> {
   return page;
 }
 
+/** La cuisine commence puis termine le bon de la table. */
+async function markReadyInKitchen(page: Page): Promise<void> {
+  await page.goto("/app/cuisine");
+  const card = page.locator("[data-slot=card]").filter({ hasText: `Table ${TABLE}` }).first();
+  await card.getByRole("button", { name: "Commencer" }).click();
+  await card.getByRole("button", { name: "Prêt" }).click();
+  // Un geste de cuisine passe par la file locale avant de partir : quitter la page aussitôt peut le
+  // perdre avant même qu'il soit enregistré. « Rappeler » n'existe que sur un bon que le serveur
+  // tient pour prêt — c'est lui qu'on attend avant de changer d'écran.
+  await expect(page.getByRole("button", { name: `Rappeler la table ${TABLE}` })).toBeVisible({ timeout: 20_000 });
+}
+
 test("le gérant voit le service en direct, puis comprend sa journée", async ({ browser }) => {
   const page = await ownerPage(browser);
   const errors: string[] = [];
@@ -77,14 +89,7 @@ test("le gérant voit le service en direct, puis comprend sa journée", async ({
   await page.reload();
 
   // ── Prêt, puis servi ──
-  await page.goto("/app/cuisine");
-  const card = page.locator("[data-slot=card]").filter({ hasText: `Table ${TABLE}` }).first();
-  await card.getByRole("button", { name: "Commencer" }).click();
-  await card.getByRole("button", { name: "Prêt" }).click();
-  // Un geste de cuisine passe par la file locale avant de partir : quitter la page aussitôt peut le
-  // perdre avant même qu'il soit enregistré. « Rappeler » n'existe que sur un bon que le serveur
-  // tient pour prêt — c'est lui qu'on attend avant de changer d'écran.
-  await expect(page.getByRole("button", { name: `Rappeler la table ${TABLE}` })).toBeVisible({ timeout: 20_000 });
+  await markReadyInKitchen(page);
   await page.goto("/app/service");
   await page.getByRole("tab", { name: /À servir/ }).click();
   const ready = page.locator("[data-slot=item]").filter({ hasText: `Table ${TABLE}` });
