@@ -123,7 +123,9 @@ function SessionsCard() {
       setError("La liste de vos appareils n'a pas pu être chargée.");
       return;
     }
-    setSessions((data ?? []) as SessionRow[]);
+    // Une session ne se liste qu'une fois : le stockage des sessions actives peut la rendre en double.
+    const unique = new Map(((data ?? []) as SessionRow[]).map((s) => [s.id, s]));
+    setSessions([...unique.values()]);
   }, []);
 
   useEffect(() => {
@@ -179,7 +181,8 @@ function SessionsCard() {
           <ItemGroup className="gap-0 rounded-lg border">
             {sessions.map((s, index) => {
               const device = describeDevice(s.userAgent);
-              const isCurrent = s.token === currentToken;
+              // Sans jeton courant connu, aucune ligne n'est « cet appareil » : deux absences ne font pas une égalité.
+              const isCurrent = currentToken !== undefined && s.token === currentToken;
               const Icon = device.mobile ? Smartphone : Laptop;
               return (
                 <div key={s.id} role="listitem">
