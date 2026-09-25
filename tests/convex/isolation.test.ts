@@ -1647,6 +1647,29 @@ const CASES: Record<string, (w: Awaited<ReturnType<typeof twoTenants>>) => Promi
     const mine = await w.a.owner.as.query(api.reports.serviceDay, { venueId: w.a.venueId });
     expect([mine.totals!.collected, mine.cashSessions, mine.openTables]).toEqual([0, [], []]);
   },
+  "analytics.day": async (w) => {
+    await moneyAtB(w);
+    await expectCode(w.a.owner.as.query(api.analytics.day, { venueId: w.b.venueId }), "NOT_FOUND");
+    const mine = await w.a.owner.as.query(api.analytics.day, { venueId: w.a.venueId });
+    expect([mine.orders.count, mine.money!.collected.net, mine.products]).toEqual([0, 0, []]);
+  },
+  "analytics.period": async (w) => {
+    await moneyAtB(w);
+    const { today } = await w.a.owner.as.query(api.analytics.day, { venueId: w.a.venueId });
+    await expectCode(w.a.owner.as.query(api.analytics.period, { venueId: w.b.venueId, from: today, to: today }), "NOT_FOUND");
+    const mine = await w.a.owner.as.query(api.analytics.period, { venueId: w.a.venueId, from: today, to: today });
+    expect([mine.orders.count, mine.money!.collected.net, mine.products]).toEqual([0, 0, []]);
+  },
+  "kitchen.inProduction": async (w) => {
+    await withServiceB(w);
+    await expectCode(w.a.owner.as.query(api.kitchen.inProduction, { venueId: w.b.venueId }), "NOT_FOUND");
+    expect(await w.a.owner.as.query(api.kitchen.inProduction, { venueId: w.a.venueId })).toEqual([]);
+  },
+  "tower.alerts": async (w) => {
+    await moneyAtB(w);
+    await expectCode(w.a.owner.as.query(api.tower.alerts, { venueId: w.b.venueId }), "NOT_FOUND");
+    expect(await w.a.owner.as.query(api.tower.alerts, { venueId: w.a.venueId })).toEqual({ staleCash: [], soldOut: [], paymentAlerts: 0 });
+  },
 };
 
 describe("isolation multi-tenant : A ne voit ni ne touche rien de B", () => {

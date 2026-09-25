@@ -17,6 +17,7 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { writeAudit } from "./lib/audit";
+import { serviceDayOf } from "./lib/analytics";
 import { lineGross, loadSessionBilling, negativeCheck } from "./lib/billing";
 import { assertIntentsStillCovered } from "./lib/intents";
 import { getInVenue } from "./lib/catalogAccess";
@@ -25,7 +26,6 @@ import type { MutationCtx, ReadCtx } from "./lib/guards";
 import { requireServiceActor, requireServiceMutation, type ServiceActor } from "./lib/serviceActor";
 import { loadLiveAvailability } from "./lib/guestMenu";
 import {
-  APPROVAL_ESCALATE_MS,
   OFFLINE_AUTO_SEND_MAX_MS,
   OFFLINE_REPLAY_MAX_MS,
   ORDER_LIMITS,
@@ -35,7 +35,6 @@ import {
   orderReference,
   orderTotals,
   priceLine,
-  serviceDayKey,
   stationCode,
   type LineProblem,
   type LineRequest,
@@ -154,7 +153,7 @@ export async function createOrder(
     const codes = new Set(product?.taxCodes ?? []);
     lines.push({ ...line, tax: lineTax(line.lineTotal, rates.filter((r) => codes.has(r.code)), settings.tax.pricesIncludeTax), stationId: product?.prepStationId });
   }
-  const reference = orderReference(await nextCounter(ctx, venue._id, `order:${serviceDayKey(now, venue.timezone, settings.service.serviceDayStartHour ?? 4)}`));
+  const reference = orderReference(await nextCounter(ctx, venue._id, `order:${serviceDayOf(now, venue, settings)}`));
   // « Déjà préparée » ne vaut que pour ce qui a été fait sur papier : un service retenu
   // (le dessert « à suivre ») attend toujours l'appel du serveur.
   const servedOnPaper = (course: number) => params.enteredOffline === true && !params.heldCourses.includes(course);
@@ -745,7 +744,6 @@ export const pendingAcceptance = query({
         sessionId: order.tableSessionId,
         submittedAt: order.submittedAt,
         /** Au-delà de 90 secondes, l'alerte passe à tout le personnel de la salle (D-061). */
-        escalated: Date.now() - order.submittedAt > APPROVAL_ESCALATE_MS,
         total: order.totals.total,
         notes: order.notes ?? null,
         items: items.map((i) => ({ name: i.nameSnapshot, variantName: i.variantNameSnapshot ?? null, quantity: i.quantity, modifiers: i.modifiers.map((m) => m.optionName) })),

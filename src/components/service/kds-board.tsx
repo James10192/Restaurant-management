@@ -17,6 +17,7 @@ import { cn } from "~/lib/utils";
 import { useOutbox } from "./outbox-provider";
 import { useServiceScope } from "./service-scope";
 import { ServiceStatus } from "./service-status";
+import { isTicketLate, ticketWait } from "../../../convex/lib/analytics";
 import { elapsed, useMinuteClock } from "./time";
 
 type Board = FunctionReturnType<typeof api.kitchen.board>;
@@ -37,7 +38,7 @@ export function KdsBoard({ stationId }: { stationId: Id<"prepStations"> }) {
   const sound = useArrivalSignals(board);
 
   if (board === undefined) return <LoadingState />;
-  const late = board.active.filter((t) => t.queuedAt !== null && now - t.queuedAt > board.station.lateThresholdMinutes * 60_000).length;
+  const late = board.active.filter((t) => isTicketLate(t, board.station, now)).length;
 
   return (
     <div className="flex flex-col gap-4">
@@ -186,8 +187,8 @@ function useAdvance() {
 
 function TicketCard({ ticket, board, now }: { ticket: Ticket; board: Board; now: number }) {
   const { pending, advance } = useAdvance();
-  const waited = ticket.queuedAt === null ? 0 : now - ticket.queuedAt;
-  const isLate = waited > board.station.lateThresholdMinutes * 60_000;
+  const waited = ticketWait(ticket, now);
+  const isLate = isTicketLate(ticket, board.station, now);
   const isSlow = !isLate && waited > board.station.targetPrepMinutes * 60_000;
   const next = pending.get(ticket._id);
   const status = next === "start" ? "started" : next === "ready" ? "ready" : ticket.status;

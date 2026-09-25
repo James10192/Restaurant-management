@@ -31,6 +31,7 @@
 
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import { dayMetricsFields } from "./lib/dayMetrics";
 import { venueType } from "./lib/validators";
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -1908,23 +1909,17 @@ export default defineSchema({
     .index("by_org", ["organizationId"]),
 
   /**
-   * Agrégats quotidiens précalculés. ANALYTICS.md §3.5 les promet — « on ne recalcule pas six
-   * mois d'historique à chaque ouverture d'écran » — mais aucune table ne les portait.
-   *
-   * `businessDate` est la journée DE L'ÉTABLISSEMENT, dans sa timezone : un service ouvert à
-   * 23 h et clôturé à 1 h appartient au jour où les clients se sont installés (ANALYTICS.md
-   * §3.4). Recalculable : une correction tardive (remboursement, annulation) déclenche la
-   * reconstruction du jour concerné, d'où `computedAt` et `sourceVersion`.
+   * Agrégats quotidiens précalculés (ANALYTICS.md §3.5, D-139 à D-141). Une ligne par jour de
+   * service clos, écrite par la tâche horaire une heure après la fin du jour, puis recalculée
+   * une fois le lendemain pour les corrections tardives. Sa forme est celle que rend
+   * `computeServiceDay` (convex/lib/dayMetrics.ts) : il n'y a qu'un calcul.
    */
   dailyMetrics: defineTable({
     venueId: v.id("venues"),
-    /** `YYYY-MM-DD` dans la timezone de l'établissement. */
+    /** `YYYY-MM-DD` : le jour de service de l'établissement. */
     businessDate: v.string(),
-    metrics: v.record(v.string(), v.number()),
-    breakdowns: v.optional(v.any()),
-    currency: v.string(),
     computedAt: v.number(),
-    sourceVersion: v.number(),
+    ...dayMetricsFields,
   })
     .index("by_venue_date", ["venueId", "businessDate"]),
 

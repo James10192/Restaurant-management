@@ -58,7 +58,7 @@ autres sont atteints après une garde, et un préfixe n'y ajouterait rien. Ce qu
 franchissement de tenant, c'est la garde, pas la forme de l'index *(PERMISSIONS.md §6)*.
 Convex limite à 32 index par table et 16 champs par index : on reste très en deçà.
 
-**La dénormalisation de `organizationId`.** Une cinquantaine de tables portent **à la fois**
+**La dénormalisation de `organizationId`.** Une quinzaine de tables portent **à la fois**
 `organizationId` et `venueId`, alors que `venues.organizationId` fait autorité. C'est une
 dénormalisation délibérée, au service de l'analytique consolidée d'un groupe multi-sites : sans
 elle, chaque agrégat devrait d'abord résoudre la liste des établissements.
@@ -1020,14 +1020,19 @@ même personne dans le même geste**.
 ### `dailyMetrics`
 **Objectif.** Les agrégats quotidiens précalculés qu'`ANALYTICS.md` §3.5 promet. Sans eux, chaque
 ouverture d'un écran d'historique recalculerait des mois de commandes.
-**Pourquoi une table et pas un calcul.** Parce que la nuit est le seul moment où ce calcul ne coûte
-rien à personne, et parce qu'un agrégat figé permet de comparer deux périodes sans que les chiffres
-bougent sous les yeux du gérant.
-**Champs** : `venueId`, `businessDate` (`YYYY-MM-DD` **dans la timezone de l'établissement**),
-`metrics` (dictionnaire), `breakdowns?`, `currency`, `computedAt`, `sourceVersion`.
+**Pourquoi une table et pas un calcul.** Un jour clos ne bouge presque plus, et comparer deux
+périodes sans que les chiffres bougent sous les yeux du gérant demande un agrégat figé.
+**Champs** (typés, `convex/lib/dayMetrics.ts`, D-140) : `venueId`, `businessDate` (le jour de
+service de l'établissement), `computedAt`, `sourceVersion`, `startHour` (l'heure de début utilisée),
+`from`/`to`, `currency`, `orders`, `sales` (Ventes : soldes d'addition au jour d'installation de la
+table), `collected` (Encaissé : paiements moins remboursements au jour du mouvement), `byMethod`,
+`slots` (48 demi-heures depuis le début du jour de service), `products`, `delays` et `stations`
+(**histogrammes** par cases de 30 s : les médianes d'une période s'en déduisent exactement),
+`tables`, `exceptions`.
 **Index** : `by_venue_date ["venueId","businessDate"]`
-**Cycle** : écrit par une tâche planifiée · **recalculable** — une correction tardive (remboursement,
-annulation) déclenche la reconstruction du jour concerné, ce que `sourceVersion` rend détectable.
+**Cycle** : écrite par la tâche horaire une heure après la fin du jour (J-1), recalculée une fois le
+lendemain (J-2) pour les corrections tardives ; une version de calcul nouvelle reconstruit
+l'historique (D-141). Même calcul que le rapport et « aujourd'hui » (D-139).
 
 ### `auditLogs`
 **Objectif.** Qui a fait quoi, quand, et sur quoi.

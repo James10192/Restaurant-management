@@ -12,10 +12,11 @@
 import { v } from "convex/values";
 import { query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
-import { closingState, DEFAULT_SERVICE_DAY_START_HOUR, loadSessionBilling, serviceDayWindow } from "./lib/billing";
+import { countsInFigures, serviceDayOf, startHourOf } from "./lib/analytics";
+import { closingState, loadSessionBilling, serviceDayWindow } from "./lib/billing";
 import { invalid } from "./lib/errors";
 import { requirePermission, type ReadCtx } from "./lib/guards";
-import { serviceDayKey } from "./lib/ordering";
+import { blindCountingSessions, loadDayMoney } from "./lib/serviceDay";
 import { memberName, OPEN_SESSION, settingsOf } from "./lib/service";
 import { methodLabel } from "./checks";
 import { initialDiscrepancyOf } from "./cash";
@@ -47,23 +48,19 @@ export const serviceDay = query({
     const actor = await requirePermission(ctx, "report.service_day.read", { venueId: args.venueId });
     const venue = actor.venue;
     const settings = await settingsOf(ctx, venue._id);
-    const startHour = settings.service.serviceDayStartHour ?? DEFAULT_SERVICE_DAY_START_HOUR;
-    const today = serviceDayKey(Date.now(), venue.timezone, startHour);
+    const startHour = startHourOf(settings);
+    const today = serviceDayOf(Date.now(), venue, settings);
     const day = args.day ?? today;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw invalid("Jour invalide.");
     const { from, to } = serviceDayWindow(day, venue.timezone, startHour);
     const nameOf = names(ctx);
-    // Les données de simulation n'entrent dans aucun chiffre réel (G2). Mais l'établissement de
-    // démonstration lui-même lit les siennes : sinon son rapport serait toujours vide.
-    const hide = (isSimulation: boolean) => isSimulation && !venue.isSimulation;
+    const hide = (isSimulation: boolean) => !countsInFigures(isSimulation, venue);
     const tableOf = tables(ctx);
 
     // ── Encaissements ──────────────────────────────────────────────────────
-    const payments = (await ctx.db
-      .query("payments")
-      .withIndex("by_venue_createdAt", (q) => q.eq("venueId", venue._id).gte("createdAt", from).lt("createdAt", to))
-      .collect()).filter((p) => !hide(p.isSimulation));
-    const valid = payments.filter((p) => p.status !== "voided");
+    // L'Encaissé n'a qu'une définition, partagée avec les analyses (D-139).
+    const money = await loadDayMoney(ctx, venue, from, to);
+    const valid = money.payments;
     // `received` : ce que le téléphone ou le terminal doit afficher (montant + monnaie rendue en
     // espèces). C'est lui qu'on rapproche du relevé Wave, pas le seul montant de l'addition.
     const byMethod = new Map<string, { label: string; method: Doc<"payments">["method"]; amount: number; received: number; count: number }>();
@@ -101,12 +98,8 @@ export const serviceDay = query({
       });
     }
 
-    const refundRows = (await ctx.db
-      .query("refunds")
-      .withIndex("by_venue_createdAt", (q) => q.eq("venueId", venue._id).gte("createdAt", from).lt("createdAt", to))
-      .collect()).filter((r) => !hide(r.isSimulation) && r.status === "succeeded");
     const refunds = [];
-    for (const r of refundRows) {
+    for (const r of money.refunds) {
       const payment = await ctx.db.get(r.paymentId);
       refunds.push({
         _id: r._id,
@@ -251,11 +244,9 @@ export const serviceDay = query({
       });
     }
 
-    // Comptage à l'aveugle (D-081) : tant qu'une caisse est en comptage sans compté saisi, les
-    // sommes d'encaissement la trahiraient (fonds + espèces du serveur ≈ attendu). Elles attendent.
-    const blind = cashSessions.filter((s) => s.status === "counting" && s.counts.length === 0).map((s) => s.name);
-    const collected = valid.reduce((s, p) => s + p.amount, 0);
-    const refunded = refunds.reduce((s, r) => s + r.amount, 0);
+    // Comptage à l'aveugle (D-081, D-138) : les sommes attendent la fin du comptage.
+    const blindIds = new Set((await blindCountingSessions(ctx, venue)).map((s) => s._id));
+    const blind = cashSessions.filter((s) => blindIds.has(s._id)).map((s) => s.name);
     return {
       day,
       today,
@@ -265,7 +256,7 @@ export const serviceDay = query({
       timezone: venue.timezone,
       simulation: venue.isSimulation,
       blindCounting: blind,
-      totals: blind.length > 0 ? null : { collected, refunded, net: collected - refunded, count: valid.length },
+      totals: blind.length > 0 ? null : { collected: money.collected.gross, refunded: money.collected.refunded, net: money.collected.net, count: money.collected.payments },
       byMethod: blind.length > 0 ? [] : [...byMethod.values()].sort((a, b) => b.amount - a.amount),
       byCollector: blind.length > 0 ? [] : [...byCollector.values()].sort((a, b) => b.amount - a.amount),
       cashSessions: cashSessions.sort((a, b) => a.openedAt - b.openedAt),

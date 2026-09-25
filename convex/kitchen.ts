@@ -126,3 +126,45 @@ export const advance = mutation({
     return { changed };
   },
 });
+
+/**
+ * « En cuisine », pour la tour de contrôle (D-133) : tous les bons envoyés et pas encore prêts,
+ * de tous les postes, du plus ancien au plus récent. Le retard se juge sur l'écran, avec le
+ * seuil de chaque poste (D-135) : on renvoie ce seuil, pas un verdict figé à l'heure de la lecture.
+ */
+export const inProduction = query({
+  args: { venueId: v.id("venues") },
+  handler: async (ctx, args) => {
+    const actor = await requireServiceActor(ctx, "kitchen.read", { venueId: args.venueId });
+    const tickets: Doc<"kitchenTickets">[] = [];
+    for (const status of IN_KITCHEN) {
+      tickets.push(
+        ...(await ctx.db
+          .query("kitchenTickets")
+          .withIndex("by_venue_status", (q) => q.eq("venueId", actor.venue._id).eq("status", status))
+          .collect()),
+      );
+    }
+    const stations = new Map<string, Doc<"prepStations"> | null>();
+    const result = [];
+    for (const t of tickets) {
+      // Un écran de cuisine enrôlé pour un poste ne voit que ce poste, ici aussi.
+      if (actor.device?.stationId !== undefined && actor.device.stationId !== t.prepStationId) continue;
+      if (!stations.has(t.prepStationId)) stations.set(t.prepStationId, await ctx.db.get(t.prepStationId));
+      const station = stations.get(t.prepStationId);
+      const lines = (await linesOf(ctx, t)).filter((l) => !l.cancelled);
+      result.push({
+        _id: t._id,
+        reference: t.reference,
+        tableNumber: t.tableNumber,
+        status: t.status as TicketStatus,
+        queuedAt: t.queuedAt ?? null,
+        startedAt: t.startedAt ?? null,
+        // Un poste supprimé depuis n'a plus de seuil : le bon ne se dit jamais en retard, il reste listé.
+        station: { name: station?.name ?? "Poste", lateThresholdMinutes: station?.lateThresholdMinutes ?? null },
+        lines: lines.map((l) => ({ name: l.variantName ? `${l.name} — ${l.variantName}` : l.name, quantity: l.quantity })),
+      });
+    }
+    return result.sort((a, b) => (a.queuedAt ?? 0) - (b.queuedAt ?? 0));
+  },
+});

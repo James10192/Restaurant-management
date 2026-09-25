@@ -21,6 +21,7 @@ import { writeAudit } from "./lib/audit";
 import { computeExpectedCash } from "./lib/billing";
 import { getInVenue } from "./lib/catalogAccess";
 import { conflict, forbidden, invalid } from "./lib/errors";
+import { startHourOf } from "./lib/analytics";
 import { requirePermission, type ReadCtx } from "./lib/guards";
 import { requireServiceActor, requireServiceMutation, type ServiceActor } from "./lib/serviceActor";
 import { memberName, settingsOf } from "./lib/service";
@@ -500,7 +501,7 @@ export const setPaymentSettings = mutation({
       cashMode: currentMode,
       mobileMoneyWallets: settings.payments.mobileMoneyWallets ?? [],
       amountStep: settings.payments.amountStep ?? 1,
-      serviceDayStartHour: settings.service.serviceDayStartHour ?? 4,
+      serviceDayStartHour: startHourOf(settings),
     };
     await ctx.db.patch(settings._id, {
       payments: { ...settings.payments, cashMode: args.cashMode, mobileMoneyWallets: wallets, amountStep: args.amountStep },
@@ -530,7 +531,7 @@ export const paymentSettings = query({
       cashMode: cashModeOf(settings),
       mobileMoneyWallets: settings.payments.mobileMoneyWallets ?? [],
       amountStep: settings.payments.amountStep ?? 1,
-      serviceDayStartHour: settings.service.serviceDayStartHour ?? 4,
+      serviceDayStartHour: startHourOf(settings),
     };
   },
 });

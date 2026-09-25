@@ -138,10 +138,9 @@ describe("la validation par le serveur (réglage)", () => {
     expect((await s.t.query(api.guestService.presence, s.as(PHONE_1)))!.orders[0]!.label).toBe("Pas encore en cuisine — en attente du serveur");
 
     const pending = await s.waiter.as.query(api.orders.pendingAcceptance, { venueId: s.cocody });
-    expect(pending.map((o) => [o.reference, o.escalated])).toEqual([["A-001", false]]);
+    // L'escalade à 90 s se juge sur l'écran, à partir de `submittedAt` : aucune requête ne lit l'heure (D-135).
+    expect(pending.map((o) => o.reference)).toEqual(["A-001"]);
     const orderId = pending[0]!._id;
-    await s.t.run((ctx) => ctx.db.patch(orderId, { submittedAt: Date.now() - 2 * 60_000 }));
-    expect((await s.waiter.as.query(api.orders.pendingAcceptance, { venueId: s.cocody }))[0]!.escalated).toBe(true);
 
     await s.t.mutation(internal.guestService.expirePending, { orderId });
     const seen = await s.t.query(api.guestService.presence, s.as(PHONE_1));
